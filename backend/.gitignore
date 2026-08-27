@@ -1,0 +1,19 @@
+# Local environment and credentials
+.env
+.env.*
+*.json
+!requirements.json
+*-firebase-adminsdk-*.json
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Logs
+*.log

@@ -1,0 +1,26 @@
+.export-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.export-pdf-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.export-pdf-btn:active:not(:disabled) { transform: none; }
+.export-pdf-btn:disabled { opacity: 0.6; cursor: progress; }
+
+.spin { animation: export-spin 0.8s linear infinite; }
+
+@keyframes export-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

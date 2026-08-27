@@ -1,0 +1,58 @@
+.rail {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.rail-node {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.rail-dot {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.rail-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+.rail-bar-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.rail-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+
+.rail-connector {
+  width: 24px;
+  height: 2px;
+  background: var(--border-strong);
+  margin-top: 20px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .rail { flex-direction: column; align-items: stretch; gap: 12px; }
+  .rail-connector { display: none; }
+  .rail-node { flex-direction: row; text-align: left; gap: 10px; }
+  .rail-label { flex-shrink: 0; width: 120px; }
+  .rail-bar-track { flex: 1; }
+}

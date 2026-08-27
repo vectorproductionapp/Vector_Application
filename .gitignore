@@ -1,0 +1,50 @@
+# Node / React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+/build/
+/dist/
+/coverage/
+
+# Environment files and secrets
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# Firebase / GCP local credentials
+.firebaserc
+firebase-debug.log
+.firebase/
+backend/*.json
+!backend/requirements.json
+*-firebase-adminsdk-*.json
+gcloud-*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Logs, temporary files, IDE and OS files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+.pnp/
+.pnp.js

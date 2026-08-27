@@ -1,0 +1,284 @@
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+  min-width: 220px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
+  transform: none;
+}
+
+.search-bar-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.search-bar input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+}
+
+.search-bar input::placeholder {
+  color: var(--text-secondary);
+}
+
+.search-bar-clear {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.search-bar-clear:hover {
+  color: var(--accent);
+  background: var(--accent-soft-bg);
+}
+
+.search-bar-clear:focus-visible {
+  outline: none;
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
+}
+
+@media (max-width: 640px) {
+  .search-bar {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+/* SEARCHABLE DROPDOWN */
+.searchable-select {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  box-sizing: border-box;
+}
+
+.searchable-select-trigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.searchable-select-trigger:focus,
+.searchable-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
+}
+
+.searchable-select-trigger:active:not(:disabled) {
+  transform: none;
+}
+
+.searchable-select.disabled .searchable-select-trigger {
+  background: var(--bg-table-stripe);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.searchable-select-placeholder {
+  color: var(--text-secondary);
+}
+
+.searchable-select-chevron {
+  color: var(--text-secondary);
+  transition: transform 150ms ease;
+  flex-shrink: 0;
+}
+
+.searchable-select-chevron.open {
+  transform: rotate(180deg);
+}
+
+.searchable-select-panel {
+  position: fixed;
+  z-index: 5300;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  box-sizing: border-box;
+  min-width: 220px;
+  max-width: min(calc(100vw - 24px), 560px);
+  animation: searchable-select-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top center;
+}
+
+.searchable-select-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.searchable-select-search input {
+  border: none;
+  outline: none;
+  font-size: 12px;
+  width: 100%;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.searchable-select-search input::placeholder {
+  color: var(--text-secondary);
+}
+
+.searchable-select-options {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.searchable-select-options::-webkit-scrollbar {
+  width: 5px;
+}
+
+.searchable-select-options::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.searchable-select-options::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.searchable-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.searchable-select-option:hover {
+  background: var(--bg-table-hover);
+}
+
+.searchable-select-option:focus-visible {
+  outline: none;
+  background: var(--bg-table-hover);
+  box-shadow: inset 0 0 0 1px var(--accent-soft-border);
+}
+
+.searchable-select-option.selected {
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.searchable-select-option.selected:hover {
+  background: var(--accent-soft-border);
+}
+
+.searchable-select-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.searchable-select-action {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.searchable-select-action:hover {
+  background: var(--accent-soft-bg);
+}
+
+.searchable-select-action:focus-visible {
+  outline: none;
+  background: var(--accent-soft-bg);
+  box-shadow: inset 0 0 0 1px var(--accent-soft-border);
+}
+
+@keyframes searchable-select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-bar,
+  .searchable-select-trigger,
+  .searchable-select-chevron,
+  .searchable-select-panel,
+  .searchable-select-option,
+  .searchable-select-action {
+    transition: none;
+    animation: none;
+  }
+}

@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+firebase-admin
+pymongo
+python-dotenv
+bcrypt
+PyJWT
+requests
+gunicorn

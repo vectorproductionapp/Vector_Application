@@ -1,0 +1,94 @@
+.kpi-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  padding: 14px 14px 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--dash-neutral-border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  box-shadow: var(--dash-card-shadow);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.kpi-card:hover {
+  box-shadow: var(--dash-card-shadow-hover);
+  border-color: var(--accent-soft-border);
+  border-left-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.kpi-card--attention {
+  border-left-color: var(--color-danger);
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-tint);
+}
+
+.kpi-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--dash-neutral-border);
+  border-radius: var(--r-sm);
+  background: var(--dash-neutral-icon-bg);
+  color: var(--dash-neutral-icon-fg);
+}
+
+.kpi-card--success .kpi-icon {
+  border-color: var(--dash-success-border);
+  background: var(--dash-success-icon-bg);
+  color: var(--dash-success-icon-fg);
+}
+
+.kpi-card--danger .kpi-icon {
+  border-color: var(--dash-danger-border);
+  background: var(--dash-danger-icon-bg);
+  color: var(--dash-danger-icon-fg);
+}
+
+.kpi-card--success {
+  border-left-color: var(--dash-success-border);
+}
+
+.kpi-card--danger {
+  border-left-color: var(--dash-danger-border);
+}
+
+.kpi-value {
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.kpi-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.kpi-context {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.kpi-card--danger .kpi-context {
+  color: var(--dash-danger-icon-fg);
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .kpi-card {
+    padding: 12px;
+  }
+}

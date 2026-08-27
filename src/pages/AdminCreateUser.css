@@ -1,0 +1,311 @@
+﻿/* PAGE LAYOUT */
+.acu-page { padding: 24px 28px 48px; }
+
+/* TOP BAR */
+.acu-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+}
+.acu-top-left { display: flex; align-items: center; gap: 12px; color: var(--text-primary); }
+.acu-top-left h2 { margin: 0 0 2px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.acu-top-left p { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.acu-top-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+
+/* CREATE BUTTON */
+.acu-create-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 18px; border: none; border-radius: var(--r-md);
+  background: var(--accent); color: var(--accent-contrast);
+  font-size: 13.5px; font-weight: 700; cursor: pointer;
+  transition: background 150ms ease, transform 120ms ease;
+}
+.acu-create-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.acu-create-btn:active { transform: translateY(0); }
+
+/* TABLE WRAPPER */
+.acu-table-wrap {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden; box-shadow: none;
+}
+
+/* LOADING / EMPTY */
+.acu-loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 48px 16px; color: var(--text-secondary);
+  font-size: 13.5px;
+}
+.acu-spinner {
+  width: 18px; height: 18px; border: 2.5px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: acu-spin 0.7s linear infinite;
+}
+@keyframes acu-spin { to { transform: rotate(360deg); } }
+.acu-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px; padding: 56px 16px; color: var(--text-secondary); font-size: 14px;
+}
+
+/* TABLE */
+.acu-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.acu-table thead th {
+  text-align: left; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-secondary); background: var(--bg-surface-alt);
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.acu-th-action { width: 48px; }
+.acu-table tbody td {
+  height: 64px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+  color: var(--text-primary); vertical-align: middle;
+}
+.acu-table tbody tr:last-child td { border-bottom: none; }
+.acu-table tbody tr { transition: background 150ms ease; }
+.acu-table tbody tr:hover { background: var(--bg-table-hover); }
+
+/* TABLE CELLS */
+.acu-td-name { display: table-cell; font-weight: 600; white-space: nowrap; }
+.acu-avatar {
+  width: 30px; height: 30px; border-radius: var(--r-sm);
+  background: var(--accent-soft-bg); color: var(--accent);
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.acu-td-email { color: var(--text-secondary); white-space: nowrap; }
+
+/* ROLE BADGES */
+.acu-role-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 24px; padding: 3px 10px; border: 1px solid var(--accent-soft-border);
+  border-radius: 999px; color: var(--accent-active); background: var(--accent-soft-bg);
+  font-size: 11.5px; font-weight: 700; line-height: 1.2;
+  letter-spacing: 0.02em; text-transform: uppercase; box-shadow: none;
+}
+.acu-role-badge.role-user { color: var(--text-secondary); background: var(--bg-surface-alt); border-color: var(--border); }
+.acu-role-badge.role-production-incharge { color: var(--accent-active); background: var(--accent-soft-bg); }
+.acu-role-badge.role-coadmin { color: var(--text-primary); background: var(--accent-soft-bg); }
+.acu-role-badge.role-admin { color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); }
+
+/* TABLE ACTIONS */
+.acu-td-action { width: 48px; text-align: center; }
+.acu-row-actions { display: inline-flex; align-items: center; gap: 6px; }
+.acu-field select { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); color: var(--text-primary); padding: 0 12px; font: inherit; }
+
+/* EDIT + DELETE BUTTONS */
+.app-main .acu-page .acu-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm);
+  color: var(--danger) !important;
+  -webkit-text-fill-color: var(--danger) !important;
+  background: var(--bg-surface-alt) !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.app-main .acu-page .acu-delete-btn svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+}
+.app-main .acu-page .acu-delete-btn:hover {
+  color: var(--accent-contrast) !important;
+  -webkit-text-fill-color: var(--accent-contrast) !important;
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+  box-shadow: none !important;
+}
+
+/* USER IDENTITY */
+.acu-user-identity { display: flex; align-items: center; gap: 11px; }
+
+/* MODAL OVERLAY */
+.acu-overlay {
+  position: fixed; inset: 0; background: var(--overlay);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+  animation: acu-fade-in 150ms ease;
+}
+@keyframes acu-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* MODAL CARD */
+.acu-modal {
+  width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
+  animation: acu-modal-in 200ms ease;
+}
+@keyframes acu-modal-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.acu-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--border);
+}
+.acu-modal-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 16px; font-weight: 700; color: var(--text-primary);
+}
+.acu-modal-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.acu-modal-close:hover { background: var(--bg-table-hover); color: var(--text-primary); }
+
+/* FORM (INSIDE MODAL) */
+.acu-form { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.acu-field label {
+  display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-secondary);
+}
+.acu-input-wrap { position: relative; display: flex; align-items: center; }
+.acu-input-icon { position: absolute; left: 12px; color: var(--text-secondary); pointer-events: none; }
+.acu-input-wrap input {
+  width: 100%; padding: 10px 40px 10px 36px; border-radius: var(--r-md);
+  border: 1px solid var(--border); background: var(--bg-surface);
+  color: var(--text-primary); font-size: 13.5px; outline: none; box-sizing: border-box;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.acu-input-wrap input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+.acu-input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
+.acu-input-toggle {
+  position: absolute; right: 8px; display: flex; align-items: center;
+  justify-content: center; width: 28px; height: 28px; border: none;
+  border-radius: var(--r-sm); background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: background 150ms ease, color 150ms ease;
+}
+.acu-input-toggle:hover { background: var(--accent-soft-bg); color: var(--accent); }
+.acu-hint { display: block; margin-top: 5px; font-size: 11.5px; color: var(--text-secondary); opacity: 0.7; }
+
+/* ROLE PILLS */
+.acu-role-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.acu-role-pill {
+  padding: 9px 8px; border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: 13px; font-weight: 600; cursor: pointer; text-align: center;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 120ms ease;
+}
+.acu-role-pill:hover { border-color: var(--accent); background: var(--accent-soft-bg); color: var(--accent); transform: translateY(-1px); }
+.acu-role-pill.active { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-sm); }
+.acu-role-pill:active { transform: translateY(0) scale(0.98); }
+
+/* MODAL ACTIONS */
+.acu-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.acu-cancel-btn {
+  padding: 10px 18px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: 13.5px; font-weight: 600; cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.acu-cancel-btn:hover { border-color: var(--accent); color: var(--accent); }
+.acu-submit {
+  padding: 10px 20px; border: none; border-radius: var(--r-md);
+  background: var(--accent); color: var(--accent-contrast);
+  font-size: 13.5px; font-weight: 700; cursor: pointer;
+  transition: background 150ms ease, transform 120ms ease; box-shadow: var(--shadow-sm);
+}
+.acu-submit:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
+.acu-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* RESPONSIVE */
+@media (max-width: 640px) {
+  .acu-page { padding: 18px 16px 36px; }
+  .acu-top { flex-direction: column; align-items: stretch; }
+  .acu-create-btn { justify-content: center; }
+  .acu-table { font-size: 12.5px; }
+  .acu-table thead th, .acu-table tbody td { padding: 10px 12px; }
+  .acu-role-group { grid-template-columns: 1fr; }
+}
+
+/* LIGHT MODE TABLE POLISH */
+html[data-theme="light"] body .app-main .acu-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  background: var(--bg-surface) !important;
+}
+html[data-theme="light"] body .app-main .acu-table tbody td {
+  height: 64px;
+  padding: 11px 16px !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-surface) !important;
+  border-bottom: 1px solid var(--border) !important;
+  font-size: 13px !important;
+}
+html[data-theme="light"] body .app-main .acu-table tbody tr:hover td {
+  color: var(--text-primary) !important;
+  background: var(--bg-table-hover) !important;
+}
+html[data-theme="light"] body .app-main .acu-td-name {
+  display: table-cell;
+  color: var(--text-primary) !important;
+  font-weight: 650;
+}
+html[data-theme="light"] body .app-main .acu-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  color: var(--accent) !important;
+  background: var(--accent-soft-bg) !important;
+}
+html[data-theme="light"] body .app-main .acu-td-email {
+  color: var(--text-secondary) !important;
+}
+html[data-theme="light"] body .app-main .acu-role-badge {
+  padding: 4px 10px;
+  border: 1px solid var(--accent-soft-border);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+html[data-theme="light"] body .app-main .acu-role-badge.role-user {
+  color: var(--text-secondary) !important;
+  background: var(--bg-surface-alt) !important;
+  border-color: var(--border) !important;
+}
+html[data-theme="light"] body .app-main .acu-role-badge.role-production-incharge {
+  color: var(--accent-active) !important;
+  background: var(--accent-soft-bg) !important;
+  border-color: var(--accent-soft-border) !important;
+}
+html[data-theme="light"] body .app-main .acu-role-badge.role-coadmin {
+  color: var(--text-primary) !important;
+  background: var(--accent-soft-bg) !important;
+}
+html[data-theme="light"] body .app-main .acu-role-badge.role-admin {
+  color: var(--accent-contrast) !important;
+  -webkit-text-fill-color: var(--accent-contrast) !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+html[data-theme="light"] body .app-main .acu-delete-btn {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  color: var(--danger) !important;
+  -webkit-text-fill-color: var(--danger) !important;
+  background: var(--bg-surface-alt) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] body .app-main .acu-delete-btn svg {
+  display: block;
+  color: currentColor !important;
+  stroke: currentColor !important;
+}
+html[data-theme="light"] body .app-main .acu-delete-btn:hover {
+  color: var(--accent-contrast) !important;
+  -webkit-text-fill-color: var(--accent-contrast) !important;
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
