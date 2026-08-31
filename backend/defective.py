@@ -1,6 +1,7 @@
 import uuid
 import math
 from datetime import datetime, timezone
+from urllib.parse import quote, unquote, urlparse
 
 from flask import Blueprint, request, jsonify
 from firebase_config import db, bucket
@@ -39,7 +40,7 @@ def _serialize(doc):
 
 
 def _upload_attachments(files):
-    """Uploads each file to Firebase Storage and returns their public URLs."""
+    """Upload files and return Firebase download URLs without object ACLs."""
     urls = []
     for file in files:
         if not file or file.filename == "":
@@ -47,10 +48,27 @@ def _upload_attachments(files):
         ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
         blob_name = f"defective-units/{uuid.uuid4().hex}.{ext}" if ext else f"defective-units/{uuid.uuid4().hex}"
         blob = bucket.blob(blob_name)
+        download_token = str(uuid.uuid4())
+        blob.metadata = {"firebaseStorageDownloadTokens": download_token}
         blob.upload_from_file(file, content_type=file.content_type)
-        blob.make_public()
-        urls.append(blob.public_url)
+        encoded_name = quote(blob_name, safe="")
+        urls.append(
+            f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/"
+            f"{encoded_name}?alt=media&token={download_token}"
+        )
     return urls
+
+
+def _attachment_blob_name(url):
+    """Extract an object path from legacy or Firebase download URLs."""
+    parsed = urlparse(url)
+    firebase_prefix = f"/v0/b/{bucket.name}/o/"
+    if parsed.path.startswith(firebase_prefix):
+        return unquote(parsed.path[len(firebase_prefix):])
+    legacy_prefix = f"{bucket.name}/"
+    if legacy_prefix in url:
+        return unquote(url.split(legacy_prefix, 1)[1].split("?", 1)[0])
+    return None
 
 
 @defects_bp.route("/defects", methods=["POST"])
@@ -237,8 +255,9 @@ def delete_defect(defect_id):
         # best-effort cleanup of uploaded files
         for url in doc.to_dict().get("attachments", []):
             try:
-                blob_path = url.split(f"{bucket.name}/")[-1]
-                bucket.blob(blob_path).delete()
+                blob_path = _attachment_blob_name(url)
+                if blob_path:
+                    bucket.blob(blob_path).delete()
             except Exception:
                 pass
 
