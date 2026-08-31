@@ -1453,6 +1453,30 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
 }
 .login-button:hover, .admin-login-button:hover { background: var(--accent-hover) !important; }
 
+/* Signup fields deliberately use a quiet, single-border treatment.  Exempt
+   them from the application-wide yellow input focus ring. */
+.signup-page .signup-input-wrap input:is(:focus, :focus-visible) {
+  border: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+/* The signup wrapper owns the field border.  The native input must never
+   render a second box inside it, in either its normal or focused state. */
+#root .signup-page .signup-input-wrap > input,
+#root .signup-page .signup-input-wrap > input:is(:hover, :focus, :focus-visible) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: none !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 /* Dark primary actions keep the high-contrast white label shown in the
    sidebar/toolbar design, including while the pointer is over the button. */
 [data-theme="dark"] .app-main :is(
