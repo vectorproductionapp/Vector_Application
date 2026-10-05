@@ -293,7 +293,10 @@ export default function Phase({ model, onBack, readOnly = false }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [itemCodes, setItemCodes] = useState([]);
+  // These values are kept while the item-code picker is being reintroduced.
+  // eslint-disable-next-line no-unused-vars
   const [selectedItemCode, setSelectedItemCode] = useState("");
+  // eslint-disable-next-line no-unused-vars
   const [itemCodesLoading, setItemCodesLoading] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
@@ -523,6 +526,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const createNewItemCode = async () => {
     setError("");
     setItemCodesLoading(true);
@@ -539,6 +543,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const itemCodeOptions = itemCodes.map((item) => ({ value: item.code, label: item.code }));
 
   const toggleSelectMode = () => {

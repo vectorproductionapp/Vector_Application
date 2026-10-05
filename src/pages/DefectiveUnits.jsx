@@ -15,7 +15,6 @@ import {
   Save,
   Upload,
   Loader2,
-  Calendar,
   RefreshCw,
   Trash2,
   Check,
@@ -245,8 +244,8 @@ export default function DefectiveUnits() {
   const menuRef = useRef(null);
 
   // ---------- Date range filter state ----------
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate] = useState("");
+  const [toDate] = useState("");
   const [dateRangeError, setDateRangeError] = useState("");
 
   // ---------- View Details popup state ----------
@@ -358,15 +357,6 @@ export default function DefectiveUnits() {
       setDateRangeError("");
     }
   }, [fromDate, toDate]);
-
-  const handleFromDateChange = (e) => setFromDate(e.target.value);
-  const handleToDateChange = (e) => setToDate(e.target.value);
-
-  const clearDateFilter = () => {
-    setFromDate("");
-    setToDate("");
-    setDateRangeError("");
-  };
 
   const isDateRangeActive = Boolean(fromDate && toDate && !dateRangeError);
 
@@ -1144,4 +1134,3 @@ export default function DefectiveUnits() {
     </div>
   );
 }
-

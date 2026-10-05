@@ -216,7 +216,7 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
   // debounce window has passed.  This runs after every render: a notice that
   // arrived while a save (or open form) blocked it just waits here until the
   // state that blocked it changes - which always causes a render.
-  const flush = () => {
+  const flush = useCallback(() => {
     if (!pendingRef.current) return;
     const guardValue = guardRef.current?.();
     if (guardValue === false) return;
@@ -225,7 +225,7 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
       if (!timerRef.current) {
         timerRef.current = setTimeout(() => {
           timerRef.current = null;
-          flush();
+          flushRef.current();
         }, debounceMs - (now - lastRef.current));
       }
       return;
@@ -236,7 +236,10 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
     // so this refresh shows the new data, not a copy cached minutes ago.
     api.invalidateGetCache?.();
     refreshRef.current?.(guardValue);
-  };
+  }, [debounceMs]);
+
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
 
   useEffect(flush);
 
@@ -257,7 +260,7 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
       }
       unsubscribes.forEach((off) => off());
     };
-  }, [realtime, scopeKey, enabled, debounceMs]);
+  }, [realtime, scopeKey, enabled, debounceMs, flush]);
 }
 
 export { api };

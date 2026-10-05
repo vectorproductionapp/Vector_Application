@@ -6,8 +6,6 @@ import api from "./Api";
 import { openEntryInNewTab, fileKind, entrySrc, entryName } from "./AttachmentsEditor";
 import "./ImageAttachment.css";
 
-const MAX_NAME_CHARS = 160;
-
 const errorText = (err, fallback) =>
   err?.response?.data?.message || (err?.message === "Network Error" ? fallback : err?.message) || fallback;
 

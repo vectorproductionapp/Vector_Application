@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import api from "../components/Api";
 import Swal from "sweetalert2";
 import { Plus, Layers, Pencil, Trash2, X, Check, MoreVertical } from "lucide-react";
@@ -85,7 +85,7 @@ export default function Model() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const loadModels = async () => {
+  const loadModels = useCallback(async () => {
     setLoading(false);
     setError("");
 
@@ -106,11 +106,11 @@ export default function Model() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeModel]);
 
   useEffect(() => {
     loadModels();
-  }, []);
+  }, [loadModels]);
 
   // A model created, renamed, or deleted anywhere arrives as a WebSocket
   // notice: reload the card grid without a page refresh.
