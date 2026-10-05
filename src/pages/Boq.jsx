@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import { createPortal } from "react-dom";
 import Swal from "sweetalert2";
-import { Plus, Pencil, Trash2, ArrowLeft, ClipboardList, X, Save, Loader2, MoreVertical, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowLeft, ClipboardList, X, Save, Loader2, MoreVertical, Check, FileSpreadsheet } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
 import PageFilter, { matchesPageFilter } from "../components/PageFilter";
 import DataTable from "../components/DataTable";
+import ListPagination from "../components/ListPagination";
 import ExportPdfButton from "../components/ExportPdfButton";
+import BulkUploadModal from "../components/BulkUploadModal";
 import { fmtINR } from "../data/mockData";
 import "../components/CreateEntityModal.css";
 import "./Model.css";
@@ -14,6 +17,239 @@ import "./Boq.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
 const PAGE_SIZE = 10;
+
+// ---- Excel bulk upload for the BOQ rows ------------------------------
+// The template mirrors the BOQ table, so a filled file can be imported
+// straight into the editor and reviewed before saving.
+// Excel users type money as "1200", "1,200", "₹1,200", "1200/-" or paste
+// text with non-breaking spaces; raw arithmetic on those strings gives
+// #VALUE!.  excelNum cleans the cell text and returns a number (or "" when
+// it cannot be parsed), and excelGst normalises the GST cell (18, 18% or
+// 0.18 all mean 18%) with 18% as the default.
+const excelNum = (token) =>
+  `IFERROR(VALUE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(${token}&"",UNICHAR(160),""),"₹",""),"INR",""),"Rs.",""),"Rs","")," ",""),",",""),"/-","")),"")`;
+const excelGst = (token) => {
+  const n = excelNum(token);
+  return `IFERROR(IF(${n}>=1,${n}/100,${n}),0.18)`;
+};
+const BOQ_BULK_COLUMNS = [
+  { key: "phase", label: "Phase" },
+  { key: "code", label: "Item Code" },
+  { key: "desc", label: "Item Description" },
+  { key: "make", label: "Make" },
+  { key: "model", label: "Model" },
+  { key: "uom", label: "UOM" },
+  { key: "reqQty", label: "Req. Qty / Unit" },
+  { key: "minStock", label: "Min Stock (Buffer)" },
+  { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
+  { key: "vendor", label: "Supplier Name" },
+  { key: "rate", label: "Unit Rate (INR)" },
+  { key: "gstRate", label: "GST %" },
+  // Calculated in Excel from Unit Rate + GST % + Req. Qty, exactly like the
+  // editor does; `required: false` keeps them out of the import checks.
+  {
+    key: "unitGst",
+    label: "GST per Unit (INR)",
+    required: false,
+    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2)),"")`,
+  },
+  {
+    key: "materialCostUnit",
+    label: "Material Cost per Unit incl. GST (INR)",
+    required: false,
+    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}+ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2),2)),"")`,
+  },
+  {
+    key: "lineTotalQty",
+    label: "Material Cost incl. GST (Total) (INR)",
+    required: false,
+    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{reqQty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}+ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}*${excelGst("{gstRate}")},2),2)),"")`,
+  },
+  { key: "remarks", label: "Remarks" },
+];
+
+// Phase defaults to the one the BOQ belongs to, and Min Stock Qty is derived
+// from Req. Qty x Min Stock, so both columns are optional.
+const BOQ_BULK_OPTIONAL = new Set([
+  "phase",
+  "make",
+  "model",
+  "uom",
+  "minStock",
+  "minStockQty",
+  "vendor",
+  "rate",
+  "gstRate",
+  "remarks",
+]);
+
+const BOQ_BULK_NOTES = {
+  phase: ["Phase this item belongs to. Blank uses the BOQ's own phase.", "phase-1"],
+  code: ["BOQ item code (e.g. ITM-074).", "ITM-074"],
+  desc: ["Description of the material.", "LED panel"],
+  make: ["Manufacturer / make. Optional.", "Havells"],
+  model: ["Linked finished model. Optional.", "Vector 5000"],
+  uom: ["Unit of measure. Optional.", "NOS"],
+  reqQty: ["Quantity needed per finished unit.", "12"],
+  minStock: ["Buffer stock in units. Optional, 0 for none.", "5"],
+  minStockQty: [
+    "Total buffer = Req. Qty x Min Stock. Optional, blank is calculated for you.",
+    "60",
+  ],
+  vendor: ["Preferred supplier / vendor. Optional.", "Steel Authority"],
+  rate: ["Unit price, numbers only. Optional.", "145.50"],
+  gstRate: ["GST percentage, 0-100. Blank means 18%.", "18"],
+  unitGst: [
+    "Calculated automatically = Unit Rate x GST % (blank GST uses 18%). Do not type in this column.",
+    "1.08",
+  ],
+  materialCostUnit: [
+    "Calculated automatically = Unit Rate + GST per Unit. Do not type in this column.",
+    "7.08",
+  ],
+  lineTotalQty: [
+    "Calculated automatically = Material Cost per Unit incl. GST x Req. Qty / Unit. Do not type here.",
+    "35.40",
+  ],
+  remarks: ["Free text note. Optional.", "ISI marked"],
+};
+
+// Header cells are normalised (lower-case, letters/digits only) before matching,
+// so "Item Code", "item_code" and "ItemCode" all resolve to the same column.
+const BOQ_BULK_ALIASES = {
+  phase: "phase",
+  phasename: "phase",
+  code: "code",
+  itemcode: "code",
+  materialcode: "code",
+  partcode: "code",
+  desc: "desc",
+  description: "desc",
+  itemdescription: "desc",
+  materialdescription: "desc",
+  make: "make",
+  manufacturer: "make",
+  brand: "make",
+  model: "model",
+  linkedmodel: "model",
+  finishedmodel: "model",
+  uom: "uom",
+  unit: "uom",
+  unitofmeasure: "uom",
+  reqqty: "reqQty",
+  reqqtyunit: "reqQty",
+  reqqtyper: "reqQty",
+  requiredqty: "reqQty",
+  requiredqtyperunit: "reqQty",
+  reqqtyperunit: "reqQty",
+  qtyperunit: "reqQty",
+  qtyunit: "reqQty",
+  quantityperunit: "reqQty",
+  perunitqty: "reqQty",
+  minstock: "minStock",
+  bufferstock: "minStock",
+  minstockbuffer: "minStock",
+  // "Min Stock Qty" is the derived total, kept separate from the buffer itself.
+  minstockqty: "minStockQty",
+  minstockqtybuffer: "minStockQty",
+  totalbufferstock: "minStockQty",
+  vendor: "vendor",
+  vendorname: "vendor",
+  supplier: "vendor",
+  suppliername: "vendor",
+  rate: "rate",
+  unitrate: "rate",
+  unitrateinr: "rate",
+  price: "rate",
+  unitprice: "rate",
+  gst: "gstRate",
+  gstrate: "gstRate",
+  gstpercent: "gstRate",
+  gstpercentage: "gstRate",
+  gstslab: "gstRate",
+  taxrate: "gstRate",
+  remarks: "remarks",
+  remark: "remarks",
+  notes: "remarks",
+  note: "remarks",
+};
+
+const BOQ_BULK_PREVIEW = [
+  { key: "phase", label: "Phase" },
+  { key: "code", label: "Item Code" },
+  { key: "desc", label: "Item Description" },
+  { key: "uom", label: "UOM" },
+  { key: "reqQty", label: "Req. Qty", isNumber: true },
+  { key: "minStock", label: "Min Stock", isNumber: true },
+  { key: "minStockQty", label: "Min Stock Qty", isNumber: true },
+  { key: "vendor", label: "Supplier Name" },
+  { key: "rate", label: "Unit Rate (INR)", isNumber: true },
+  { key: "gstRate", label: "GST %", isNumber: true },
+];
+
+/** One spreadsheet row -> one BOQ line, with per-row problems reported. */
+function normalizeBoqBulkRow(draft, phaseName) {
+  const text = {};
+  Object.keys(draft || {}).forEach((key) => {
+    text[key] = draft[key] === null || draft[key] === undefined ? "" : String(draft[key]).trim();
+  });
+
+  const problems = [];
+  if (!text.code) problems.push("Item Code is empty");
+  if (!text.desc) problems.push("Item Description is empty");
+
+  const readNumber = (key) => {
+    if (!text[key]) return null;
+    const parsed = Number(text[key].replace(/,/g, ""));
+    if (!Number.isFinite(parsed)) {
+      problems.push(`${BOQ_BULK_COLUMNS.find((column) => column.key === key)?.label || key} must be a number`);
+      return null;
+    }
+    return parsed;
+  };
+
+  const reqQty = readNumber("reqQty");
+  const minStock = readNumber("minStock");
+  const rate = readNumber("rate");
+  const minStockQty = readNumber("minStockQty");
+
+  let gstRate = 18;
+  if (text.gstRate) {
+    const parsed = Number(text.gstRate.replace(/,/g, "").replace(/%$/, ""));
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      problems.push("GST % must be a number between 0 and 100");
+    } else {
+      gstRate = parsed;
+    }
+  }
+
+  return {
+    row: {
+      // A blank Phase column falls back to the BOQ's own phase.
+      phase: text.phase || phaseName,
+      code: text.code,
+      itemCodeId: "",
+      desc: text.desc,
+      make: text.make,
+      model: text.model,
+      uom: text.uom,
+      reqQty: reqQty === null ? text.reqQty : reqQty,
+      minStock: minStock === null ? text.minStock : minStock,
+      // Derived from Req. Qty x Min Stock; anything typed here is overwritten
+      // by withCalculatedFields so the totals can never disagree.
+      minStockQty:
+        minStockQty === null
+          ? (Number(reqQty) || 0) * (Number(minStock) || 0)
+          : minStockQty,
+      vendor: text.vendor,
+      rate: rate === null ? text.rate : rate,
+      gstRate,
+      remarks: text.remarks,
+    },
+    problems,
+  };
+}
+
 
 // These catalogues are shared by every BOQ editor opened in this browser tab.
 // They change rarely, so reusing them avoids a Firestore request every time a
@@ -72,21 +308,72 @@ const BOQ_COLUMNS = [
   { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
   { key: "vendor", label: "Vendor" },
   { key: "rate", label: "Unit Rate (INR)", format: fmtINR },
-  { key: "materialCost", label: "Material Cost / Unit (INR)", format: fmtINR },
+  { key: "gstRate", label: "GST %", format: (value) => (value === null || value === undefined || String(value).trim() === "" ? "18%" : `${value}%`) },
+  {
+    key: "materialCost",
+    label: "Material Cost / Unit incl. GST (INR)",
+    // Per-unit cost = rate x (1 + GST%); the line total is shown separately so
+    // the two are never confused.  `render` drives the table (it gets the whole
+    // row), `format` drives the Excel/PDF export (value + row).
+    render: (row) => {
+      const rate = Number(row?.rate) || 0;
+      if (!rate) return fmtINR(row?.materialCost ?? 0);
+      return fmtINR(Math.round(rate * (1 + boqGstRate(row) / 100) * 100) / 100);
+    },
+    format: (value, row) => {
+      const rate = Number(row?.rate) || 0;
+      if (!rate) return fmtINR(value ?? 0);
+      return fmtINR(Math.round(rate * (1 + boqGstRate(row) / 100) * 100) / 100);
+    },
+  },
+  {
+    key: "lineTotal",
+    label: "Material Cost incl. GST Total (INR)",
+    render: (row) => fmtINR(boqGstAmounts(row)?.total ?? row?.materialCost ?? 0),
+    format: (value, row) => fmtINR(boqGstAmounts(row)?.total ?? value ?? 0),
+  },
   { key: "remarks", label: "Remarks" },
 ];
 const BOQ_FILTER_FIELDS = BOQ_COLUMNS.filter((column) => ["phase", "make", "model", "uom", "vendor"].includes(column.key));
+
+// GST differs per product, so every BOQ line carries its own percentage and
+// falls back to this slab when the field is left empty.
+const BOQ_DEFAULT_GST_RATE = 18;
+
+function boqGstRate(row) {
+  const raw = row?.gstRate;
+  const parsed =
+    raw === null || raw === undefined || String(raw).trim() === "" ? BOQ_DEFAULT_GST_RATE : Number(raw);
+  return Number.isFinite(parsed) ? parsed : BOQ_DEFAULT_GST_RATE;
+}
+
+// Unit rate, GST and the GST-inclusive cost, split into per-unit and whole-line
+// figures so the two are never confused. All read-only.
+function boqGstAmounts(row) {
+  const rate = Number(row?.rate) || 0;
+  const reqQty = Number(row?.reqQty) || 0;
+  const gstRate = boqGstRate(row);
+  if (!rate) return null;
+
+  const unitGst = Math.round((rate * gstRate) / 100 * 100) / 100;
+  const unitTotal = Math.round((rate + unitGst) * 100) / 100;
+  const base = rate * reqQty;
+  const gst = Math.round((base * gstRate) / 100 * 100) / 100;
+  return { rate, reqQty, gstRate, unitGst, unitTotal, base, gst, total: Math.round((base + gst) * 100) / 100 };
+}
 
 // Recomputes the auto-calculated fields for a single row
 const withCalculatedFields = (row) => {
   const reqQty = Number(row.reqQty) || 0;
   const minStock = Number(row.minStock) || 0;
-  const rate = Number(row.rate) || 0;
+  const amounts = boqGstAmounts(row);
 
   return {
     ...row,
     minStockQty: reqQty && minStock ? reqQty * minStock : 0,
-    materialCost: rate && reqQty ? rate * reqQty : 0,
+    // Stored as the GST-inclusive cost of the whole line (rate x req qty), so
+    // the page total keeps summing real line values; per-unit cost is derived.
+    materialCost: amounts ? amounts.total : 0,
   };
 };
 
@@ -104,6 +391,8 @@ const emptyRow = (phaseName = "", itemCode = "", itemCodeId = "") =>
     minStock: "",
     vendor: "",
     rate: "",
+    // Default GST slab; every line can override it with its own rate.
+    gstRate: "18",
     remarks: "",
   });
 
@@ -115,6 +404,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
   const [draftRows, setDraftRows] = useState(initialDraftRows);
   const [savedRows, setSavedRows] = useState(initialDraftRows);
   const [closing, setClosing] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRowIndex, setSavingRowIndex] = useState(null);
@@ -183,6 +473,86 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
     loadSuppliers();
     return () => { cancelled = true; };
   }, []);
+
+  // Master-list maintenance: fix a mistyped supplier name, or drop one that is
+  // no longer used.  BOQ rows keep whatever name they were saved with.
+  const applySupplierList = (nextList) => {
+    suppliersCache = nextList;
+    setSuppliers(nextList);
+  };
+
+  const handleEditSupplier = async (option) => {
+    const { value: newName } = await Swal.fire({
+      title: "Edit supplier name",
+      input: "text",
+      inputValue: option.value,
+      showCancelButton: true,
+      confirmButtonText: "Save name",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "var(--accent)",
+      cancelButtonColor: "var(--bg-surface-alt)",
+      reverseButtons: true,
+      inputValidator: (value) => (!value || !value.trim() ? "Supplier name cannot be empty" : null),
+      customClass: { popup: "swal-vector-popup" },
+    });
+    if (!newName) return;
+
+    const trimmed = newName.trim();
+    if (trimmed.toLowerCase() === option.value.toLowerCase()) return;
+
+    try {
+      const response = await api.put(`${API_BASE_URL}/suppliers`, {
+        oldName: option.value,
+        newName: trimmed,
+      });
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to rename supplier");
+      }
+
+      // Keep the open BOQ in sync when the row being edited used that name.
+      setDraftRows((prev) =>
+        prev.map((row) =>
+          String(row.vendor ?? "").toLowerCase() === option.value.toLowerCase()
+            ? { ...row, vendor: trimmed }
+            : row
+        )
+      );
+      applySupplierList(
+        (suppliersCache || [])
+          .map((name) => (name.toLowerCase() === option.value.toLowerCase() ? trimmed : name))
+          .sort((a, b) => a.localeCompare(b))
+      );
+      await swalSuccess("Supplier renamed", `“${option.value}” is now “${trimmed}”.`);
+    } catch (err) {
+      await swalError("Rename failed", err?.response?.data?.message || err?.message || "Failed to rename supplier.");
+    }
+  };
+
+  const handleDeleteSupplier = async (option) => {
+    const confirmed = await swalConfirm({
+      title: `Delete “${option.value}”?`,
+      text: "It disappears from the supplier list. BOQ rows already saved keep the name they were saved with.",
+      confirmText: "Yes, delete it",
+    });
+    if (!confirmed) return;
+
+    try {
+      const response = await api.delete(`${API_BASE_URL}/suppliers`, {
+        data: { name: option.value },
+      });
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to delete supplier");
+      }
+      applySupplierList(
+        (suppliersCache || []).filter(
+          (name) => name.toLowerCase() !== option.value.toLowerCase()
+        )
+      );
+      await swalSuccess("Supplier deleted", `“${option.value}” was removed from the list.`);
+    } catch (err) {
+      await swalError("Delete failed", err?.response?.data?.message || err?.message || "Failed to delete supplier.");
+    }
+  };
 
   const requestClose = async () => {
     if (closing || saving || confirmingClose) return;
@@ -289,6 +659,52 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
     }
   };
 
+  // Imported rows are reconciled by Item Code: a code that is already listed
+  // updates that row in place, anything new is appended.  The rows stay drafts
+  // until "Save Overall", so nothing reaches the database from the upload.
+  const handleImportedRows = (imported) => {
+    setError("");
+    setDraftRows((previous) => {
+      const kept = previous.filter((row) => String(row.desc || "").trim() || String(row.code || "").trim());
+      const next = [...kept];
+      const indexByCode = new Map();
+      next.forEach((row, index) => {
+        const code = String(row.code || "").trim().toLowerCase();
+        if (code) indexByCode.set(code, index);
+      });
+
+      let added = 0;
+      let updated = 0;
+      imported.forEach((row) => {
+        const code = String(row.code || "").trim();
+        const key = code.toLowerCase();
+        const existingIndex = indexByCode.get(key);
+        const prepared = withCalculatedFields({ ...row, phase: row.phase || phaseName });
+        if (existingIndex === undefined) {
+          indexByCode.set(key, next.length);
+          next.push(prepared);
+          added += 1;
+        } else {
+          next[existingIndex] = { ...next[existingIndex], ...prepared };
+          updated += 1;
+        }
+      });
+
+      setTimeout(() => {
+        Swal.fire({
+          title: "Rows imported",
+          text: `${updated} row${updated === 1 ? "" : "s"} updated, ${added} added. Review the list, then save.`,
+          icon: "success",
+          confirmButtonText: "OK",
+          confirmButtonColor: "var(--accent)",
+          customClass: { popup: "swal-vector-popup" },
+        });
+      }, 0);
+      return next;
+    });
+  };
+
+  
   const handleSaveItem = async (rowIndex) => {
     setError("");
     const row = withCalculatedFields({ ...draftRows[rowIndex], phase: draftRows[rowIndex].phase || phaseName });
@@ -329,9 +745,28 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
             <h2>{rows.length ? "Edit BOQ" : "Add BOQ"}</h2>
             <p className="boq-form-subtitle">{phaseName}</p>
           </div>
-          <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
-            <X size={22} />
-          </button>
+          <div className="modal-header-actions">
+            <button
+              type="button"
+              className="boq-add-item-btn"
+              onClick={addRow}
+              disabled={saving}
+              title="Add another item to this BOQ"
+            >
+              <Plus size={15} /> Add item
+            </button>
+            <button
+              type="button"
+              className="boq-upload-btn"
+              onClick={() => setUploadOpen(true)}
+              title="Add many BOQ items from an Excel or CSV file"
+            >
+              <FileSpreadsheet size={15} /> Bulk upload
+            </button>
+            <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
+              <X size={22} />
+            </button>
+          </div>
         </div>
 
         <form
@@ -343,7 +778,9 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
         >
           {error && <div className="boq-form-error">{error}</div>}
 
-          {draftRows.map((row, rowIndex) => (
+          {draftRows.map((row, rowIndex) => {
+            const totals = boqGstAmounts(row);
+            return (
             <div className="boq-item-card" key={rowIndex}>
               <div className="boq-item-card-header">
                 <span className="boq-item-number">Item {rowIndex + 1}</span>
@@ -465,6 +902,8 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
                     placeholder="Select or enter supplier"
                     emptyMessage="Type a supplier name to add it"
                     allowCustomValue
+                    onEditOption={handleEditSupplier}
+                    onDeleteOption={handleDeleteSupplier}
                   />
                 </label>
 
@@ -480,18 +919,48 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
                 </label>
 
                 <label className="boq-field">
-                  <span>Material Cost Per Unit (INR)</span>
+                  <span>GST %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="any"
+                    value={row.gstRate ?? ""}
+                    onChange={(e) => updateField(rowIndex, "gstRate", e.target.value)}
+                    placeholder="18"
+                  />
+                </label>
+
+                <label className="boq-field">
+                  <span>Material Cost incl. GST (Total)</span>
                   <input type="number" value={row.materialCost ?? 0} readOnly disabled />
                 </label>
 
                 
               </div>
-            </div>
-          ))}
 
-          <button type="button" className="link-btn boq-add-item-btn" onClick={addRow}>
-            <Plus size={14} /> Add another item
-          </button>
+              {totals && (
+                <div className="boq-gst-totals">
+                  <span className="boq-gst-totals-item">
+                    Unit Rate: <strong>{fmtINR(totals.rate)}</strong>
+                  </span>
+                  <span className="boq-gst-totals-item">
+                    GST ({totals.gstRate}%) per Unit: <strong>{fmtINR(totals.unitGst)}</strong>
+                  </span>
+                  <span className="boq-gst-totals-item boq-gst-totals-final">
+                    Material Cost per Unit incl. GST: <strong>{fmtINR(totals.unitTotal)}</strong>
+                  </span>
+                  {totals.reqQty > 0 && (
+                    <span className="boq-gst-totals-item boq-gst-totals-total">
+                      Total for {totals.reqQty} Unit{totals.reqQty === 1 ? "" : "s"} incl. GST:{" "}
+                      <strong>{fmtINR(totals.total)}</strong>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            );
+          })}
         </form>
 
         <div className="modal-footer">
@@ -504,15 +973,31 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
             onClick={handleSubmit}
             disabled={saving}
           >
-            {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-            {saving ? "Saving..." : "Save Overall"}
-          </button>
-        </div>
+      {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+      {saving ? "Saving..." : "Save Overall"}
+      </button>
       </div>
-    </div>,
-    document.body
-  );
-}
+
+      <BulkUploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        title="Upload Excel File"
+        description={`Upload the completed ${phaseName} BOQ template for validation.`}
+        fileName="boq-template.xlsx"
+        columns={BOQ_BULK_COLUMNS}
+        aliases={BOQ_BULK_ALIASES}
+        optionalKeys={BOQ_BULK_OPTIONAL}
+        notes={BOQ_BULK_NOTES}
+        normalizeRow={(draft) => normalizeBoqBulkRow(draft, phaseName)}
+        previewFields={BOQ_BULK_PREVIEW}
+      importLabel="Import rows"
+      onImport={handleImportedRows}
+      />
+      </div>
+      </div>,
+      document.body
+    );
+    }
 
 export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly = false }) {
   const [boq, setBoq] = useState(null);
@@ -521,7 +1006,12 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
   const [editorOpen, setEditorOpen] = useState(false);
+  // Bulk upload lives on this page (like PO Details) and inside the editor.
+  const [uploadOpen, setUploadOpen] = useState(false);
+  // Rows waiting from a bulk upload: they join the editor, not the database.
+  const [pendingImport, setPendingImport] = useState([]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -555,7 +1045,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     try {
       const response = await api.get(
         `${API_BASE_URL}/models/${resolvedModelId}/phases/${resolvedPhaseId}/boq`,
-        { params: { page: pageToFetch, limit: PAGE_SIZE } }
+        { params: { page: pageToFetch, limit: pageSize } }
       );
       if (response.data.success) {
         const nextBoq = response.data.boq || null;
@@ -577,21 +1067,28 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, resolvedModelId, resolvedPhaseId]);
+  }, [page, pageSize, resolvedModelId, resolvedPhaseId]);
 
   useEffect(() => {
     const resourceKey = `${resolvedModelId || ""}:${resolvedPhaseId || ""}`;
     const resourceChanged = !lastLoadKeyRef.current
       || !lastLoadKeyRef.current.startsWith(`${resourceKey}:`);
     const targetPage = resourceChanged ? 1 : page;
-    const loadKey = `${resourceKey}:${targetPage}`;
+    const loadKey = `${resourceKey}:${targetPage}:${pageSize}`;
 
     if (resourceChanged && page !== 1) setPage(1);
     if (lastLoadKeyRef.current === loadKey) return;
 
     lastLoadKeyRef.current = loadKey;
     loadBoq({ targetPage });
-  }, [loadBoq, page, resolvedModelId, resolvedPhaseId]);
+  }, [loadBoq, page, pageSize, resolvedModelId, resolvedPhaseId]);
+
+  // A BOQ write on this phase arrives as a WebSocket notice and reloads the
+  // items quietly.  Skipped while the row editor or the bulk-upload modal is
+  // open, so a background save never disturbs a half-finished edit.
+  useRealtime(["boq"], () => loadBoq({ silent: true }), {
+    guard: () => !(editorOpen || uploadOpen),
+  });
 
   // Close the kebab menu when clicking outside it
   useEffect(() => {
@@ -623,6 +1120,16 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     [boq, filterBoqRows]
   );
 
+  // Grand total over every exported row (all pages), not just the visible page.
+  const totalMaterialCost = useMemo(
+    () =>
+      exportRows.reduce(
+        (sum, row) => sum + (Number(String(row.materialCost ?? 0).replace(/,/g, "")) || 0),
+        0
+      ),
+    [exportRows]
+  );
+
   const persistRows = useCallback(async (rows) => {
     if (boq?.id) {
       return api.put(
@@ -648,7 +1155,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
         setBoq((current) => current ? {
           ...current,
           allRows: rows,
-          rows: rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+          rows: rows.slice((page - 1) * pageSize, page * pageSize),
         } : current);
       } else {
         await loadBoq({ targetPage: 1, silent: true });
@@ -741,10 +1248,9 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
 
   const allSelected = visibleCodes.length > 0 && selectedCodes.size === visibleCodes.length;
 
-  const goToPage = (nextPage) => {
-    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
-    if (clamped === page) return;
-    setPage(clamped);
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
 
   // Table columns with a checkbox column prepended only while selectMode
@@ -807,13 +1313,21 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
               </button>
             </>
           ) : (
-            <>
-              <button type="button" className="create-btn" onClick={openEditor}>
-                <Pencil size={16} />
-                {boq ? "Edit BOQ" : "Add BOQ"}
-              </button>
+      <>
+      <button type="button" className="create-btn" onClick={openEditor}>
+      <Pencil size={16} />
+      {boq ? "Edit BOQ" : "Add BOQ"}
+      </button>
+      <button
+        type="button"
+        className="boq-upload-btn"
+        onClick={() => setUploadOpen(true)}
+        title="Add or update many BOQ items from an Excel or CSV file"
+      >
+        <FileSpreadsheet size={15} /> Bulk upload
+      </button>
               {boq && boq.rows?.length > 0 && (
-                <button type="button" className="btn-secondary" onClick={toggleSelectMode}>
+                <button type="button" className="delete-button" onClick={toggleSelectMode}>
                   <Trash2 size={16} /> Delete Rows
                 </button>
               )}
@@ -890,88 +1404,83 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
                 <PageFilter rows={boq.rows || []} fields={BOQ_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
                 <span className="boq-count">Showing {filteredRows.length} of {totalCount} rows</span>
               </div>
-              <ExportPdfButton
-                mode="table"
-                title={`${phaseName} BOQ`}
-                columns={BOQ_COLUMNS}
-                rows={exportRows}
-                fileName={`${phaseName}-boq`}
-              />
+              <div className="table-controls-right">
+                <span className="table-total">
+                  <span className="table-total-label">Total Material Cost incl. GST</span>
+                  <span className="table-total-value">{fmtINR(totalMaterialCost)}</span>
+                </span>
+                <ExportPdfButton
+                  mode="table"
+                  title={`${phaseName} BOQ`}
+                  columns={BOQ_COLUMNS}
+                  rows={exportRows}
+                  fileName={`${phaseName}-boq`}
+                />
+              </div>
             </div>
             <DataTable columns={tableColumns} rows={filteredRows} />
           </div>
 
-          <div className="boq-pagination">
-            <p className="boq-hint">
-              Showing {filteredRows.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
-              {"–"}
-              {(page - 1) * PAGE_SIZE + filteredRows.length} of {totalCount} rows
-            </p>
+          {/* <div className="table-total-outside">
+            <span className="table-total-label">Total Material Cost incl. GST</span>
+            <span className="table-total-value">{fmtINR(totalMaterialCost)}</span>
+          </div> */}
 
-            <div className="boq-pagination-controls">
-              <button
-                type="button"
-                className="boq-page-btn boq-page-edge"
-                onClick={() => goToPage(1)}
-                disabled={page === 1}
-                aria-label="First page"
-              >
-                <ChevronsLeft size={16} />
-              </button>
-
-              {page > 1 && (
-                <button
-                  type="button"
-                  className="boq-page-btn boq-page-nav"
-                  onClick={() => goToPage(page - 1)}
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft size={16} />
-                  Prev
-                </button>
-              )}
-
-              <span className="boq-page-current" key={page}>{page}</span>
-
-              {page < totalPages && (
-                <button
-                  type="button"
-                  className="boq-page-btn boq-page-nav"
-                  onClick={() => goToPage(page + 1)}
-                  aria-label="Next page"
-                >
-                  Next
-                  <ChevronRight size={16} />
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="boq-page-btn boq-page-edge"
-                onClick={() => goToPage(totalPages)}
-                disabled={page === totalPages}
-                aria-label="Last page"
-              >
-                <ChevronsRight size={16} />
-              </button>
-            </div>
-          </div>
+          <ListPagination
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            rowCount={filteredRows.length}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </>
       )}
 
       {!readOnly && editorOpen && (
-        <BoqEditorModal
-          phaseName={phaseName}
-          phaseItemCode={phaseItemCode}
-          phaseItemCodeId={phaseItemCodeId}
-          // The API paginates the table rows, but an edit replaces the
-          // complete BOQ document. Give the editor every row so saving an
-          // edit from page 1 cannot overwrite rows that are on page 2+.
-          rows={boq?.allRows || boq?.rows || []}
-          onClose={() => setEditorOpen(false)}
-          onSave={handleSave}
+      <BoqEditorModal
+        phaseName={phaseName}
+        phaseItemCode={phaseItemCode}
+        phaseItemCodeId={phaseItemCodeId}
+        // The API paginates the table rows, but an edit replaces the
+        // complete BOQ document. Give the editor every row so saving an
+        // edit from page 1 cannot overwrite rows that are on page 2+.
+        rows={[
+          ...(boq?.allRows || boq?.rows || []),
+          ...pendingImport,
+        ]}
+        onClose={() => {
+          setPendingImport([]);
+          setEditorOpen(false);
+        }}
+        onSave={handleSave}
+      />
+      )}
+
+      {!readOnly && (
+        <BulkUploadModal
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          title="Upload Excel File"
+          description={`Upload the completed ${phaseName} BOQ template for validation.`}
+          fileName="boq-template.xlsx"
+          columns={BOQ_BULK_COLUMNS}
+          aliases={BOQ_BULK_ALIASES}
+          optionalKeys={BOQ_BULK_OPTIONAL}
+          notes={BOQ_BULK_NOTES}
+          normalizeRow={(draft) => normalizeBoqBulkRow(draft, phaseName)}
+          previewFields={BOQ_BULK_PREVIEW}
+      importLabel="Add to BOQ"
+      onImport={(imported) => {
+            // Imported rows go into the editor alongside the current ones, so
+            // nothing is written until "Save Overall" is pressed.
+            setUploadOpen(false);
+            setPendingImport((current) => [...current, ...imported]);
+            setEditorOpen(true);
+          }}
         />
       )}
     </div>
   );
-}
+  }

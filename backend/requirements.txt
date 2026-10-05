@@ -7,3 +7,4 @@ bcrypt
 PyJWT
 requests
 gunicorn
+flask-sock

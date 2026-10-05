@@ -131,6 +131,72 @@
 /* ADD/EDIT ASSEMBLY UNIT FORM */
 .production-form { padding: 22px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; }
 .production-form-error { background: var(--accent-soft-bg); border: 1px solid var(--danger); color: var(--accent); padding: 10px 14px; border-radius: var(--r-md); font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+
+/* Add Assembly Unit: the header row (Date / Model / Phase) stays in one row,
+   the units themselves are added one at a time below it. */
+.production-header-grid { grid-template-columns: repeat(3, 1fr); padding: 0; }
+
+.production-items-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 18px 0 10px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-table-stripe);
+}
+.production-items-bar-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary);
+}
+.production-items-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 11.5px; font-weight: 700;
+}
+.production-items-empty {
+  padding: 18px 14px; border: 1px dashed var(--border); border-radius: var(--r-md);
+  color: var(--text-secondary); font-size: 13px; text-align: center;
+}
+
+.production-item-card {
+  margin: 0 0 18px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  scroll-margin-top: 12px;
+  scroll-margin-bottom: 18px;
+}
+.production-item-card-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 10px;
+}
+.production-item-number {
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary);
+}
+.production-item-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg-surface); color: var(--text-secondary); cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.production-item-remove:hover:not(:disabled) { border-color: var(--danger, #d64545); color: var(--danger, #d64545); }
+.production-item-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Header action group + Add item, styled like the secondary buttons. */
+.modal-header-actions { display: flex; align-items: center; gap: 10px; }
+.production-add-item-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.production-add-item-btn:hover:not(:disabled) { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
+.production-add-item-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+@media (max-width: 900px) { .production-header-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) {
+  .production-header-grid { grid-template-columns: 1fr; }
+  .production-item-card .production-field-span2 { grid-column: 1 / -1; }
+  .modal-header-actions .production-add-item-btn { padding: 8px 12px; font-size: 13px; }
+}
 .production-form-grid, .production-form-grid * { box-sizing: border-box; }
 .production-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: start; width: 100%; }
 .production-form-grid > :nth-child(1) { order: 1; }
@@ -161,7 +227,16 @@
 .production-field input:focus, .production-field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .production-field input::placeholder { color: var(--text-secondary); font-weight: 400; }
 .production-serial-field { grid-column: span 2; }
+/* Two labeled columns: each serial number on the left, the person who
+   completed exactly that serial on the right, headers aligned to the rows.
+   The headers are the field's labels (title removed to avoid repetition),
+   so they inherit the standard .production-field label style. */
+.production-serial-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.production-serial-columns > span { padding-left: 2px; }
 .production-serial-input-list { display: flex; flex-direction: column; gap: 8px; max-height: 184px; overflow-y: auto; padding-right: 5px; }
+/* One row per serial number: the number, then the person who completed it. */
+.production-serial-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
+.production-serial-row .searchable-select-trigger { height: 44px; }
 .production-serial-input-list input { flex: 0 0 44px; }
 .production-serial-input-list input:hover { border-color: var(--border); }
 .production-serial-input-list input:focus { box-shadow: none; }

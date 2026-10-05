@@ -118,6 +118,34 @@
 .model-error { color: var(--accent); }
 .model-card-time { font-size: 11px; color: var(--text-secondary); }
 
+/* Total row shown on Model / Phase / PO cards. */
+.model-card-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+}
+
+.model-card-total-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.model-card-total-value {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+
 .model-card-add {
   align-items: center;
   justify-content: center;
@@ -249,6 +277,16 @@
 @media (max-width: 640px) {
   .model-toolbar-actions { display: none; }
   .model-kebab-wrapper { display: block; margin-left: auto; flex: 0 0 auto; }
+
+  .model-toolbar { flex-wrap: nowrap; align-items: center; gap: 10px; }
+  .model-toolbar .model-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 @media (max-width: 1024px) { .model-grid { grid-template-columns: repeat(2, 1fr); } }

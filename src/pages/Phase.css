@@ -47,6 +47,7 @@
 
 .model-card { position: relative; }
 
+
 .model-card-checkbox {
   position: absolute;
   top: 12px;
@@ -170,4 +171,27 @@
 @media (max-width: 640px) {
   .model-toolbar-actions { display: none; }
   .model-kebab-wrapper { display: block; margin-left: auto; flex: 0 0 auto; }
+
+  /* Keep Back + title + kebab on one row; the title ellipsizes instead of
+     overflowing the viewport. */
+  .phase-toolbar { flex-wrap: nowrap; align-items: center; gap: 10px; }
+  .phase-toolbar .phase-toolbar-left { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; gap: 10px; }
+  .phase-page .model-heading {
+    font-size: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
+
+/* Bulk upload button on the phases toolbar. */
+.phase-upload-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 0 16px; border: 1px solid var(--accent); border-radius: var(--r-md);
+  background: var(--accent); color: var(--accent-contrast);
+  font-family: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.phase-upload-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-contrast); }
+
+@media (max-width: 520px) { .phase-upload-btn { padding: 8px 12px; font-size: 13px; } }

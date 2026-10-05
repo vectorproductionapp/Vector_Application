@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import api from "../components/Api";
 import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import ListPagination from "../components/ListPagination";
 import { useAuth } from "../context/Auth";
 
 import "./AdminCreateUser.css";
@@ -80,6 +81,10 @@ function AdminCreateUser() {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // Client-side paging: /admin/users returns the whole list and the filter
+  // runs over every account, so the slice happens after filtering.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "", role: "user" });
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +108,11 @@ function AdminCreateUser() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // A changed filter starts back at page 1 so the first matches are visible.
+  useEffect(() => {
+    setPage(1);
+  }, [pageFilter.field, pageFilter.value]);
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
   const setRole = (role) => setForm((f) => ({ ...f, role }));
@@ -221,10 +231,14 @@ function AdminCreateUser() {
   };
 
   const filteredUsers = users.filter((user) => matchesPageFilter(user, pageFilter, USER_FILTER_FIELDS));
+  const totalCount = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <div className="acu-page">
-      {/* â”€â”€ Header bar â”€â”€ */}
+      {/* ── Header bar ── */}
       <div className="acu-top">
         <div className="acu-top-left">
           <Users size={20} />
@@ -242,7 +256,7 @@ function AdminCreateUser() {
         </div>
       </div>
 
-      {/* â”€â”€ Users table â”€â”€ */}
+      {/* ── Users table ── */}
       <div className="acu-table-wrap">
         {loading ? (
           <div className="acu-loading">
@@ -265,7 +279,7 @@ function AdminCreateUser() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((u) => (
+              {pageUsers.map((u) => (
                 <tr key={u.id}>
                   <td className="acu-td-name">
                     <div className="acu-user-identity">
@@ -292,9 +306,23 @@ function AdminCreateUser() {
             </tbody>
           </table>
         )}
+        {!loading && totalCount > 0 && (
+          <ListPagination
+            page={safePage}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            rowCount={pageUsers.length}
+            onPageChange={setPage}
+            onPageSizeChange={(next) => {
+              setPageSize(next);
+              setPage(1);
+            }}
+          />
+        )}
       </div>
 
-      {/* â”€â”€ Create user modal â”€â”€ */}
+      {/* ── Create user modal ── */}
       {showModal && createPortal(
         <div className="acu-overlay" onClick={closeModal}>
           <div className="acu-modal" onClick={(e) => e.stopPropagation()}>

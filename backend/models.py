@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from firebase_config import db
 from firebase_admin import firestore
 from auth_utils import roles_required
-from read_cache import cached_read
+from read_cache import cached_read, invalidate_read_cache
 
 models_bp = Blueprint("models", __name__)
 models_collection = db.collection("models")
@@ -150,6 +150,64 @@ def list_suppliers():
         return jsonify({"success": False, "message": f"Failed to fetch suppliers: {exc}"}), 500
 
 
+@models_bp.route("/suppliers", methods=["PUT"])
+@roles_required("admin", "coadmin")
+def rename_supplier():
+    """Correct a mistyped supplier name in the shared supplier list.
+
+    Only the list entry is renamed: BOQ / PO rows keep the name they were
+    saved with, so historical documents stay untouched.
+    """
+    data = request.get_json(silent=True) or {}
+    old_name = (data.get("oldName") or "").strip()
+    new_name = (data.get("newName") or "").strip()
+
+    if not old_name or not new_name:
+        return jsonify({"success": False, "message": "Old and new supplier names are required"}), 400
+
+    try:
+        target = None
+        for doc in suppliers_collection.where("normalizedName", "==", old_name.lower()).stream():
+            target = doc
+            break
+        if target is None:
+            return jsonify({"success": False, "message": "Supplier not found"}), 404
+
+        clash = [
+            doc for doc in suppliers_collection.where("normalizedName", "==", new_name.lower()).stream()
+        ]
+        if clash and clash[0].id != target.id:
+            return jsonify({"success": False, "message": "A supplier with that name already exists"}), 409
+
+        target.reference.update({
+            "name": new_name,
+            "normalizedName": new_name.lower(),
+            "updatedAt": datetime.now(timezone.utc),
+        })
+        invalidate_read_cache()
+        return jsonify({"success": True, "message": f"Supplier renamed to {new_name}"}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to rename supplier: {exc}"}), 500
+
+
+@models_bp.route("/suppliers", methods=["DELETE"])
+@roles_required("admin", "coadmin")
+def delete_supplier():
+    """Remove a supplier from the list (rows already saved keep their name)."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "Supplier name is required"}), 400
+
+    try:
+        for doc in suppliers_collection.where("normalizedName", "==", name.lower()).stream():
+            doc.reference.delete()
+        invalidate_read_cache()
+        return jsonify({"success": True, "message": f"Supplier {name} removed"}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to delete supplier: {exc}"}), 500
+
+
 @models_bp.route("/models/<model_id>", methods=["PUT"])
 @roles_required("admin")
 def update_model(model_id):
@@ -201,13 +259,33 @@ def _serialize_phase(doc):
     }
 
 
+def _phase_total_material_cost(model_id, phase_id):
+    """Sum of `materialCost` over every BOQ row of one phase."""
+    total = 0.0
+    try:
+        for boq_doc in _boq_collection(model_id, phase_id).limit(1).stream():
+            for row in (boq_doc.to_dict() or {}).get("rows", []) or []:
+                try:
+                    total += float(row.get("materialCost") or 0)
+                except (TypeError, ValueError):
+                    continue
+    except Exception:
+        return 0.0
+    return round(total, 2)
+
+
 @models_bp.route("/models/<model_id>/phases", methods=["GET"])
 @roles_required("admin", "coadmin", "production_incharge", "user")
 @cached_read("phases", ttl_seconds=300)
 def list_phases(model_id):
     try:
-        phases = _phase_doc(model_id).order_by("date").stream()
-        return jsonify({"success": True, "phases": [_serialize_phase(doc) for doc in phases]}), 200
+        phases = list(_phase_doc(model_id).order_by("date").stream())
+        payload = []
+        for doc in phases:
+            phase = _serialize_phase(doc)
+            phase["totalMaterialCost"] = _phase_total_material_cost(model_id, doc.id)
+            payload.append(phase)
+        return jsonify({"success": True, "phases": payload}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch phases: {exc}"}), 500
 

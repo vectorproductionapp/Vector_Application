@@ -281,6 +281,10 @@ def create_assembly_unit():
     try:
         created_at = datetime.now(timezone.utc)
         created_units = []
+        # One assembler per serial number: the person who completed that unit.
+        assembled_by_map = data.get("assembledByMap")
+        if not isinstance(assembled_by_map, dict):
+            assembled_by_map = {}
         for serial in serial_numbers:
             doc_ref = assembly_collection.document()
             record = {k: data.get(k, "") for k in ALLOWED_FIELDS}
@@ -289,6 +293,12 @@ def create_assembly_unit():
                 if isinstance(data.get("qcFailureHistory"), list)
                 else []
             )
+            entry = assembled_by_map.get(serial) or assembled_by_map.get(str(serial).strip()) or {}
+            if isinstance(entry, dict):
+                if entry.get("assembledBy"):
+                    record["assembledBy"] = entry["assembledBy"]
+                if entry.get("assembledById"):
+                    record["assembledById"] = entry["assembledById"]
             record["serial"] = serial
             record["qty"] = 1
             record["createdAt"] = created_at

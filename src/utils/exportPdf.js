@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { formatDate } from "./date";
 
 let qcPdfModulesPromise;
 const imageDataUrlPromises = new Map();
@@ -90,6 +91,14 @@ export function exportTableToExcel({ title, columns, rows, fileName }) {
   const body = (rows || []).map((row) =>
     columns.map((column) => {
       const raw = row[column.key];
+
+      // Date columns are stored as YYYY-MM-DD but rendered DD-MM-YYYY in the
+      // table (DataTable applies formatDate for `isDate`).  Export them the
+      // same way so the file matches exactly what the user sees on screen.
+      if (column.isDate && !column.format) {
+        return formatDate(raw);
+      }
+
       const value = column.format ? column.format(raw, row) : raw;
       return value === null || value === undefined ? "" : value;
     })

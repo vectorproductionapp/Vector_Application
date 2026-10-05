@@ -3,6 +3,9 @@
 .app-date-picker-placeholder { color: var(--text-secondary); }
 .app-date-picker-trigger:disabled { cursor: default; opacity: .6; }
 .app-date-picker-popover { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: 280px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-surface); box-shadow: var(--shadow-lg); }
+/* Portalled to <body> and placed with fixed coordinates, so a scrolling form
+   never has to switch its own overflow off to let the calendar escape. */
+.app-date-picker-popover--fixed { position: fixed; top: auto; bottom: auto; left: auto; margin: 0; }
 .app-date-picker-popover--up { top: auto; bottom: calc(100% + 4px); }
 .app-date-picker-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .app-date-picker-header button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; }

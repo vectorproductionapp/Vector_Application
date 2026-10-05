@@ -1,0 +1,541 @@
+/* Multi-file attachments (PO lines / invoices) + the toolbar preview strip. */
+.image-attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.image-attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.image-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.image-attachment-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.image-attachment-btn.danger:hover:not(:disabled) { color: var(--danger, #d64545); }
+.image-attachment-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.image-attachment-hint {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* ---- File list ---- */
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-table-stripe);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.attachment-row.is-open { cursor: pointer; transition: border-color 140ms ease, background 140ms ease; }
+.attachment-row.is-open:hover { border-color: var(--accent); background: var(--accent-soft-bg); }
+.attachment-row.is-open:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+
+.attachment-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+}
+
+.attachment-kind.image { background: var(--accent-soft-bg); color: var(--accent); }
+.attachment-kind.pdf { background: #fdecec; color: #c62828; }
+.attachment-kind.file { background: #eef2ff; color: #3949ab; }
+
+.attachment-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.attachment-remove:hover { background: var(--bg-surface); color: var(--danger, #d64545); }
+
+.attachment-usage {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.attachment-usage.warn { color: var(--danger, #d64545); font-weight: 600; }
+
+.image-attachment-empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.image-attachment-error { color: var(--danger, #d64545); font-size: 12px; }
+.image-attachment-input { display: none; }
+.image-attachment.compact .image-attachment-empty { padding: 10px; }
+
+/* ---- Preview strip in the table toolbar (icon per file) ---- */
+.image-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* The label is the manager trigger and matches the Export Excel button so both
+   controls read the same in the toolbar. */
+.image-strip-label-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  -webkit-text-fill-color: var(--accent-contrast);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms var(--ease), border-color 150ms var(--ease);
+}
+
+.image-strip-label-button:hover:not(:disabled),
+.image-strip-label-button:focus-visible {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-contrast);
+  -webkit-text-fill-color: var(--accent-contrast);
+}
+
+.image-strip-label-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft-bg); }
+
+.image-strip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.image-strip-scope {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.image-strip-label-button svg { flex: 0 0 auto; }
+
+.image-strip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .image-strip-count { background: rgba(0, 0, 0, 0.22); }
+
+.image-strip-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.image-strip-tile:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.image-strip-tile:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+
+.image-strip-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-strip-tile.pdf { color: #c62828; background: #fdecec; }
+.image-strip-tile.file { color: #3949ab; background: #eef2ff; }
+.image-strip-tile svg { margin: auto; }
+
+.image-strip-more {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.image-strip-more:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- Attachment manager (opened from the strip label) ---- */
+.attachment-manager {
+  position: relative;
+  width: min(94vw, 720px);
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: 20px 22px 22px;
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+
+/* Close sits inside the card, in its own top-right corner. */
+.attachment-manager-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 130ms ease, color 130ms ease;
+}
+
+.attachment-manager-close:hover { background: var(--bg-table-stripe); color: var(--text-primary); }
+.attachment-manager-close:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+
+.attachment-manager-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 40px 16px 0;
+  padding-right: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.attachment-manager-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.attachment-manager-empty { font-size: 13px; color: var(--text-secondary); }
+
+.attachment-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-table-stripe);
+}
+
+.attachment-manager-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.attachment-manager-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.attachment-manager-thumb.pdf { color: #c62828; background: #fdecec; }
+.attachment-manager-thumb:hover { border-color: var(--accent); }
+
+.attachment-manager-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.attachment-manager-record {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.attachment-manager-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The file name is the link: underline on hover, and a pointer for the
+   inline case where a real `href` is not possible. */
+a.attachment-manager-name,
+.attachment-manager-name.is-link {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+a.attachment-manager-name:hover,
+.attachment-manager-name.is-link:hover { color: var(--accent); text-decoration: underline; }
+a.attachment-manager-name:focus-visible,
+.attachment-manager-name.is-link:focus-visible { outline: none; text-decoration: underline; }
+
+.attachment-manager-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.attachment-manager-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+
+.attachment-manager-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+.attachment-manager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 130ms ease, color 130ms ease;
+}
+
+.attachment-manager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.attachment-manager-btn.danger:hover:not(:disabled) { color: var(--danger, #d64545); }
+.attachment-manager-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Gallery / viewer overlay ---- */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 7000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 17, 10, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.image-lightbox img {
+  max-width: min(94vw, 1100px);
+  max-height: 72vh;
+  object-fit: contain;
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.image-lightbox-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.image-lightbox-meta { color: rgba(255, 255, 255, 0.72); font-weight: 500; }
+
+.image-lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.image-lightbox-close:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* Gallery of every file behind a tile. */
+.image-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  align-content: flex-start;
+  max-width: min(94vw, 1000px);
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.image-gallery-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.image-gallery-item:hover { border-color: var(--accent); background: rgba(255, 255, 255, 0.16); }
+.image-gallery-item img { width: 100%; height: 84px; object-fit: cover; border-radius: var(--r-sm); }
+.image-gallery-pdf { display: inline-flex; align-items: center; justify-content: center; height: 84px; color: #ff8a80; }
+.image-gallery-name { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 640px) {
+  .image-attachment-btn { flex: 1 1 auto; padding: 10px 12px; }
+  .image-attachment-hint { flex: 1 1 100%; }
+  .image-gallery-item { width: 104px; }
+  .image-gallery-item img, .image-gallery-pdf { height: 64px; }
+}
+
+@media (max-width: 420px) {
+  .image-attachment-btn { font-size: 12.5px; }
+  .image-strip-tile { width: 26px; height: 24px; }
+}

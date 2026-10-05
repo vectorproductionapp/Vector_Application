@@ -1,17 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
-import { Plus, X, Save, Loader2, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Trash2, Check, MoreVertical, Pencil } from "lucide-react";
+import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch } from "lucide-react";
+import * as XLSX from "xlsx";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import PageFilter from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
+import ListPagination from "../components/ListPagination";
+import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
+import { applyColumnFormulas } from "../components/BulkUploadModal";
+import ImageStrip from "../components/ImageStrip";
+import "../components/ImageAttachment.css";
 import StatusDropdown from "../components/StatusDropdown";
 import { formatDate } from "../utils/date";
 import DatePicker from "../components/DatePicker";
 import { fmtINR } from "../data/mockData";
 import "./PODetails.css";
+import "./Model.css";
 
 // ---- Themed SweetAlert2 helpers (brand colors, shared across pages) ----
 const swalConfirm = ({ title, text, confirmText = "Yes, delete it" }) =>
@@ -59,21 +67,54 @@ const swalError = (title, text) =>
   });
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
+
+// The drill-down this tab was showing, kept across a browser refresh.
+const DRILL_KEY = "vector_po_drill";
+const readDrill = (key) => {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) || "null") || null;
+  } catch {
+    return null;
+  }
+};
+const writeDrill = (key, value) => {
+  try {
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+};
 const PAGE_SIZE = 10;
+
+// GST rates differ per product, so every row carries its own percentage.
+const formatGstRate = (value) =>
+  value === null || value === undefined || String(value).trim() === ""
+    ? ""
+    : `${value}%`;
 
 const columns = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No", mono: true },
+  { key: "supplier", label: "Supplier" },
   { key: "date", label: "PO Date", isDate: true },
   { key: "code", label: "Item Code", mono: true },
   { key: "desc", label: "Item Description" },
   { key: "qty", label: "Qty Ordered" },
   { key: "rate", label: "Unit Rate", format: fmtINR },
-  { key: "gst", label: "GST 18%", format: fmtINR },
+  { key: "gstRate", label: "GST %", format: formatGstRate },
+  { key: "gst", label: "GST Amount", format: fmtINR },
   { key: "value", label: "PO Value", format: fmtINR },
   { key: "status", label: "Status" },
 ];
-const PO_FILTER_FIELDS = columns.filter((column) => ["phase", "po", "code", "status"].includes(column.key));
+const PO_FILTER_FIELDS = columns.filter((column) =>
+  ["phase", "po", "supplier", "code", "status"].includes(column.key)
+);
+
+// Supplier names are shared across pages, so the list is fetched once and
+// reused (same module-level cache BOQ uses).
+let suppliersCache = null;
+let suppliersRequest = null;
 
 const STATUS_OPTIONS = [
   "Pending",
@@ -82,9 +123,384 @@ const STATUS_OPTIONS = [
   "Completed",
 ];
 
+// ---- Excel bulk upload ------------------------------------------------
+// Columns of the downloadable template.  Every one of them maps to a field
+// the backend requires on POST /po-details, so a filled template is always
+// a valid PO payload (GST / PO Value are recomputed server-side).
+// Excel users type money as "1200", "1,200", "₹1,200", "1200/-" or paste
+// text with non-breaking spaces; raw arithmetic on those strings gives
+// #VALUE!.  excelNum cleans the cell text and returns a number (or "" when
+// it cannot be parsed), and excelGst normalises the GST cell (18, 18% or
+// 0.18 all mean 18%) with 18% as the default.
+const excelNum = (token) =>
+  `IFERROR(VALUE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(${token}&"",UNICHAR(160),""),"₹",""),"INR",""),"Rs.",""),"Rs","")," ",""),",",""),"/-","")),"")`;
+const excelGst = (token) => {
+  const n = excelNum(token);
+  return `IFERROR(IF(${n}>=1,${n}/100,${n}),0.18)`;
+};
+const BULK_COLUMNS = [
+  { key: "phase", label: "Phase" },
+  { key: "po", label: "PO No" },
+  { key: "supplier", label: "Supplier" },
+  { key: "date", label: "PO Date" },
+  { key: "code", label: "Item Code" },
+  { key: "desc", label: "Item Description" },
+  { key: "qty", label: "Qty Ordered" },
+  { key: "rate", label: "Unit Rate" },
+  { key: "gstRate", label: "GST %" },
+  // Calculated in Excel from Unit Rate + GST % + Qty Ordered (blank GST means
+  // 18%). Hidden from the import preview and ignored when the file is parsed.
+  {
+    key: "unitGst",
+    label: "GST per Unit (INR)",
+    required: false,
+    hidden: true,
+    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2)),"")`,
+  },
+  {
+    key: "materialCostUnit",
+    label: "Material Cost per Unit incl. GST (INR)",
+    required: false,
+    hidden: true,
+    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}+ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2),2)),"")`,
+  },
+  {
+    key: "lineTotalQty",
+    label: "Total for Qty incl. GST (INR)",
+    required: false,
+    hidden: true,
+    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{qty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{qty}")}+ROUND(${excelNum("{rate}")}*${excelNum("{qty}")}*${excelGst("{gstRate}")},2),2)),"")`,
+  },
+  { key: "expectedDeliveryDate", label: "Expected Delivery Date" },
+  { key: "status", label: "Status" },
+];
+
+// Optional columns: files saved before these columns existed still upload and
+// simply fall back to the default GST slab / a blank supplier.  The three
+// calculated columns are never required either - they are written by Excel.
+const BULK_OPTIONAL_COLUMNS = new Set([
+  "supplier",
+  "gstRate",
+  "unitGst",
+  "materialCostUnit",
+  "lineTotalQty",
+]);
+
+const BULK_COLUMN_NOTES = {
+  phase: ["BOQ phase name exactly as shown in the app (e.g. phase-1).", "phase-1"],
+  po: ["Purchase order number (e.g. PO-4521).", "PO-4521"],
+  supplier: ["Supplier / vendor name for the PO. Optional.", "Steel Authority"],
+  date: ["PO date, DD-MM-YYYY or YYYY-MM-DD.", "05-08-2026"],
+  code: ["BOQ item code (e.g. ITM-074).", "ITM-074"],
+  desc: ["Description of the item being ordered.", "LED"],
+  qty: ["Quantity ordered, numbers only.", "10"],
+  rate: ["Price per unit, numbers only.", "7"],
+  gstRate: ["GST percentage for this line, 0-100. Optional — blank means 18%.", "18"],
+  unitGst: [
+    "Calculated automatically = Unit Rate x GST % (blank GST uses 18%). Do not type in this column.",
+    "1.26",
+  ],
+  materialCostUnit: [
+    "Calculated automatically = Unit Rate + GST per Unit. Do not type in this column.",
+    "8.26",
+  ],
+  lineTotalQty: [
+    "Calculated automatically = Material Cost per Unit incl. GST x Qty Ordered. Do not type here.",
+    "82.60",
+  ],
+  expectedDeliveryDate: ["Expected delivery date, DD-MM-YYYY or YYYY-MM-DD.", "20-08-2026"],
+  status: [`One of: ${STATUS_OPTIONS.join(", ")}.`, "Pending"],
+};
+
+// Header cells are normalised (lower-case, letters/digits only) before they
+// are matched, so "PO No.", "po no" and "PO_NUMBER" all resolve to `po`.
+const BULK_HEADER_ALIASES = {
+  phase: "phase",
+  phasename: "phase",
+  po: "po",
+  pono: "po",
+  ponumber: "po",
+  purchaseorder: "po",
+  purchaseorderno: "po",
+  supplier: "supplier",
+  suppliername: "supplier",
+  vendorname: "supplier",
+  vendor: "supplier",
+  date: "date",
+  podate: "date",
+  code: "code",
+  itemcode: "code",
+  desc: "desc",
+  description: "desc",
+  itemdescription: "desc",
+  qty: "qty",
+  quantity: "qty",
+  qtyordered: "qty",
+  rate: "rate",
+  unitrate: "rate",
+  gst: "gstRate",
+  gstrate: "gstRate",
+  gstpercent: "gstRate",
+  gstpercentage: "gstRate",
+  gstslab: "gstRate",
+  taxrate: "gstRate",
+  expecteddelivery: "expectedDeliveryDate",
+  expecteddeliverydate: "expectedDeliveryDate",
+  deliverydate: "expectedDeliveryDate",
+  status: "status",
+};
+
+const BULK_FILE_NAME = "po-details-template.xlsx";
+
+function normalizeHeader(cell) {
+  return String(cell ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toIsoDate(year, month, day) {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  // Round-trip through a real Date so values like 31-02-2026 are rejected.
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() !== m - 1 ||
+    probe.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+/**
+ * Accepts Date objects (Excel date cells), Excel serial numbers and the text
+ * formats the app itself renders (DD-MM-YYYY, YYYY-MM-DD, DD/MM/YYYY...).
+ * Returns "YYYY-MM-DD" or null when the value cannot be read as a date.
+ */
+function parseBulkDate(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value < 1 || value > 2958465) return null;
+    const asUtc = new Date(Math.round((value - 25569) * 86400000));
+    if (Number.isNaN(asUtc.getTime())) return null;
+    return `${asUtc.getUTCFullYear()}-${pad2(asUtc.getUTCMonth() + 1)}-${pad2(asUtc.getUTCDate())}`;
+  }
+
+  const text = String(value).trim();
+
+  let parts = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (parts) return toIsoDate(parts[1], parts[2], parts[3]);
+
+  parts = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (parts) {
+    let day = Number(parts[1]);
+    let month = Number(parts[2]);
+    // The app renders dates as DD-MM-YYYY, but fall back to MM-DD-YYYY when
+    // the value only makes sense that way (e.g. 05-13-2026).
+    if (month > 12 && day <= 12) {
+      [day, month] = [month, day];
+    }
+    return toIsoDate(parts[3], month, day);
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+  }
+  return null;
+}
+
+function findBulkHeaderRow(matrix) {
+  const scanLimit = Math.min(matrix.length, 10);
+  let bestIndex = -1;
+  let bestHits = 0;
+
+  for (let index = 0; index < scanLimit; index += 1) {
+    const hits = (matrix[index] || []).filter(
+      (cell) => BULK_HEADER_ALIASES[normalizeHeader(cell)]
+    ).length;
+    if (hits >= 6) return index;
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestIndex = index;
+    }
+  }
+
+  // A partially correct header (e.g. the user deleted a column) still beats
+  // a generic "no header row" error: parsing it reports exactly which
+  // columns are missing.
+  return bestHits >= 2 ? bestIndex : -1;
+}
+
+function normalizeBulkRow(draft) {
+  const problems = [];
+  const text = {};
+
+  BULK_COLUMNS.forEach((column) => {
+    const raw = draft[column.key];
+    text[column.key] = raw === null || raw === undefined ? "" : String(raw).trim();
+  });
+
+  ["phase", "po", "code", "desc", "status"].forEach((key) => {
+    if (!text[key]) {
+      const column = BULK_COLUMNS.find((item) => item.key === key);
+      problems.push(`${column.label} is empty`);
+    }
+  });
+
+  const date = parseBulkDate(draft.date);
+  if (!text.date) problems.push("PO Date is empty");
+  else if (!date) problems.push("PO Date is not a valid date");
+
+  const expectedDeliveryDate = parseBulkDate(draft.expectedDeliveryDate);
+  if (!text.expectedDeliveryDate) problems.push("Expected Delivery Date is empty");
+  else if (!expectedDeliveryDate) problems.push("Expected Delivery Date is not a valid date");
+
+  const readNumber = (key) => {
+    const column = BULK_COLUMNS.find((item) => item.key === key);
+    if (!text[key]) {
+      problems.push(`${column.label} is empty`);
+      return null;
+    }
+    const parsed = Number(text[key].replace(/,/g, ""));
+    if (!Number.isFinite(parsed)) {
+      problems.push(`${column.label} must be a number`);
+      return null;
+    }
+    return parsed;
+  };
+
+  const qty = readNumber("qty");
+  const rate = readNumber("rate");
+
+  let gstRate = null;
+  if (text.gstRate) {
+    const parsed = Number(text.gstRate.replace(/,/g, "").replace(/%$/, ""));
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      problems.push("GST % must be a number between 0 and 100");
+    } else {
+      gstRate = parsed;
+    }
+  }
+
+  const status =
+    STATUS_OPTIONS.find((option) => option.toLowerCase() === text.status.toLowerCase()) ||
+    text.status;
+
+  return {
+    row: {
+      phase: text.phase,
+      po: text.po,
+      supplier: text.supplier,
+      date: date || text.date,
+      code: text.code,
+      desc: text.desc,
+      qty: qty === null ? text.qty : qty,
+      rate: rate === null ? text.rate : rate,
+      ...(gstRate === null ? {} : { gstRate }),
+      expectedDeliveryDate: expectedDeliveryDate || text.expectedDeliveryDate,
+      status,
+    },
+    problems,
+  };
+}
+
+function readBulkWorkbook(file) {
+  const isCsv = /\.csv$/i.test(file.name);
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+        resolve(
+          XLSX.read(isCsv ? data : new Uint8Array(data), {
+            type: isCsv ? "string" : "array",
+            cellDates: true,
+          })
+        );
+      } catch (err) {
+        reject(new Error("This file could not be read. Please upload a valid .xlsx, .xls or .csv file."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Unable to read the selected file."));
+
+    if (isCsv) reader.readAsText(file);
+    else reader.readAsArrayBuffer(file);
+  });
+}
+
+/** Parse the first worksheet into `{ rows, issues }`. */
+function parseBulkWorkbook(workbook) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) throw new Error("The selected file has no readable sheet.");
+
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+  const headerIndex = findBulkHeaderRow(matrix);
+  if (headerIndex === -1) {
+    throw new Error(
+      `No header row found. The file must start with these columns: ${BULK_COLUMNS
+        .map((column) => column.label)
+        .join(", ")}.`
+    );
+  }
+
+  const columnMap = {};
+  (matrix[headerIndex] || []).forEach((cell, columnIndex) => {
+    const key = BULK_HEADER_ALIASES[normalizeHeader(cell)];
+    if (key && columnMap[key] === undefined) columnMap[key] = columnIndex;
+  });
+
+  const missingHeaders = BULK_COLUMNS.filter(
+    (column) => !BULK_OPTIONAL_COLUMNS.has(column.key) && columnMap[column.key] === undefined
+  ).map((column) => column.label);
+  if (missingHeaders.length) {
+    throw new Error(`Missing column(s): ${missingHeaders.join(", ")}.`);
+  }
+
+  const rows = [];
+  const issues = [];
+
+  for (let index = headerIndex + 1; index < matrix.length; index += 1) {
+    const raw = matrix[index] || [];
+    if (raw.every((cell) => cell === null || cell === undefined || String(cell).trim() === "")) {
+      continue;
+    }
+
+    const draft = {};
+    BULK_COLUMNS.forEach((column) => {
+      draft[column.key] = raw[columnMap[column.key]];
+    });
+
+    const { row, problems } = normalizeBulkRow(draft);
+    if (problems.length) issues.push({ row: index + 1, message: problems.join("; ") });
+    else rows.push(row);
+  }
+
+  if (!rows.length && !issues.length) {
+    throw new Error("No data rows were found below the header row.");
+  }
+
+  return { rows, issues };
+}
+
+
 const PO_DETAIL_FIELDS = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No", editable: true },
+  { key: "supplier", label: "Supplier", editable: true, isSupplier: true },
   { key: "date", label: "PO Date", isDate: true, editable: true },
   { key: "code", label: "Item Code" },
   { key: "make", label: "Make" },
@@ -92,7 +508,8 @@ const PO_DETAIL_FIELDS = [
   { key: "desc", label: "Item Description" },
   { key: "qty", label: "Qty Ordered", editable: true, isNumber: true },
   { key: "rate", label: "Unit Rate", isCurrency: true, editable: true, isNumber: true },
-  { key: "gst", label: "GST 18%", isCurrency: true },
+  { key: "gstRate", label: "GST %", editable: true, isNumber: true, isPercent: true },
+  { key: "gst", label: "GST Amount", isCurrency: true },
   { key: "value", label: "PO Value", isCurrency: true },
   { key: "status", label: "Status", editable: true, isStatus: true },
 ];
@@ -106,6 +523,7 @@ const emptyPoForm = {
   modelId: "",
   phaseId: "",
   po: "",
+  supplier: "",
   date: "",
   code: "",
   make: "",
@@ -113,8 +531,10 @@ const emptyPoForm = {
   desc: "",
   qty: "",
   rate: "",
+  gstRate: "18",
   expectedDeliveryDate: "",
   status: "",
+  attachments: [],
 };
 
 // A PO commonly contains more than one item.  Retain its shared details
@@ -125,9 +545,13 @@ const nextPoLineForm = (values) => ({
   phaseId: values.phaseId,
   phase: values.phase,
   po: values.po,
+  supplier: values.supplier,
   date: values.date,
+  gstRate: values.gstRate || emptyPoForm.gstRate,
   expectedDeliveryDate: values.expectedDeliveryDate,
   status: values.status,
+  // Attachments belong to a single line, so the next one starts without any.
+  attachments: [],
 });
 
 const REQUIRED_FIELDS = [
@@ -159,6 +583,12 @@ function validatePoForm(values) {
     return "Unit Rate must be a number.";
   }
 
+  if (String(values.gstRate ?? "").trim() !== "") {
+    const gstRate = Number(values.gstRate);
+    if (!Number.isFinite(gstRate)) return "GST % must be a number.";
+    if (gstRate < 0 || gstRate > 100) return "GST % must be between 0 and 100.";
+  }
+
   return null;
 }
 
@@ -169,6 +599,11 @@ function validateEditForm(values) {
   if (Number.isNaN(Number(values.qty))) return "Qty Ordered must be a number.";
   if (!String(values.rate ?? "").trim()) return "Unit Rate cannot be empty.";
   if (Number.isNaN(Number(values.rate))) return "Unit Rate must be a number.";
+  if (String(values.gstRate ?? "").trim() !== "") {
+    const gstRate = Number(values.gstRate);
+    if (!Number.isFinite(gstRate)) return "GST % must be a number.";
+    if (gstRate < 0 || gstRate > 100) return "GST % must be between 0 and 100.";
+  }
   return null;
 }
 
@@ -189,7 +624,14 @@ function formatDetailValue(field, row) {
   }
   if (field.isDate) return formatDateDisplay(raw);
   if (field.isCurrency) return fmtINR(raw);
+  if (field.isPercent) return `${raw}%`;
   return String(raw);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])
+  );
 }
 
 function extractErrorMessage(err, fallback) {
@@ -210,15 +652,18 @@ function getRowId(row) {
 function buildEditForm(row) {
   return {
     po: row.po ?? "",
+    supplier: row.supplier ?? "",
     date: toDateInputValue(row.date),
     qty: row.qty ?? "",
     rate: row.rate ?? "",
+    gstRate: row.gstRate ?? "",
     status: row.status || "",
     expectedDeliveryDate: toDateInputValue(row.expectedDeliveryDate),
+    attachments: attachmentsOf(row),
   };
 }
 
-function calculatePoAmounts(qty, rate) {
+function calculatePoAmounts(qty, rate, gstRate = "") {
   if (String(qty ?? "").trim() === "" || String(rate ?? "").trim() === "") {
     return null;
   }
@@ -227,8 +672,13 @@ function calculatePoAmounts(qty, rate) {
   const numericRate = Number(rate);
   if (!Number.isFinite(numericQty) || !Number.isFinite(numericRate)) return null;
 
+  // Blank rate falls back to the default GST slab the form starts with.
+  const numericGstRate =
+    String(gstRate ?? "").trim() === "" ? 18 : Number(gstRate);
+  if (!Number.isFinite(numericGstRate)) return null;
+
   const subtotal = numericQty * numericRate;
-  const gst = Math.round(subtotal * 0.18 * 100) / 100;
+  const gst = Math.round(subtotal * numericGstRate) / 100;
   return { gst, value: Math.round((subtotal + gst) * 100) / 100 };
 }
 
@@ -237,18 +687,40 @@ export default function PODetails() {
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
   const [rows, setRows] = useState([]);
 
+  // Card drill-down, mirroring Models -> Phases -> table:
+  // PO cards first, then the phases inside one PO, then the line-item table.
+  const [phaseCards, setPhaseCards] = useState([]);
+  const [cardsLoading, setCardsLoading] = useState(true);
+  const [cardsError, setCardsError] = useState("");
+  // A refresh must land on the same drill-down: phase cards -> PO cards ->
+  // table, so the selection lives in this tab's sessionStorage.
+  const [selectedPo, setSelectedPo] = useState(() => readDrill(DRILL_KEY)?.po ?? null);
+  const [selectedPhase, setSelectedPhase] = useState(() => readDrill(DRILL_KEY)?.phase ?? null);
+
+  useEffect(() => {
+    writeDrill(
+      DRILL_KEY,
+      selectedPo || selectedPhase ? { po: selectedPo, phase: selectedPhase } : null
+    );
+  }, [selectedPo, selectedPhase]);
+
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState("");
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [totalPoValue, setTotalPoValue] = useState(0);
+  const [filterOptions, setFilterOptions] = useState({});
 
   const [modalOpen, setModalOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [formValues, setFormValues] = useState(emptyPoForm);
-  const [savedNewLines, setSavedNewLines] = useState([]);
-  const [editingSavedId, setEditingSavedId] = useState(null);
+  const [itemDrafts, setItemDrafts] = useState([]);
+  // One set of files for the whole PO, stored on the PO record itself.
+  const [poAttachments, setPoAttachments] = useState([]);
+  const lastItemRef = useRef(null);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -260,6 +732,8 @@ export default function PODetails() {
   const [boqItems, setBoqItems] = useState([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
   const [boqItemsError, setBoqItemsError] = useState("");
+
+  const [suppliers, setSuppliers] = useState([]);
 
   const [detailsRow, setDetailsRow] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -273,14 +747,15 @@ export default function PODetails() {
   const previewDetailsRow = useMemo(() => {
     if (!detailsRow || !detailsEditMode) return detailsRow;
 
-    const totals = calculatePoAmounts(editForm.qty, editForm.rate);
+    const totals = calculatePoAmounts(editForm.qty, editForm.rate, editForm.gstRate);
     return {
       ...detailsRow,
       qty: editForm.qty,
       rate: editForm.rate,
+      gstRate: editForm.gstRate,
       ...(totals || {}),
     };
-  }, [detailsRow, detailsEditMode, editForm.qty, editForm.rate]);
+  }, [detailsRow, detailsEditMode, editForm.qty, editForm.rate, editForm.gstRate]);
 
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
 
@@ -290,6 +765,14 @@ export default function PODetails() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadClosing, setUploadClosing] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadRows, setUploadRows] = useState([]);
+  const [uploadIssues, setUploadIssues] = useState([]);
+  const [uploadNotice, setUploadNotice] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -308,6 +791,25 @@ export default function PODetails() {
     setDetailsError("");
     setDetailsClosing(false);
     setDetailsOpen(true);
+
+    // List rows only advertise that files exist; pull them for the modal so the
+    // preview is there and saving the form cannot drop what it did not load.
+    if (row?.hasImage && row?.id) {
+      api
+        .get(`${API_BASE_URL}/po-details/${row.id}`)
+        .then((res) => {
+          if (!res.data?.success) return;
+          const files = attachmentsOf(res.data.po);
+          if (!files.length) return;
+          setDetailsRow((current) =>
+            current && current.id === row.id ? { ...current, attachments: files } : current
+          );
+          setEditForm((current) => ({ ...current, attachments: files }));
+        })
+        .catch(() => {
+          /* attachments are optional; the rest of the modal still works */
+        });
+    }
   };
 
   const closeDetails = useCallback(() => {
@@ -349,18 +851,97 @@ export default function PODetails() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [detailsOpen, detailsEditMode, detailsRow, requestCloseDetails]);
 
+  // The phase grid (one card per phase) that opens the drill-down.
+  const fetchPhaseCards = useCallback(async () => {
+    setCardsLoading(true);
+    setCardsError("");
+    try {
+      const res = await api.get(`${API_BASE_URL}/po-details/groups`);
+      if (!res.data.success) {
+        throw new Error(res.data.message || "Failed to load phase cards");
+      }
+      setPhaseCards(res.data.phases || []);
+    } catch (err) {
+      setCardsError(extractErrorMessage(err, "Failed to load phase cards."));
+    } finally {
+      setCardsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPhaseCards();
+  }, [fetchPhaseCards]);
+
+  // Supplier suggestions for the PO form; the field still accepts a typed
+  // supplier when the list cannot load.
+  useEffect(() => {
+    let cancelled = false;
+    const loadSuppliers = async () => {
+      try {
+        if (!suppliersCache) {
+          suppliersRequest ||= api
+            .get(`${API_BASE_URL}/suppliers`, { __vectorBackground: true })
+            .then((response) => {
+              if (!response.data.success) {
+                throw new Error(response.data.message || "Failed to load suppliers");
+              }
+              suppliersCache = response.data.suppliers || [];
+              return suppliersCache;
+            })
+            .finally(() => {
+              suppliersRequest = null;
+            });
+          await suppliersRequest;
+        }
+        if (!cancelled) setSuppliers(suppliersCache || []);
+      } catch {
+        // ignore - the select still accepts custom values
+      }
+    };
+    loadSuppliers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const fetchPoDetails = useCallback(async ({ silent = false, targetPage } = {}) => {
+    // Line items only exist once a PO card and a phase card were opened.
+    if (!selectedPo || !selectedPhase) return;
     if (!silent) setRowsLoading(false);
     setRowsError("");
     const pageToFetch = targetPage ?? page;
     try {
-      const res = await api.get(`${API_BASE_URL}/po-details`, {
-        params: { page: pageToFetch, limit: PAGE_SIZE },
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+
+      // Card scope first, then the toolbar's PageFilter.  The API accepts
+      // repeated filterField/filterValue pairs and matches them ignoring case,
+      // so `po-12` / `PO-12` and `pending` / `Pending` behave the same.
+      const pairs = [
+        ["po", selectedPo],
+        ["phase", selectedPhase],
+      ];
+      if (pageFilter.field && pageFilter.value !== "") {
+        pairs.push([pageFilter.field, String(pageFilter.value)]);
+      }
+      pairs.forEach(([field, value]) => {
+        params.append("filterField", field);
+        params.append("filterValue", value);
       });
+
+      const res = await api.get(`${API_BASE_URL}/po-details?${params.toString()}`);
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load PO Details");
       }
       setRows(res.data.poDetails || []);
+
+      // Server-computed over the whole filtered set, so the badge always
+      // matches the card scope plus whatever the search box/PageFilter select.
+      setTotalPoValue(Number(res.data.totals?.poValue) || 0);
+      setFilterOptions(res.data.filterOptions || {});
 
       const pagination = res.data.pagination;
       if (pagination) {
@@ -373,12 +954,93 @@ export default function PODetails() {
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page]);
+  }, [page, pageSize, query, pageFilter, selectedPo, selectedPhase]);
+
+  // Scope (PO card / phase card) and toolbar filters both come from the API,
+  // so changing either restarts at page 1 instead of showing an empty page.
+  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const scopeKey = `${selectedPo || ""}::${selectedPhase || ""}`;
+  const prevFilterKeyRef = useRef(filterKey);
+  const prevScopeKeyRef = useRef(scopeKey);
 
   useEffect(() => {
-    fetchPoDetails({ targetPage: page });
+    const scopeChanged = prevScopeKeyRef.current !== scopeKey;
+    prevScopeKeyRef.current = scopeKey;
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+
+    if (!selectedPo || !selectedPhase) return;
+
+    const restarting = scopeChanged || filtersChanged;
+    if (restarting && page !== 1) {
+      setPage(1);
+      return;
+    }
+    fetchPoDetails({ targetPage: restarting ? 1 : page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, pageSize, filterKey, scopeKey]);
+
+  // Mutations refresh the phase cards, and the table too when it is open.
+  const refreshData = useCallback(async (opts) => {
+    await fetchPhaseCards();
+    if (selectedPo && selectedPhase && opts) await fetchPoDetails(opts);
+
+    // An open details modal holds its own copy of the record, so a file deleted
+    // from the attachment manager would otherwise still be listed there.
+    if (detailsOpen && detailsRow?.id && !detailsEditMode) {
+      try {
+        const res = await api.get(`${API_BASE_URL}/po-details/${detailsRow.id}`);
+        if (res.data?.success) {
+          setDetailsRow(res.data.po);
+          setEditForm(buildEditForm(res.data.po));
+        }
+      } catch {
+        /* the modal keeps its copy if the refresh fails */
+      }
+    }
+  }, [fetchPhaseCards, fetchPoDetails, selectedPo, selectedPhase, detailsOpen, detailsRow, detailsEditMode]);
+
+  // A save anywhere on this scope arrives as a WebSocket notice: refresh the
+  // phase cards and, when a drill-down is open, the table beneath it.  Nothing
+  // runs while a form is open, so a background change never yanks rows away.
+  useRealtime(["po_details"], () => refreshData({ silent: true }), {
+    guard: () => !(modalOpen || detailsEditMode || detailsSaving),
+  });
+
+  const resetFilters = () => {
+    setQuery("");
+    setPageFilter({ field: "", value: "" });
+    setPage(1);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMenuOpen(false);
+  };
+
+  // Drill-down order: phase -> PO -> line items, so opening a PO keeps the
+  // phase it belongs to as the scope.
+  const openPhase = (phase) => {
+    setSelectedPhase(phase);
+    setSelectedPo(null);
+    resetFilters();
+  };
+
+  const openPo = (po) => {
+    setSelectedPo(po);
+    resetFilters();
+  };
+
+  // From the line-item table back to the PO list of the current phase.
+  const backFromPo = () => {
+    setSelectedPo(null);
+    resetFilters();
+  };
+
+  // From the PO list back to every phase.
+  const backFromPhase = () => {
+    setSelectedPo(null);
+    setSelectedPhase(null);
+    resetFilters();
+  };
 
   useEffect(() => {
     if (!successMessage) return;
@@ -386,65 +1048,65 @@ export default function PODetails() {
     return () => clearTimeout(timer);
   }, [successMessage]);
 
-  useEffect(() => {
-    if (!modalOpen) return;
-    let cancelled = false;
-
-    (async () => {
-      setBoqPhasesLoading(true);
-      setBoqPhasesError("");
-      try {
-        const [phaseRes, modelRes] = await Promise.all([
-          api.get(`${API_BASE_URL}/boq/phases`, { __vectorBackground: true }),
-          api.get(`${API_BASE_URL}/models`, { __vectorBackground: true }),
-        ]);
-        if (!phaseRes.data.success) {
-          throw new Error(phaseRes.data.message || "Failed to load phases");
-        }
-        if (!modelRes.data.success) {
-          throw new Error(modelRes.data.message || "Failed to load models");
-        }
-        if (!cancelled) {
-          const activeModelIds = new Set((modelRes.data.models || []).map((model) => model.id));
-          setBoqPhases((phaseRes.data.phases || []).filter((phase) => activeModelIds.has(phase.modelId)));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setBoqPhasesError(extractErrorMessage(err, "Failed to load phases"));
-        }
-      } finally {
-        if (!cancelled) setBoqPhasesLoading(false);
+  const loadBoqPhases = useCallback(async () => {
+    setBoqPhasesLoading(true);
+    setBoqPhasesError("");
+    try {
+      const [phaseRes, modelRes] = await Promise.all([
+        api.get(`${API_BASE_URL}/boq/phases`, { __vectorBackground: true }),
+        api.get(`${API_BASE_URL}/models`, { __vectorBackground: true }),
+      ]);
+      if (!phaseRes.data.success) {
+        throw new Error(phaseRes.data.message || "Failed to load phases");
       }
-    })();
+      if (!modelRes.data.success) {
+        throw new Error(modelRes.data.message || "Failed to load models");
+      }
+      const activeModelIds = new Set((modelRes.data.models || []).map((model) => model.id));
+      const phases = (phaseRes.data.phases || []).filter((phase) => activeModelIds.has(phase.modelId));
+      setBoqPhases(phases);
+      return phases;
+    } catch (err) {
+      setBoqPhasesError(extractErrorMessage(err, "Failed to load phases"));
+      return [];
+    } finally {
+      setBoqPhasesLoading(false);
+    }
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [modalOpen]);
+  // Both the Create PO modal and the Excel upload modal need the phase list.
+  useEffect(() => {
+    if (!modalOpen && !uploadOpen) return;
+    loadBoqPhases();
+  }, [modalOpen, uploadOpen, loadBoqPhases]);
+
+  const getBoqItems = useCallback(async (modelId, phaseId) => {
+    const res = await api.get(
+      `${API_BASE_URL}/models/${modelId}/phases/${phaseId}/boq`,
+      { __vectorBackground: true }
+    );
+    if (!res.data.success) {
+      throw new Error(res.data.message || "Failed to load BOQ items");
+    }
+    // The BOQ endpoint paginates `rows` for tables but also returns the
+    // complete list in `allRows`. Item-code selection must use every BOQ
+    // item in the selected phase, not just the first page (10 by default).
+    return res.data.boq?.allRows || res.data.boq?.rows || [];
+  }, []);
 
   const fetchBoqItems = useCallback(async (modelId, phaseId) => {
     setBoqItemsLoading(true);
     setBoqItemsError("");
     setBoqItems([]);
     try {
-      const res = await api.get(
-        `${API_BASE_URL}/models/${modelId}/phases/${phaseId}/boq`,
-        { __vectorBackground: true }
-      );
-      if (!res.data.success) {
-        throw new Error(res.data.message || "Failed to load BOQ items");
-      }
-      // The BOQ endpoint paginates `rows` for tables but also returns the
-      // complete list in `allRows`. Item-code selection must use every BOQ
-      // item in the selected phase, not just the first page (10 by default).
-      setBoqItems(res.data.boq?.allRows || res.data.boq?.rows || []);
+      setBoqItems(await getBoqItems(modelId, phaseId));
     } catch (err) {
       setBoqItemsError(extractErrorMessage(err, "Failed to load BOQ items"));
       setBoqItems([]);
     } finally {
       setBoqItemsLoading(false);
     }
-  }, []);
+  }, [getBoqItems]);
 
   const phaseOptions = useMemo(
     () =>
@@ -471,16 +1133,20 @@ export default function PODetails() {
       (p) => `${p.modelId}::${p.phaseId}` === compositeValue
     );
 
+    setFormError("");
+
+    // A different phase means different BOQ items, so any item blocks already
+    // added are cleared - their item codes would not exist in the new phase.
+    setItemDrafts([]);
+
+    // The files belonged to that other phase's PO, so they go as well.
+    setPoAttachments([]);
+
     setFormValues((prev) => ({
       ...prev,
       phase: found ? found.phaseName : "",
       modelId: found ? found.modelId : "",
       phaseId: found ? found.phaseId : "",
-      code: "",
-      make: "",
-      model: "",
-      desc: "",
-      rate: "",
     }));
 
     setBoqItems([]);
@@ -491,30 +1157,74 @@ export default function PODetails() {
     }
   };
 
-  const handleItemCodeSelect = (code) => {
+  const handleItemCodeSelect = (index, code) => {
     const found = boqItems.find((item) => item.code === code);
-    setFormValues((prev) => ({
-      ...prev,
-      code,
-      make: found?.make || "",
-      model: found?.model || "",
-      desc: found?.desc || "",
-      rate: found?.rate ?? "",
-    }));
+    setFormError("");
+    // A BOQ line without its own GST slab falls back to the 18% default.
+    const boqGstRate =
+      found?.gstRate === null || found?.gstRate === undefined || String(found.gstRate).trim() === ""
+        ? "18"
+        : found.gstRate;
+    setItemDrafts((previous) =>
+      previous.map((draft, position) =>
+        position === index
+          ? {
+              ...draft,
+              code,
+              // The BOQ item carries the approved make, model, description,
+              // GST slab and rate, so they land on the line and stay editable.
+              make: found?.make || "",
+              model: found?.model || "",
+              desc: found?.desc || "",
+              gstRate: boqGstRate,
+              rate: found?.rate ?? "",
+            }
+          : draft
+      )
+    );
+    // First item picked also fills an empty supplier, since one PO usually has
+    // a single vendor.
+    const boqSupplier = found?.vendor || found?.supplier || "";
+    if (boqSupplier) {
+      setFormValues((prev) => (prev.supplier ? prev : { ...prev, supplier: boqSupplier }));
+    }
+  };
+
+  // Case-insensitive field filter: users type "pending" or "Pending" freely.
+  // The API applies the same rule, so this local pass stays a safe double-check.
+  const matchesPoPageFilter = (row, filter) => {
+    if (!filter?.field || filter.value === "") return true;
+    const field = PO_FILTER_FIELDS.find((item) => item.key === filter.field);
+    if (!field) return true;
+    return (
+      String(row[field.key] ?? "").trim().toLowerCase() ===
+      String(filter.value).trim().toLowerCase()
+    );
   };
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch = !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPageFilter(row, pageFilter, PO_FILTER_FIELDS);
+      return matchesSearch && matchesPoPageFilter(row, pageFilter);
     });
   }, [query, rows, pageFilter]);
 
+  // PageFilter builds its value dropdown from `rows`, which are now filtered
+  // server-side.  Feed it one synthetic row per distinct value (from the API's
+  // whole-collection `filterOptions`) so the list never shrinks while filtered.
+  const filterOptionRows = useMemo(
+    () =>
+      PO_FILTER_FIELDS.flatMap((field) =>
+        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
+      ),
+    [filterOptions]
+  );
+
   const openModal = () => {
     setFormValues(emptyPoForm);
-    setSavedNewLines([]);
-    setEditingSavedId(null);
+    setItemDrafts([]);
+    setPoAttachments([]);
     setFormError("");
     setClosing(false);
     setBoqItems([]);
@@ -525,7 +1235,11 @@ export default function PODetails() {
 
   const requestClose = (skipConfirmation = false) => {
     if (closing) return;
-    if (skipConfirmation !== true && JSON.stringify(formValues) !== JSON.stringify(emptyPoForm)) {
+    const touched =
+      JSON.stringify(formValues) !== JSON.stringify(emptyPoForm) ||
+      itemDrafts.length > 0 ||
+      poAttachments.length > 0;
+    if (skipConfirmation !== true && touched) {
       Swal.fire({ title: "Discard unsaved changes?", text: "Your PO Detail changes will be lost unless you save them.", icon: "warning", showCancelButton: true, confirmButtonText: "Discard changes", cancelButtonText: "Keep editing", confirmButtonColor: "var(--accent)", cancelButtonColor: "var(--bg-surface-alt)", reverseButtons: true, focusCancel: true, customClass: { popup: "swal-vector-popup" } })
         .then((result) => { if (result.isConfirmed) closeModal(); });
       return;
@@ -540,8 +1254,8 @@ export default function PODetails() {
       setModalOpen(false);
       setClosing(false);
       setFormValues(emptyPoForm);
-      setSavedNewLines([]);
-      setEditingSavedId(null);
+      setItemDrafts([]);
+      setPoAttachments([]);
       setFormError("");
       setBoqItems([]);
       setBoqItemsError("");
@@ -550,80 +1264,410 @@ export default function PODetails() {
 
   const handleFormChange = (event) => {
     const { name, value } = event.target;
+    // Editing clears a stale "cannot save yet" banner instead of leaving it
+    // sitting above fields that are already correct.
+    setFormError("");
     setFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = async (addNew = false) => {
+  // ---------- Item blocks (one per PO line, added on demand) ----------
+
+  const addItemDraft = () => {
+    // Seeded from the current header so the new block is not full of empty
+    // header values; the header still wins at save time.
+    setItemDrafts((previous) => [
+      ...previous,
+      nextPoLineForm({ ...formValues, gstRate: "18" }),
+    ]);
+    // Bring the new block into view; the form is the scroll container.  "start"
+    // puts the whole new item on screen instead of only its top edge, which is
+    // what "nearest" did on short viewports.
+    window.requestAnimationFrame(() => {
+      lastItemRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  };
+
+  const removeItemDraft = (index) => {
+    setItemDrafts((previous) => previous.filter((_, position) => position !== index));
+  };
+
+  // The field name is passed explicitly: the inputs use indexed `name`
+  // attributes (qty-0) which must not leak into the stored draft.
+  const handleItemChange = (index, field, value) => {
+    setFormError("");
+    setItemDrafts((previous) =>
+      previous.map((draft, position) => (position === index ? { ...draft, [field]: value } : draft))
+    );
+  };
+
+  const handleItemDateChange = (index, field, value) => {
+    setFormError("");
+    setItemDrafts((previous) =>
+      previous.map((draft, position) => (position === index ? { ...draft, [field]: value } : draft))
+    );
+  };
+
+  const itemTotals = (draft) => calculatePoAmounts(draft?.qty, draft?.rate, draft?.gstRate);
+
+  const itemSubtotal = (draft, totals) =>
+    totals ? Math.round(Number(draft.qty) * Number(draft.rate) * 100) / 100 : null;
+
+  // A save attempt that cannot go through has to say why, in a popup: the
+  // inline error sits at the top of a long scrolling form, so it is easy to
+  // never see and the click looks like it did nothing.
+  const reportSaveBlocked = (message) => {
+    setFormError(message);
+    Swal.fire({
+      title: "Cannot save yet",
+      text: message,
+      icon: "warning",
+      confirmButtonText: "OK",
+      confirmButtonColor: "var(--accent)",
+      customClass: { popup: "swal-vector-popup" },
+    });
+  };
+
+  const handleSave = async (startAnother = false) => {
     if (saving) return;
 
-    // After one or more lines were saved with "Save & Add New", the editor
-    // below is intentionally blank.  There is nothing left to validate in
-    // that case; simply close the completed PO popup.
-    const currentLineIsBlank = !formValues.code && !formValues.desc && !formValues.qty;
-    if (!addNew && !editingSavedId && savedNewLines.length > 0 && currentLineIsBlank) {
-      requestClose(true);
+    if (!itemDrafts.length) {
+      reportSaveBlocked('Add at least one item with the "Add item" button in the header.');
       return;
     }
 
-    const error = validatePoForm(formValues);
-    if (error) {
-      setFormError(error);
-      return;
+    // Every line carries the PO header plus its own item fields.  The header is
+    // merged last, on purpose: a draft created before the header was filled in
+    // holds empty `phase`/`po`/`date` keys, and letting those win wiped the
+    // header out of every line.
+    const header = {
+      phase: formValues.phase,
+      modelId: formValues.modelId,
+      phaseId: formValues.phaseId,
+      po: formValues.po,
+      supplier: formValues.supplier,
+      date: formValues.date,
+    };
+    const lines = itemDrafts.map((draft) => ({ ...draft, ...header }));
+    for (let index = 0; index < lines.length; index += 1) {
+      const error = validatePoForm(lines[index]);
+      if (error) {
+        reportSaveBlocked(`Item ${index + 1}: ${error}`);
+        return;
+      }
     }
 
     setSaving(true);
     setFormError("");
 
     try {
-      const payload = { ...formValues, status: formValues.status || null };
-
-      const res = editingSavedId
-        ? await api.put(`${API_BASE_URL}/po-details/${editingSavedId}`, payload)
-        : await api.post(`${API_BASE_URL}/po-details`, payload);
-      if (!res.data.success) {
-        throw new Error(res.data.message || "Failed to save PO Detail");
+      for (const line of lines) {
+        const res = await api.post(`${API_BASE_URL}/po-details`, {
+          ...line,
+          status: line.status || null,
+        });
+        if (!res.data.success) {
+          throw new Error(res.data.message || "Failed to save PO Detail");
+        }
       }
 
-      if (addNew) {
-        const savedLine = res.data.po || { ...formValues, id: editingSavedId };
-        setSavedNewLines((previous) => [...previous.filter((line) => line.id !== editingSavedId), savedLine]);
-        setFormValues(nextPoLineForm(formValues));
-        setEditingSavedId(null);
-        await swalSuccess("PO Detail Saved", "Enter the next item below.");
+      // The PO's files are stored once on the PO itself, not on every item line.
+      if (poAttachments.length) {
+        const headerRes = await api.post(`${API_BASE_URL}/po-details/header`, {
+          modelId: formValues.modelId,
+          phaseId: formValues.phaseId,
+          phase: formValues.phase,
+          po: formValues.po,
+          date: formValues.date,
+          supplier: formValues.supplier,
+          attachments: poAttachments,
+        });
+        if (!headerRes.data.success) {
+          throw new Error(headerRes.data.message || "Failed to save PO attachments");
+        }
+      }
+
+      // A new PO number (or a different phase) is not part of the open table,
+      // so the view steps back to the phase cards where the new PO now lives.
+      const sameScope =
+        !selectedPo ||
+        (String(formValues.po).trim().toLowerCase() === String(selectedPo).trim().toLowerCase() &&
+          String(formValues.phase).trim().toLowerCase() ===
+            String(selectedPhase).trim().toLowerCase());
+
+      if (startAnother) {
+        setFormValues(emptyPoForm);
+        setItemDrafts([]);
+        setPoAttachments([]);
+        setBoqItems([]);
+        setBoqItemsError("");
       } else {
         requestClose(true);
-        await swalSuccess("PO Detail Saved", "The PO Detail has been saved successfully.");
+      }
+
+      await swalSuccess(
+        "PO Saved",
+        `${lines.length} PO line${lines.length === 1 ? "" : "s"} saved successfully.`
+      );
+
+      if (!sameScope) {
+        setSelectedPo(null);
+        setSelectedPhase(null);
+        resetFilters();
+        await fetchPhaseCards();
+        return;
       }
 
       if (page === 1) {
-        await fetchPoDetails({ silent: true, targetPage: 1 });
+        await refreshData({ silent: true, targetPage: 1 });
       } else {
         setPage(1);
       }
     } catch (err) {
-      setFormError(extractErrorMessage(err, "Something went wrong while saving. Please try again."));
+      reportSaveBlocked(extractErrorMessage(err, "Something went wrong while saving. Please try again."));
     } finally {
       setSaving(false);
     }
   };
 
-  const editSavedLine = (line) => {
-    setFormValues({ ...line });
-    setEditingSavedId(line.id);
-    setFormError("");
+  // ---------- Excel bulk upload ----------
+  const resetUpload = () => {
+    setUploadFile(null);
+    setUploadRows([]);
+    setUploadIssues([]);
+    setUploadNotice("");
+    setUploading(false);
   };
 
-  const deleteSavedLine = async (line) => {
-    if (!line.id) return;
+  const closeUpload = () => {
+    if (uploadClosing) return;
+    setUploadClosing(true);
+    setTimeout(() => {
+      setUploadOpen(false);
+      setUploadClosing(false);
+      resetUpload();
+    }, 220);
+  };
+
+  const requestCloseUpload = () => {
+    if (uploadClosing) return;
+    if (uploadFile) {
+      Swal.fire({
+        title: "Discard selected file?",
+        text: "The parsed rows will be lost unless you upload them.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Discard",
+        cancelButtonText: "Keep editing",
+        confirmButtonColor: "var(--accent)",
+        cancelButtonColor: "var(--bg-surface-alt)",
+        reverseButtons: true,
+        focusCancel: true,
+        customClass: { container: "po-swal-container", popup: "swal-vector-popup" },
+      }).then((result) => {
+        if (result.isConfirmed) closeUpload();
+      });
+      return;
+    }
+    closeUpload();
+  };
+
+  const openUpload = () => {
+    resetUpload();
+    setUploadClosing(false);
+    setUploadOpen(true);
+    setMenuOpen(false);
+  };
+
+  const handleUploadFileChange = async (event) => {
+    const file = event.target.files?.[0] || null;
+
+    setUploadFile(file);
+    setUploadRows([]);
+    setUploadIssues([]);
+    setUploadNotice("");
+
+    if (!file) return;
+
     try {
-      await api.delete(`${API_BASE_URL}/po-details/${line.id}`);
-      setSavedNewLines((previous) => previous.filter((item) => item.id !== line.id));
-      if (editingSavedId === line.id) {
-        setEditingSavedId(null);
-        setFormValues(nextPoLineForm(line));
+      const workbook = await readBulkWorkbook(file);
+      const { rows, issues } = parseBulkWorkbook(workbook);
+      setUploadRows(rows);
+      setUploadIssues(issues);
+      if (!rows.length) {
+        setUploadNotice("No valid rows found yet — fix the issues listed below and re-select the file.");
       }
     } catch (err) {
-      setFormError(extractErrorMessage(err, "Unable to delete this saved PO Detail."));
+      setUploadNotice(err?.message || "Unable to read this file.");
+    }
+  };
+
+  const handleExportTemplate = () => {
+    const headers = BULK_COLUMNS.map((column) => column.label);
+
+    const templateSheet = XLSX.utils.aoa_to_sheet([headers]);
+    templateSheet["!cols"] = [16, 14, 22, 14, 14, 32, 14, 14, 10, 20, 30, 30, 24, 16].map((wch) => ({ wch }));
+    // GST per Unit, Material Cost per Unit and the Qty total fill themselves
+    // in Excel as soon as Unit Rate and GST % are typed.
+    applyColumnFormulas(templateSheet, BULK_COLUMNS, 200);
+
+    const notesSheet = XLSX.utils.aoa_to_sheet([
+      ["Column", "Description", "Example"],
+      ...BULK_COLUMNS.map((column) => {
+        const [description, example] = BULK_COLUMN_NOTES[column.key];
+        return [column.label, description, example];
+      }),
+      [],
+      ["Note", "Fill one row per PO line. Completely blank rows are ignored.", ""],
+      [
+        "Note",
+        "GST per Unit, Material Cost per Unit incl. GST and Total for Qty incl. GST calculate themselves from Unit Rate, GST % and Qty (blank GST means 18%).",
+        "",
+      ],
+      ["Note", "Rows that fail validation are reported instead of being uploaded.", ""],
+    ]);
+    notesSheet["!cols"] = [{ wch: 26 }, { wch: 76 }, { wch: 20 }];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, templateSheet, "PO Template");
+    XLSX.utils.book_append_sheet(workbook, notesSheet, "Instructions");
+    XLSX.writeFile(workbook, BULK_FILE_NAME);
+  };
+
+  // Fills modelId/phaseId and the BOQ-owned fields (make, model, description,
+  // unit rate) when the spreadsheet's phase + item code match a BOQ line —
+  // the same auto-fill the Create PO form performs. Always best effort: a row
+  // that cannot be matched still uploads with the values typed in the sheet.
+  const enrichBulkRows = useCallback(async (rows) => {
+    if (!rows.length) return rows;
+
+    try {
+      const phases = boqPhases.length ? boqPhases : await loadBoqPhases();
+      if (!phases.length) return rows;
+
+      const phasesByName = new Map();
+      phases.forEach((phase) => {
+        const key = String(phase.phaseName || "").trim().toLowerCase();
+        if (!key) return;
+        if (!phasesByName.has(key)) phasesByName.set(key, []);
+        phasesByName.get(key).push(phase);
+      });
+
+      const itemsByPhase = new Map();
+      const enriched = [];
+
+      for (const row of rows) {
+        const candidates = phasesByName.get(String(row.phase || "").trim().toLowerCase()) || [];
+        if (candidates.length !== 1) {
+          enriched.push(row);
+          continue;
+        }
+
+        const phase = candidates[0];
+        const cacheKey = `${phase.modelId}::${phase.phaseId}`;
+        if (!itemsByPhase.has(cacheKey)) {
+          itemsByPhase.set(cacheKey, await getBoqItems(phase.modelId, phase.phaseId).catch(() => []));
+        }
+
+        const item = (itemsByPhase.get(cacheKey) || []).find(
+          (candidate) =>
+            candidate.code &&
+            String(candidate.code).trim().toLowerCase() === String(row.code).trim().toLowerCase()
+        );
+
+        const pick = (fromBoq, fromSheet) => {
+          const value = fromBoq === null || fromBoq === undefined ? "" : String(fromBoq).trim();
+          return value === "" ? fromSheet : value;
+        };
+
+        const boqRate =
+          item?.rate === null || item?.rate === undefined || String(item.rate).trim() === ""
+            ? NaN
+            : Number(item.rate);
+
+        const boqGstRate =
+          item?.gstRate === null || item?.gstRate === undefined || String(item.gstRate).trim() === ""
+            ? null
+            : Number(item.gstRate);
+
+        enriched.push({
+          ...row,
+          modelId: phase.modelId,
+          phaseId: phase.phaseId,
+          make: pick(item?.make, ""),
+          model: pick(item?.model, ""),
+          desc: pick(item?.desc, row.desc),
+          supplier: pick(item?.vendor ?? item?.supplier, row.supplier),
+          // The sheet wins; otherwise the BOQ line's own slab, else the default.
+          gstRate: row.gstRate === null || row.gstRate === undefined
+            ? (Number.isFinite(boqGstRate) ? boqGstRate : 18)
+            : row.gstRate,
+          rate: Number.isFinite(boqRate) ? boqRate : row.rate,
+        });
+      }
+
+      return enriched;
+    } catch (err) {
+      return rows;
+    }
+  }, [boqPhases, loadBoqPhases, getBoqItems]);
+
+  const showUploadIssues = (title, message, issues) =>
+    Swal.fire({
+      title,
+      html: `${escapeHtml(message)}<ul class="po-upload-issue-list">${issues
+        .slice(0, 6)
+        .map((issue) => `<li>Row ${escapeHtml(issue.row)}: ${escapeHtml(issue.message)}</li>`)
+        .join("")}${
+        issues.length > 6 ? `<li>…and ${issues.length - 6} more</li>` : ""
+      }</ul>`,
+      icon: "warning",
+      confirmButtonText: "OK",
+      confirmButtonColor: "var(--accent)",
+      customClass: { container: "po-swal-container", popup: "swal-vector-popup" },
+    });
+
+  const handleBulkUpload = async () => {
+    if (uploading || !uploadRows.length) return;
+
+    setUploading(true);
+
+    try {
+      const rows = await enrichBulkRows(uploadRows);
+      const res = await api.post(`${API_BASE_URL}/po-details/bulk`, { rows });
+      if (!res.data.success) {
+        throw new Error(res.data.message || "Failed to upload PO Details");
+      }
+
+      const createdCount = res.data.createdCount ?? res.data.created?.length ?? 0;
+      const errors = res.data.errors || [];
+
+      closeUpload();
+
+      await refreshData(page === 1 ? { silent: true, targetPage: 1 } : null);
+      if (page !== 1) setPage(1);
+
+      if (errors.length) {
+        await showUploadIssues(
+          "Some rows were skipped",
+          `${createdCount} PO Detail(s) created. ${errors.length} row(s) could not be created:`,
+          errors
+        );
+      } else {
+        await swalSuccess(
+          "Upload complete",
+          `${createdCount} PO Detail(s) created from the spreadsheet.`
+        );
+      }
+    } catch (err) {
+      const data = err?.response?.data;
+      const errors = data?.errors;
+      if (Array.isArray(errors) && errors.length) {
+        await showUploadIssues("Upload failed", data.message || "No PO Details were created:", errors);
+      } else {
+        await swalError("Upload failed", extractErrorMessage(err, "Unable to upload the PO Details."));
+      }
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -664,9 +1708,14 @@ export default function PODetails() {
     const payload = {};
 
     if (editForm.po !== original.po) payload.po = editForm.po.trim();
+    if (editForm.supplier !== original.supplier) payload.supplier = editForm.supplier.trim();
     if (editForm.date !== original.date) payload.date = editForm.date;
     if (String(editForm.qty) !== String(original.qty)) payload.qty = editForm.qty;
     if (String(editForm.rate) !== String(original.rate)) payload.rate = editForm.rate;
+    if (String(editForm.gstRate) !== String(original.gstRate)) payload.gstRate = editForm.gstRate;
+    if (JSON.stringify(editForm.attachments || []) !== JSON.stringify(original.attachments || [])) {
+      payload.attachments = editForm.attachments || [];
+    }
     if (editForm.status !== original.status) payload.status = editForm.status || null;
     if (editForm.expectedDeliveryDate !== original.expectedDeliveryDate) {
       payload.expectedDeliveryDate = editForm.expectedDeliveryDate || null;
@@ -689,15 +1738,9 @@ export default function PODetails() {
       setDetailsEditMode(false);
       await swalSuccess("PO Detail Updated", "The PO Detail has been updated successfully.");
 
-      const updatedRes = await api.get(`${API_BASE_URL}/po-details/${id}`);
-      if (updatedRes.data.success) {
-        const updatedRow = updatedRes.data.po;
-        setDetailsRow(updatedRow);
-        setEditForm(buildEditForm(updatedRow));
-        setRows((prev) => prev.map((r) => (getRowId(r) === id ? updatedRow : r)));
-      } else {
-        await fetchPoDetails({ silent: true, targetPage: page });
-      }
+      // One refresh covers the open popup copy, the table beneath it, and the
+      // top phase cards - no page reload needed.
+      await refreshData({ silent: true, targetPage: page });
     } catch (err) {
       const message = extractErrorMessage(err, "Failed to update PO Detail.");
       setDetailsError(message);
@@ -790,7 +1833,7 @@ export default function PODetails() {
       setSelectMode(false);
       setSelectedIds(new Set());
       setMenuOpen(false);
-      await fetchPoDetails({ targetPage: page });
+      await refreshData({ targetPage: page });
       if (failedCount > 0) {
         swalError("Some PO Details were not deleted", `${deletedCount} removed, ${failedCount} failed.`);
       } else {
@@ -863,15 +1906,135 @@ export default function PODetails() {
     ? boqItemsError
     : "No BOQ items found for this phase.";
 
-  const goToPage = (nextPage) => {
-    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
-    if (clamped === page) return;
-    setPage(clamped);
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
+
+  // Live GST / PO Value preview for the Add PO form — the rate is per line.
+  const formTotals = calculatePoAmounts(formValues.qty, formValues.rate, formValues.gstRate);
+  const formSubtotal = formTotals
+    ? Math.round(Number(formValues.qty) * Number(formValues.rate) * 100) / 100
+    : null;
+
+  const supplierOptions = useMemo(
+    () => suppliers.map((supplier) => ({ value: supplier, label: supplier })),
+    [suppliers]
+  );
+
+  // Same master-list maintenance as BOQ: fix a mistyped name or drop one.
+  const applySupplierList = (nextList) => {
+    suppliersCache = nextList;
+    setSuppliers(nextList);
+  };
+
+  const handleEditSupplier = async (option) => {
+    const { value: newName } = await Swal.fire({
+      title: "Edit supplier name",
+      input: "text",
+      inputValue: option.value,
+      showCancelButton: true,
+      confirmButtonText: "Save name",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "var(--accent)",
+      cancelButtonColor: "var(--bg-surface-alt)",
+      reverseButtons: true,
+      inputValidator: (value) => (!value || !value.trim() ? "Supplier name cannot be empty" : null),
+      customClass: { popup: "swal-vector-popup" },
+    });
+    if (!newName) return;
+
+    const trimmed = newName.trim();
+    if (trimmed.toLowerCase() === option.value.toLowerCase()) return;
+
+    try {
+      const response = await api.put(`${API_BASE_URL}/suppliers`, {
+        oldName: option.value,
+        newName: trimmed,
+      });
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to rename supplier");
+      }
+      applySupplierList(
+        (suppliersCache || [])
+          .map((name) => (name.toLowerCase() === option.value.toLowerCase() ? trimmed : name))
+          .sort((a, b) => a.localeCompare(b))
+      );
+      await swalSuccess("Supplier renamed", `“${option.value}” is now “${trimmed}”.`);
+    } catch (err) {
+      await swalError(
+        "Rename failed",
+        err?.response?.data?.message || err?.message || "Failed to rename supplier."
+      );
+    }
+  };
+
+  const handleDeleteSupplier = async (option) => {
+    const confirmed = await Swal.fire({
+      title: `Delete “${option.value}”?`,
+      text: "It disappears from the supplier list. PO lines already saved keep the name they were saved with.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "var(--accent)",
+      cancelButtonColor: "var(--bg-surface-alt)",
+      reverseButtons: true,
+      focusCancel: true,
+      customClass: { popup: "swal-vector-popup" },
+    });
+    if (!confirmed.isConfirmed) return;
+
+    try {
+      const response = await api.delete(`${API_BASE_URL}/suppliers`, {
+        data: { name: option.value },
+      });
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to delete supplier");
+      }
+      applySupplierList(
+        (suppliersCache || []).filter(
+          (name) => name.toLowerCase() !== option.value.toLowerCase()
+        )
+      );
+      await swalSuccess("Supplier deleted", `“${option.value}” was removed from the list.`);
+    } catch (err) {
+      await swalError(
+        "Delete failed",
+        err?.response?.data?.message || err?.message || "Failed to delete supplier."
+      );
+    }
+  };
+
+  const selectedPhaseCard = useMemo(
+    () =>
+      phaseCards.find(
+        (card) => String(card.phase).toLowerCase() === String(selectedPhase || "").toLowerCase()
+      ) || null,
+    [phaseCards, selectedPhase]
+  );
+
+  const viewTitle = !selectedPhase
+    ? "PO Details"
+    : !selectedPo
+      ? selectedPhase
+      : `${selectedPhase} · PO ${selectedPo}`;
 
   return (
     <div className="po-page">
       <div className="po-toolbar">
+        <div className="po-toolbar-left">
+          {selectedPhase && (
+            <button
+              type="button"
+              className="po-back-btn"
+              onClick={selectedPo ? backFromPo : backFromPhase}
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+          )}
+          <h2 className="model-heading po-heading">{viewTitle}</h2>
+        </div>
         <div className="po-toolbar-actions">
           {selectMode ? (
             <>
@@ -897,9 +2060,14 @@ export default function PODetails() {
                 <Plus size={18} />
                 Create PO
               </button>
-              <button type="button" className="po-delete-btn" onClick={toggleSelectMode}>
-                <Trash2 size={16} /> Delete
+              <button type="button" className="po-upload-btn" onClick={openUpload}>
+                <Upload size={16} /> Bulk Upload
               </button>
+              {selectedPhase && (
+                <button type="button" className="po-delete-btn" onClick={toggleSelectMode}>
+                  <Trash2 size={16} /> Delete
+                </button>
+              )}
             </>
           )}
         </div>
@@ -939,9 +2107,14 @@ export default function PODetails() {
                   <button type="button" className="po-menu-item" onClick={openModal}>
                     <Plus size={16} /> Create PO
                   </button>
-                  <button type="button" className="po-menu-item" onClick={toggleSelectMode}>
-                    <Trash2 size={16} /> Delete
+                  <button type="button" className="po-menu-item" onClick={openUpload}>
+                    <Upload size={16} /> Bulk Upload
                   </button>
+                  {selectedPhase && (
+                    <button type="button" className="po-menu-item" onClick={toggleSelectMode}>
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -955,104 +2128,170 @@ export default function PODetails() {
         </div>
       )}
 
-      <div className="panel">
-        <div className="table-controls-row">
-          <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search PO Details..." />
-            <PageFilter rows={rows} fields={PO_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
-          </div>
-          <ExportPdfButton
-            mode="table"
-            title="PO Details"
-            columns={columns}
-            rows={filteredRows}
-          />
-        </div>
-
-        {rowsLoading ? (
+      {!selectedPhase ? (
+        cardsLoading ? (
           <div className="po-loading">
             <Loader2 size={28} className="spin" />
-            <span>Loading PO Details...</span>
+            <span>Loading phase cards...</span>
           </div>
-        ) : rowsError ? (
+        ) : cardsError ? (
           <div className="po-load-error">
             <div className="po-load-error-actions">
-              <span>{rowsError}</span>
-              <button
-                type="button"
-                className="po-btn-secondary"
-                onClick={() => fetchPoDetails({ targetPage: page })}
-              >
+              <span>{cardsError}</span>
+              <button type="button" className="po-btn-secondary" onClick={fetchPhaseCards}>
                 <RefreshCw size={14} />
                 Retry
               </button>
             </div>
           </div>
-        ) : rows.length === 0 ? (
+        ) : phaseCards.length === 0 ? (
           <div className="po-empty-state">
-            <span>No PO Details yet. Click "Add PO" to create the first record.</span>
+            <span>No PO Details yet. Click "Create PO" to add the first record.</span>
           </div>
         ) : (
-          <DataTable columns={tableColumns} rows={filteredRows} onViewDetails={openDetails} />
-        )}
-      </div>
-
-      {!rowsLoading && !rowsError && rows.length > 0 && (
-        <div className="po-pagination">
-          <p className="po-hint">
-            Showing {rows.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
-            {"–"}
-            {(page - 1) * PAGE_SIZE + rows.length} of {totalCount} rows
-          </p>
-
-          <div className="po-pagination-controls">
-            <button
-              type="button"
-              className="po-page-btn po-page-edge"
-              onClick={() => goToPage(1)}
-              disabled={page === 1}
-              aria-label="First page"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-
-            {page > 1 && (
+          <div className="model-grid">
+            {phaseCards.map((card) => (
               <button
+                key={card.phase}
                 type="button"
-                className="po-page-btn po-page-nav"
-                onClick={() => goToPage(page - 1)}
-                aria-label="Previous page"
+                className="model-card po-card"
+                onClick={() => openPhase(card.phase)}
               >
-                <ChevronLeft size={16} />
-                Prev
+                <div className="model-card-heading-row">
+                  <div className="model-card-icon">
+                    <GitBranch size={18} />
+                  </div>
+                  <span className="model-card-name">{card.phase}</span>
+                </div>
+                {card.date && <span className="model-card-time">{formatDate(card.date)}</span>}
+                <span className="model-card-total">
+                  <span className="model-card-total-label">Phase Value</span>
+                  <span className="model-card-total-value">{fmtINR(card.totalValue)}</span>
+                </span>
+                <span className="po-card-meta">
+                  {card.rowCount} line{card.rowCount === 1 ? "" : "s"} · {card.pos.length} PO
+                  {card.pos.length === 1 ? "" : "s"}
+                </span>
               </button>
-            )}
-
-            <span className="po-page-current" key={page}>{page}</span>
-
-            {page < totalPages && (
-              <button
-                type="button"
-                className="po-page-btn po-page-nav"
-                onClick={() => goToPage(page + 1)}
-                aria-label="Next page"
-              >
-                Next
-                <ChevronRight size={16} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="po-page-btn po-page-edge"
-              onClick={() => goToPage(totalPages)}
-              disabled={page === totalPages}
-              aria-label="Last page"
-            >
-              <ChevronsRight size={16} />
-            </button>
+            ))}
           </div>
-        </div>
+        )
+      ) : !selectedPo ? (
+        selectedPhaseCard && selectedPhaseCard.pos.length > 0 ? (
+          <div className="model-grid">
+            {selectedPhaseCard.pos.map((po) => (
+              <button
+                key={po.po}
+                type="button"
+                className="model-card po-card"
+                onClick={() => openPo(po.po)}
+              >
+                <div className="model-card-heading-row">
+                  <div className="model-card-icon">
+                    <FileText size={18} />
+                  </div>
+                  <span className="model-card-name">{po.po}</span>
+                </div>
+                {po.date && <span className="model-card-time">{formatDate(po.date)}</span>}
+                <span className="model-card-total">
+                  <span className="model-card-total-label">PO Value</span>
+                  <span className="model-card-total-value">{fmtINR(po.totalValue)}</span>
+                </span>
+                <span className="po-card-meta">
+                  {po.rowCount} line{po.rowCount === 1 ? "" : "s"}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="po-empty-state">
+            <span>No POs found for phase {selectedPhase}.</span>
+          </div>
+        )
+      ) : (
+        <>
+          <div className="panel">
+            <div className="table-controls-row">
+              <div className="table-controls-primary">
+                <SearchBar value={query} onChange={setQuery} placeholder="Search PO Details..." />
+                <PageFilter rows={filterOptionRows} fields={PO_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+              </div>
+              <div className="table-controls-right">
+                <span className="table-total">
+                  <span className="table-total-label">Total PO Value</span>
+                  <span className="table-total-value">{fmtINR(totalPoValue)}</span>
+                </span>
+                <ImageStrip
+                  rows={filteredRows}
+                  endpoint={`${API_BASE_URL}/po-details/images`}
+                  updateEndpoint={`${API_BASE_URL}/po-details`}
+                  attachmentsEndpoint={`${API_BASE_URL}/po-details/attachments`}
+                  labelOf={(row) => `${row.po || "PO"} · ${row.code || ""}`.trim()}
+                  scopeLabel="PO"
+                  onChanged={() => refreshData({ silent: true, targetPage: page })}
+                  onError={setRowsError}
+                />
+                <ExportPdfButton
+                  mode="table"
+                  title={`${selectedPo} ${selectedPhase}`}
+                  columns={columns}
+                  rows={filteredRows}
+                  fileName={`${selectedPo}-${selectedPhase}`}
+                />
+              </div>
+            </div>
+
+            {rowsLoading ? (
+              <div className="po-loading">
+                <Loader2 size={28} className="spin" />
+                <span>Loading PO Details...</span>
+              </div>
+            ) : rowsError ? (
+              <div className="po-load-error">
+                <div className="po-load-error-actions">
+                  <span>{rowsError}</span>
+                  <button
+                    type="button"
+                    className="po-btn-secondary"
+                    onClick={() => fetchPoDetails({ targetPage: page })}
+                  >
+                    <RefreshCw size={14} />
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="po-empty-state">
+                <span>No PO lines for this phase yet. Click "Create PO" to add one.</span>
+              </div>
+            ) : (
+              <DataTable columns={tableColumns} rows={filteredRows} onViewDetails={openDetails} />
+            )}
+          </div>
+
+          {!rowsLoading && !rowsError && rows.length > 0 && (
+            <>
+              {/* <div className="table-total-outside">
+                <span className="table-total-label">Total PO Value</span>
+                <span className="table-total-value">{fmtINR(totalPoValue)}</span>
+                <span className="table-total-scope">
+                  {selectedPhase} · {selectedPo} · {totalCount} row
+                  {totalCount === 1 ? "" : "s"}
+                </span>
+              </div> */}
+
+              <ListPagination
+                page={page}
+                pageSize={pageSize}
+                totalPages={totalPages}
+                totalCount={totalCount}
+                rowCount={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            </>
+          )}
+        </>
       )}
 
       {/* ---- Add PO Modal ---- */}
@@ -1067,9 +2306,22 @@ export default function PODetails() {
           >
             <div className="modal-header">
               <h2>Add PO Details</h2>
-              <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
-                <X size={22} />
-              </button>
+              {/* Adding a line never needs a scroll: the control sits in the
+                  header, which stays put while the form scrolls. */}
+              <div className="modal-header-actions">
+                <button
+                  type="button"
+                  className="po-add-item-btn"
+                  onClick={addItemDraft}
+                  disabled={saving}
+                  title="Add another item to this PO"
+                >
+                  <Plus size={15} /> Add item
+                </button>
+                <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
+                  <X size={22} />
+                </button>
+              </div>
             </div>
 
             <form
@@ -1081,38 +2333,10 @@ export default function PODetails() {
             >
               {formError && <div className="po-form-error">{formError}</div>}
 
-              {savedNewLines.map((line, index) => (
-                <section className="boq-item-card" key={`${line.po}-${line.code}-${index}`}>
-                  {(() => {
-                    const editingThisLine = editingSavedId === line.id;
-                    const values = editingThisLine ? formValues : line;
-                    return <>
-                  <div className="boq-item-card-header">
-                    <span className="boq-item-number">PO Detail {index + 1} — {editingThisLine ? "Editing" : "Saved"}</span>
-                    <div className="boq-item-card-actions">
-                      <button type="button" className="boq-item-save" onClick={() => editingThisLine ? handleSave(true) : editSavedLine(line)}><Pencil size={14} /> {editingThisLine ? "Save changes" : "Edit"}</button>
-                      <button type="button" className="icon-btn boq-item-remove" onClick={() => deleteSavedLine(line)} aria-label={`Delete PO Detail ${index + 1}`}><Trash2 size={15} /></button>
-                    </div>
-                  </div>
-                  <div className="po-form-grid">
-                    <label className="po-field"><span>Phase</span><input name="phase" value={values.phase} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field"><span>PO No</span><input name="po" value={values.po} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field"><span>PO Date</span><input name="date" value={values.date} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field"><span>Item Code</span><input name="code" value={values.code} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field po-field-span2"><span>Item Description</span><input name="desc" value={values.desc} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field"><span>Qty Ordered</span><input name="qty" value={values.qty} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                    <label className="po-field"><span>Unit Rate</span><input name="rate" value={values.rate} onChange={handleFormChange} readOnly={!editingThisLine} /></label>
-                  </div>
-                    </>;
-                  })()}
-                </section>
-              ))}
-
-              {savedNewLines.length > 0 && <div className="po-new-line-heading"><span>{editingSavedId ? "Edit PO Detail" : "New PO Detail"}</span></div>}
-
-              {!editingSavedId && <div className="po-form-grid">
+              {/* ---- PO header: shared by every item below ---- */}
+              <div className="po-form-grid po-header-grid">
                 <label className="po-field">
-                  <span>Phase</span>
+                  <span>Phase <span className="po-required-asterisk">*</span></span>
                   <SearchableSelect
                     options={phaseOptions}
                     value={phaseSelectValue}
@@ -1124,7 +2348,7 @@ export default function PODetails() {
                 </label>
 
                 <label className="po-field">
-                  <span>PO No</span>
+                  <span>PO No <span className="po-required-asterisk">*</span></span>
                   <input
                     name="po"
                     value={formValues.po}
@@ -1134,114 +2358,324 @@ export default function PODetails() {
                 </label>
 
                 <label className="po-field">
-                  <span>PO Date</span>
+                  <span>Supplier</span>
+                  <SearchableSelect
+                    options={supplierOptions}
+                    value={formValues.supplier}
+                    onChange={(supplier) =>
+                      setFormValues((prev) => ({ ...prev, supplier: supplier || "" }))
+                    }
+                    placeholder="Select or enter supplier"
+                    emptyMessage="Type a supplier name to add it"
+                    allowCustomValue
+                    onEditOption={handleEditSupplier}
+                    onDeleteOption={handleDeleteSupplier}
+                  />
+                </label>
+
+                <label className="po-field">
+                  <span>PO Date <span className="po-required-asterisk">*</span></span>
                   <DatePicker value={formValues.date} onChange={(date) => setFormValues((prev) => ({ ...prev, date }))} ariaLabel="Select PO date" />
                 </label>
+              </div>
 
-                <label className="po-field">
-                  <span>Item Code</span>
-                  <SearchableSelect
-                    options={itemCodeOptions}
-                    value={formValues.code}
-                    onChange={handleItemCodeSelect}
-                    placeholder={itemCodeDisabled ? "Select Phase first" : "Select Item Code"}
-                    disabled={itemCodeDisabled}
-                    loading={boqItemsLoading}
-                    emptyMessage={itemCodeEmptyMessage}
-                  />
-                  {!itemCodeDisabled && !boqItemsLoading && boqItems.length === 0 && (
-                    <span className="po-field-helper error">
-                      No BOQ items found for this phase.
-                    </span>
-                  )}
-                </label>
+              {/* ---- Items: added one at a time, like adding a passenger ---- */}
+              <div className="po-items-bar">
+                <span className="po-items-bar-label">
+                  Items
+                  <span className="po-items-count">{itemDrafts.length}</span>
+                </span>
+              </div>
 
-                <label className="po-field">
-                  <span>Make</span>
-                  <input
-                    name="make"
-                    value={formValues.make}
-                    readOnly
-                    disabled
-                    placeholder="Auto-filled from BOQ"
-                  />
-                </label>
+              {itemDrafts.length === 0 && (
+                <div className="po-items-empty">No items yet — use the &ldquo;Add item&rdquo; button in the header above.</div>
+              )}
 
-                <label className="po-field">
-                  <span>Model</span>
-                  <input
-                    name="model"
-                    value={formValues.model}
-                    readOnly
-                    disabled
-                    placeholder="Auto-filled from BOQ"
-                  />
-                </label>
+              {itemDrafts.map((draft, index) => {
+                const totals = itemTotals(draft);
+                const subtotal = itemSubtotal(draft, totals);
+                return (
+                  <section className="boq-item-card" key={`item-${index}`} ref={index === itemDrafts.length - 1 ? lastItemRef : null}>
+                    <div className="boq-item-card-header">
+                      <span className="boq-item-number">
+                        Item {index + 1}
+                        {draft.code ? ` · ${draft.code}` : ""}
+                      </span>
+                      <div className="boq-item-card-actions">                        <button
+                          type="button"
+                          className="icon-btn boq-item-remove"
+                          onClick={() => removeItemDraft(index)}
+                          aria-label={`Remove item ${index + 1}`}
+                          title="Remove this item"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
 
-                <label className="po-field po-field-span2">
-                  <span>Item Description</span>
-                  <input
-                    name="desc"
-                    value={formValues.desc}
-                    readOnly
-                    disabled
-                    placeholder="Auto-filled from BOQ"
-                  />
-                </label>
+                    <div className="po-form-grid">
+                      <label className="po-field">
+                        <span>Item Code <span className="po-required-asterisk">*</span></span>
+                        <SearchableSelect
+                          options={itemCodeOptions}
+                          value={draft.code}
+                          onChange={(code) => handleItemCodeSelect(index, code)}
+                          placeholder={itemCodeDisabled ? "Select Phase first" : "Select Item Code"}
+                          disabled={itemCodeDisabled}
+                          loading={boqItemsLoading}
+                          emptyMessage={itemCodeEmptyMessage}
+                        />
+                        {!itemCodeDisabled && !boqItemsLoading && boqItems.length === 0 && (
+                          <span className="po-field-helper error">
+                            No BOQ items found for this phase.
+                          </span>
+                        )}
+                      </label>
 
-                <label className="po-field">
-                  <span>Qty Ordered</span>
-                  <input
-                    type="number"
-                    min="0"
-                    name="qty"
-                    value={formValues.qty}
-                    onChange={handleFormChange}
-                    placeholder="e.g. 10"
-                  />
-                </label>
+                      <label className="po-field">
+                        <span>Make</span>
+                        <input name={`make-${index}`} value={draft.make} readOnly disabled placeholder="Auto-filled from BOQ" />
+                      </label>
 
-                <label className="po-field">
-                  <span>Unit Rate</span>
-                  <input
-                    type="number"
-                    name="rate"
-                    value={formValues.rate}
-                    readOnly
-                    disabled={!formValues.code}
-                    placeholder={!formValues.code ? "Select Item Code first" : "Auto-filled from BOQ"}
-                  />
-                </label>
+                      <label className="po-field">
+                        <span>Model</span>
+                        <input name={`model-${index}`} value={draft.model} readOnly disabled placeholder="Auto-filled from BOQ" />
+                      </label>
 
-                <label className="po-field">
-                  <span>Expected Delivery Date</span>
-                  <DatePicker value={formValues.expectedDeliveryDate} onChange={(expectedDeliveryDate) => setFormValues((prev) => ({ ...prev, expectedDeliveryDate }))} ariaLabel="Select expected delivery date" />
-                </label>
+                      <label className="po-field">
+                        <span>Qty Ordered <span className="po-required-asterisk">*</span></span>
+                        <input
+                          type="number"
+                          min="0"
+                          name={`qty-${index}`}
+                          value={draft.qty}
+                          onChange={(event) => handleItemChange(index, "qty", event.target.value)}
+                          placeholder="e.g. 10"
+                        />
+                      </label>
 
-                <label className="po-field">
-                  <span>Status</span>
-                  <StatusDropdown
-                    name="status"
-                    value={formValues.status}
-                    options={STATUS_OPTIONS}
-                    onChange={handleFormChange}
-                    placeholder="Select status"
-                  />
-                </label>
-              </div>}
+                      <label className="po-field">
+                        <span>Unit Rate <span className="po-required-asterisk">*</span></span>
+                        <input
+                          type="number"
+                          name={`rate-${index}`}
+                          value={draft.rate}
+                          readOnly
+                          disabled={!draft.code}
+                          placeholder={!draft.code ? "Select Item Code first" : "Auto-filled from BOQ"}
+                        />
+                      </label>
+
+                      <label className="po-field">
+                        <span>GST %</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          name={`gstRate-${index}`}
+                          value={draft.gstRate}
+                          onChange={(event) => handleItemChange(index, "gstRate", event.target.value)}
+                          placeholder="e.g. 18"
+                        />
+                      </label>
+
+                      <label className="po-field po-field-span2">
+                        <span>Item Description <span className="po-required-asterisk">*</span></span>
+                        <input
+                          name={`desc-${index}`}
+                          value={draft.desc}
+                          readOnly
+                          disabled
+                          placeholder="Auto-filled from BOQ"
+                        />
+                      </label>
+
+                      <label className="po-field">
+                        <span>Expected Delivery Date <span className="po-required-asterisk">*</span></span>
+                        <DatePicker
+                          value={draft.expectedDeliveryDate}
+                          onChange={(date) => handleItemDateChange(index, "expectedDeliveryDate", date)}
+                          ariaLabel={`Select expected delivery date for item ${index + 1}`}
+                        />
+                      </label>
+
+                      <label className="po-field">
+                        <span>Status <span className="po-required-asterisk">*</span></span>
+                        <StatusDropdown
+                          name={`status-${index}`}
+                          value={draft.status}
+                          options={STATUS_OPTIONS}
+                          onChange={(event) => handleItemChange(index, "status", event.target.value)}
+                          placeholder="Select status"
+                        />
+                      </label>
+                    </div>
+
+                    {totals && (
+                      <div className="po-form-totals">
+                        <span className="po-form-totals-item">
+                          Subtotal: <strong>{fmtINR(subtotal)}</strong>
+                        </span>
+                        <span className="po-form-totals-item">
+                          GST ({draft.gstRate || 18}%): <strong>{fmtINR(totals.gst)}</strong>
+                        </span>
+                        <span className="po-form-totals-item po-form-totals-final">
+                          PO Value: <strong>{fmtINR(totals.value)}</strong>
+                        </span>
+                      </div>
+                    )}
+
+                  </section>
+                );
+              })}
+
+              {/* One attachments section for the whole PO, not one per item. */}
+              <div className="po-item-attachments po-level-attachments">
+                <AttachmentsEditor
+                  files={poAttachments}
+                  onChange={setPoAttachments}
+                  label="PO attachments"
+                  uploadEndpoint={`${API_BASE_URL}/po-details/attachments/upload`}
+                  compact
+                  disabled={saving}
+                />
+              </div>
             </form>
 
             <div className="modal-footer">
               <button type="button" className="po-btn-secondary" onClick={requestClose} disabled={saving}>
                 Cancel
               </button>
-              <button type="button" className="po-btn-secondary" onClick={() => handleSave(true)} disabled={saving}>
-                {saving ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}
-                {saving ? "Saving..." : "Save & Add New"}
-              </button>
-              <button type="button" className="po-btn-primary" onClick={() => handleSave(false)} disabled={saving}>
+              {/* Not disabled by an "is the form complete" check: a greyed-out
+                  button just does nothing when a field is missing. handleSave
+                  reports what is missing instead. */}
+              <button
+                type="button"
+                className="po-btn-primary"
+                onClick={() => handleSave(false)}
+                disabled={saving}
+              >
                 {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-                {saving ? "Saving..." : "Save All & Close"}
+                {saving ? "Saving..." : "Save & Close"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ---- Bulk Upload (Excel) Modal ---- */}
+      {uploadOpen && createPortal(
+        <div className={`modal-overlay${uploadClosing ? " closing" : ""}`} onClick={requestCloseUpload}>
+          <div
+            className={`modal-container po-upload-modal${uploadClosing ? " closing" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Upload Excel File"
+          >
+            <div className="modal-header po-upload-header">
+              <div className="po-upload-heading">
+                <span className="po-upload-heading-icon">
+                  <Upload size={20} />
+                </span>
+                <div className="po-upload-heading-text">
+                  <h2>Upload Excel File</h2>
+                  <p>Upload the completed PO Details template for validation.</p>
+                </div>
+              </div>
+              <button type="button" className="modal-close" onClick={requestCloseUpload} aria-label="Close">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="po-upload-body">
+              <p className="po-upload-section-title">Choose Excel File</p>
+
+              <div className="po-upload-file-box">
+                <input
+                  id="po-bulk-upload-input"
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleUploadFileChange}
+                  disabled={uploading}
+                />
+              </div>
+
+              {uploadNotice && <div className="po-form-error">{uploadNotice}</div>}
+
+              {uploadFile && !uploadNotice && (
+                <div className="po-upload-summary">
+                  <span>
+                    <strong>{uploadRows.length}</strong> row(s) ready to upload
+                  </span>
+                  {uploadIssues.length > 0 && (
+                    <span className="po-upload-summary-issues">
+                      {uploadIssues.length} row(s) will be skipped
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {uploadIssues.length > 0 && (
+                <ul className="po-upload-issue-list">
+                  {uploadIssues.slice(0, 6).map((issue, index) => (
+                    <li key={`${issue.row}-${index}`}>
+                      Row {issue.row}: {issue.message}
+                    </li>
+                  ))}
+                  {uploadIssues.length > 6 && <li>…and {uploadIssues.length - 6} more</li>}
+                </ul>
+              )}
+
+              {uploadRows.length > 0 && (
+                <div className="po-upload-preview">
+                  <table>
+                    <thead>
+                      <tr>
+                        {BULK_COLUMNS.filter((column) => !column.hidden).map((column) => (
+                          <th key={column.key}>{column.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadRows.slice(0, 5).map((row, index) => (
+                        <tr key={`${row.po}-${row.code}-${index}`}>
+                          {BULK_COLUMNS.filter((column) => !column.hidden).map((column) => (
+                            <td key={column.key}>{String(row[column.key] ?? "")}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {uploadRows.length > 5 && (
+                    <p className="po-upload-preview-hint">
+                      Showing the first 5 of {uploadRows.length} rows.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className="po-upload-hint">
+                GST per Unit, Material Cost per Unit incl. GST and Total for Qty incl. GST calculate
+                themselves in the exported template from Unit Rate, GST % and Qty (blank means 18%).
+                Use "Export Excel template" if you have not filled the file in yet.
+              </p>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="po-btn-secondary" onClick={handleExportTemplate}>
+                <Download size={16} /> Export Excel template
+              </button>
+              <button
+                type="button"
+                className="po-btn-primary"
+                onClick={handleBulkUpload}
+                disabled={uploading || !uploadRows.length}
+              >
+                {uploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
+                {uploading ? "Uploading..." : "Upload"}
               </button>
             </div>
           </div>
@@ -1307,10 +2741,23 @@ export default function PODetails() {
                               placeholder="Select status"
                             />
                           ) : (
-                            field.isDate ? (
+                            field.isSupplier ? (
+                              <SearchableSelect
+                                options={supplierOptions}
+                                value={editForm.supplier}
+                                onChange={(supplier) =>
+                                  setEditForm((prev) => ({ ...prev, supplier: supplier || "" }))
+                                }
+                                placeholder="Select or enter supplier"
+                                emptyMessage="Type a supplier name to add it"
+                                allowCustomValue
+                                onEditOption={handleEditSupplier}
+                                onDeleteOption={handleDeleteSupplier}
+                              />
+                            ) : field.isDate ? (
                               <DatePicker value={editForm[field.key] ?? ""} onChange={(date) => setEditForm((prev) => ({ ...prev, [field.key]: date }))} ariaLabel={`Select ${field.label}`} />
                             ) : (
-                              <input type={field.isNumber ? "number" : "text"} className="po-details-edit-input" name={field.key} value={editForm[field.key] ?? ""} onChange={handleEditFormChange} />
+                              <input type={field.isNumber ? "number" : "text"} className="po-details-edit-input" name={field.key} value={editForm[field.key] ?? ""} onChange={handleEditFormChange} {...(field.isPercent ? { min: 0, max: 100, step: "any" } : {})} />
                             )
                           )
                         ) : (
@@ -1321,6 +2768,27 @@ export default function PODetails() {
                   ))}
                 </div>
               </section>
+
+              {(detailsEditMode || attachmentsOf(detailsRow).length > 0) && (
+                <section className="po-details-section">
+                  <h3>Attachments</h3>
+                  <AttachmentsEditor
+                    compact
+                    readOnly={!detailsEditMode}
+                    files={
+                      detailsEditMode
+                        ? editForm.attachments || []
+                        : attachmentsOf(detailsRow)
+                    }
+                    onChange={(attachments) =>
+                      setEditForm((prev) => ({ ...prev, attachments: attachments || [] }))
+                    }
+                        label="Attach PO files"
+                        uploadEndpoint={`${API_BASE_URL}/po-details/attachments/upload`}
+                        disabled={detailsSaving}
+                  />
+                </section>
+              )}
 
               <section className="po-details-section">
                 <h3>Delivery Details</h3>

@@ -1,5 +1,66 @@
 .po-page { display: flex; flex-direction: column; }
 
+/* This page renders `.modal-overlay` / `.modal-container` itself, so it has to
+   own their layout instead of relying on another page's stylesheet being loaded:
+   the overlay centres the dialog, and the container is a flex column so its
+   `max-height` cap makes the form scroll while the header and footer stay put.
+   Without this the dialog grows past the viewport and the footer floats over the
+   last item. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: overlayFadeIn 180ms ease;
+}
+.modal-overlay.closing { animation: overlayFadeOut 180ms ease forwards; }
+.modal-container, .modal-container * { box-sizing: border-box; }
+.modal-container {
+  background: var(--bg-surface);
+  border-radius: var(--r-xl);
+  width: 100%;
+  max-width: 1080px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideIn 200ms ease;
+  overflow: hidden;
+}
+.modal-container.closing { animation: modalSlideOut 180ms ease forwards; }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.modal-close { background: none; border: none; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; padding: 4px; border-radius: var(--r-sm); flex-shrink: 0; }
+.modal-close:hover { background: var(--bg-table-hover); }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-table-stripe);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .po-entry-modal .modal-footer { justify-content: stretch; }
+  .po-entry-modal .modal-footer > * { flex: 1 1 auto; justify-content: center; }
+}
+
 .po-entry-modal { width: min(94vw, 1100px) !important; max-width: 1100px !important; max-height: 92vh !important; }
 .po-entry-modal:has(.app-date-picker-popover) { overflow: visible !important; }
 .po-entry-modal:has(.app-date-picker-popover) .modal-header { border-radius: var(--r-xl) var(--r-xl) 0 0; }
@@ -27,23 +88,13 @@
 .po-page .panel { padding: 8px; }
 .po-hint { font-size: 12px; color: var(--text-secondary); margin: 10px 2px 0; }
 
-.po-page .data-table-actions-col {
-  position: sticky !important;
-  right: 0;
-  z-index: 4 !important;
-  min-width: 108px;
-  background: var(--bg-table-head) !important;
-  box-shadow: inset 1px 0 0 var(--border);
-}
-.po-page .data-table tbody .data-table-actions-col { z-index: 2 !important; background: var(--bg-surface) !important; }
-.po-page .data-table tbody tr:nth-child(even) .data-table-actions-col { background: var(--bg-table-stripe) !important; }
-.po-page .data-table tbody tr:hover .data-table-actions-col { background: var(--bg-table-hover) !important; }
+.po-page .data-table-actions-col { min-width: 108px; }
 
 @media (max-width: 640px) {
   .po-toolbar { flex-wrap: wrap; justify-content: flex-end; }
   .po-toolbar > *:not(.po-add-btn):not(.po-btn-primary):not(.po-kebab-wrapper) { flex: 1 1 100%; }
   .po-kebab-wrapper { margin-left: auto; flex: 0 0 auto; }
-  .po-add-btn, .po-btn-primary, .po-btn-secondary { padding: 8px 14px; font-size: 13px; border-radius: var(--r-sm); }
+  .po-add-btn, .po-btn-primary, .po-btn-secondary, .po-upload-btn { padding: 8px 14px; font-size: 13px; border-radius: var(--r-sm); }
   .table-export-bar { justify-content: flex-end; }
   .table-export-bar > *:not(.po-btn-secondary) { flex: 1 1 100%; }
 }
@@ -239,12 +290,20 @@
 @keyframes po-details-dialog-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(10px) scale(0.98); } }
 
 /* ADD PO FORM */
+/* `flex: 1 1 auto` is what makes the form shrink and scroll inside the
+   `max-height: 92vh` flex-column modal.  Without it the form keeps its full
+   content height, the modal spills past the viewport and the footer ends up
+   floating over the last item. */
 .po-entry-modal .po-form {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 22px 22px 30px;
   scrollbar-gutter: stable;
 }
+/* Scrolling a freshly added item into view must not tuck it under the header
+   or leave its last row behind the footer. */
+.po-entry-modal .boq-item-card { scroll-margin-top: 12px; scroll-margin-bottom: 18px; }
 .po-entry-modal .boq-item-card {
   margin: 0 0 22px;
   border: 1px solid var(--accent-soft-border);
@@ -286,12 +345,21 @@
 
 .po-form-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fit keeps the columns tied to the modal's own width, so the fields
+     fit at any screen size (or zoom level) instead of relying on viewport
+     breakpoints that a capped-width modal can outgrow. */
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
   gap: 18px 20px;
   align-items: start;
   width: 100%;
   padding: 22px 42px;
 }
+
+/* Phase/Supplier use the shared select (40px) and PO Date the date picker
+   (40px) while the plain inputs are 44px - one height for the whole row keeps
+   the fields aligned. */
+.po-field .searchable-select-trigger,
+.po-field .app-date-picker-trigger { height: 44px; }
 
 .po-field-span2 { grid-column: span 2; }
 
@@ -307,6 +375,9 @@
   width: 100%;
   min-width: 0;
 }
+
+/* Required marker, matching the Assembly Unit / Invoice forms. */
+.po-required-asterisk { color: var(--accent); font-weight: 700; }
 
 .po-field input, .po-field select {
   box-sizing: border-box;
@@ -450,19 +521,65 @@
 .po-page-nav { font-weight: 700; }
 .po-page-edge { color: var(--text-secondary); }
 
-.po-page-current {
+.po-page-gap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
+  min-width: 22px;
   height: 34px;
-  padding: 0 12px;
-  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+}
+
+.po-page-num.active {
   background: var(--accent);
   color: var(--accent-contrast);
-  font-size: 13px;
-  font-weight: 700;
 }
+.po-page-num.active:hover {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.po-pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  width: 100%;
+}
+
+.po-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.po-page-size-select {
+  appearance: none;
+  min-width: 66px;
+  height: 34px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background-color: var(--bg-surface);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.po-page-size-select:hover { border-color: var(--accent); }
+.po-page-size-select:focus { outline: none; border-color: var(--accent); }
 
 /* BULK SELECT / DELETE */
 .po-toolbar-actions {
@@ -612,4 +729,364 @@
   .po-details-container { max-height: 94vh; border-radius: var(--r-lg); }
   .po-details-grid { grid-template-columns: 1fr; }
   .po-details-label { margin-bottom: -4px; }
+}
+
+/* BULK UPLOAD (EXCEL) */
+.po-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.po-upload-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-contrast); }
+.po-upload-btn svg { flex-shrink: 0; }
+
+.po-upload-modal { width: min(94vw, 760px) !important; max-width: 760px !important; }
+
+.po-upload-header { align-items: flex-start; gap: 14px; padding: 20px 24px; }
+.po-upload-heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.po-upload-heading-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--accent-soft-bg);
+  border: 1px solid var(--accent-soft-border);
+  color: var(--accent);
+}
+.po-upload-heading-text { min-width: 0; }
+.po-upload-heading-text h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.po-upload-heading-text p { margin: 4px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+
+.po-upload-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.po-upload-section-title { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+
+.po-upload-file-box {
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-alt);
+  padding: 14px;
+}
+.po-upload-file-box input[type="file"] {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.po-upload-file-box input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+.po-upload-file-box input[type="file"]:hover::file-selector-button,
+.po-upload-file-box input[type="file"]::file-selector-button:hover {
+  border-color: var(--accent);
+  background: var(--bg-table-stripe);
+  color: var(--accent);
+}
+
+.po-upload-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.po-upload-summary strong { color: var(--text-primary); }
+.po-upload-summary-issues {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-soft-border);
+  background: var(--accent-soft-bg);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.po-upload-issue-list {
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-table-stripe);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.po-upload-issue-list li { margin: 3px 0; }
+.po-upload-issue-list li::marker { color: var(--danger); }
+
+.po-upload-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  overflow-x: auto;
+}
+.po-upload-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.po-upload-preview th,
+.po-upload-preview td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.po-upload-preview th {
+  background: var(--bg-table-head);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.po-upload-preview td { color: var(--text-primary); }
+.po-upload-preview tbody tr:last-child td { border-bottom: none; }
+.po-upload-preview-hint { margin: 8px 2px 0; font-size: 11.5px; color: var(--text-secondary); }
+
+.po-upload-hint { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+@media (max-width: 640px) {
+  .po-upload-modal { width: min(96vw, 760px) !important; }
+  .po-upload-header { padding: 16px; }
+  .po-upload-body { padding: 16px; gap: 12px; }
+  .modal-container.po-upload-modal .modal-footer { flex-wrap: wrap; }
+  .modal-container.po-upload-modal .modal-footer > * { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ---- PO card drill-down: PO cards -> phase cards -> line-item table ---- */
+.po-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.po-toolbar-left .po-heading {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.po-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.po-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.po-card {
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+.po-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.po-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+.po-card .model-card-name { flex: 1 1 auto; }
+.po-card-meta { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+.po-form-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.po-form-totals-item strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.po-form-totals-final strong { color: var(--accent); font-size: 13.5px; }
+
+/* ---- Items bar: header fields stay put, items are added on demand ---- */
+/* No horizontal padding: the four header fields then start and end exactly
+   where the ITEMS bar and the item cards below them start and end, the same
+   way the invoice header lines up. */
+.po-header-grid { padding: 22px 0 4px; }
+
+.po-items-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-table-stripe);
+}
+
+.po-items-bar-hint {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.po-items-bar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.po-items-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* Same look as the Cancel / Save secondary buttons: plain surface, soft
+   border, no yellow fill. */
+.po-add-item-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.po-add-item-btn:hover:not(:disabled) { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
+.po-add-item-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.po-items-empty {
+  padding: 18px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* The PO's own attachments: one section for the whole PO, not one per item. */
+.po-level-attachments {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+/* Header action group: "Add item" lives in the header so it is always visible
+   while the form scrolls, next to the close button. */
+.po-entry-modal .modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .po-entry-modal .modal-header-actions .po-add-item-btn { padding: 8px 12px; font-size: 13px; }
+}
+
+/* The Add item control sits under the last item, aligned right. */
+.po-items-add-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 4px 0 2px;
+}
+
+/* Item blocks: only their own fields, so every item starts in the same place. */
+.po-entry-modal .boq-item-card { padding: 14px 16px 16px; }
+
+.po-entry-modal .boq-item-card .po-form-grid { gap: 14px 16px; }
+
+.po-entry-modal .boq-item-card-header { padding-bottom: 10px; }
+
+.po-entry-modal .boq-item-card .po-form-totals { margin-top: 12px; }
+
+@media (max-width: 900px) {
+  .po-entry-modal .boq-item-card .po-form-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .po-entry-modal .boq-item-card .po-form-grid { grid-template-columns: 1fr; }
+  .po-entry-modal .boq-item-card .po-field-span2 { grid-column: 1 / -1; }
+  .po-items-add-row { justify-content: stretch; }
+  .po-items-add-row .po-add-item-btn { justify-content: center; }
+}
+
+@media (max-width: 640px) {
+  .po-items-bar { flex-direction: column; align-items: stretch; }
+  .po-add-item-btn { justify-content: center; }
+}
+
+@media (max-width: 640px) {
+  .po-toolbar-left { flex: 1 1 100%; }
+  .po-heading { font-size: 17px; }
+  .po-form-totals { justify-content: flex-start; }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, CircleAlert, Expand, Factory, MapPin, Minimize2, ShieldCheck, TrendingUp } from "lucide-react";
 import {
   Bar,
@@ -19,6 +19,7 @@ import KpiCard from "../components/KpiCard";
 import DatePicker from "../components/DatePicker";
 import { useThemeColors } from "../context/ThemeContext";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import { useAuth } from "../context/Auth";
 import "./Dashboard.css";
 
@@ -139,9 +140,42 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
+  // A role change or a newer loader identity starts a fresh request; the
+  // request id makes sure only the newest one writes state.
+  const dashReqRef = useRef(0);
 
+  const loadDashboard = useCallback(async () => {
+    const requestId = (dashReqRef.current += 1);
+    try {
+      const response = await api.get("/dashboard");
+      let dashboardData = response.data;
+
+      // Compatibility fallback for a running backend that still returns a
+      // user-scoped empty defect summary. The shared graph must show the
+      // same aggregate defect records for every dashboard role.
+      if (isRegularUser && !(dashboardData.defectiveParts || []).length) {
+        try {
+          const defectsResponse = await api.get("/defects");
+          const defectiveParts = summarizeDefectiveParts(defectsResponse.data.defects || []);
+          dashboardData = { ...dashboardData, defectiveParts };
+        } catch {
+          // Keep the dashboard usable if the fallback endpoint is unavailable.
+        }
+      }
+
+      if (requestId === dashReqRef.current) {
+        setDashboard(dashboardData);
+        try { sessionStorage.setItem(dashboardCacheKey, JSON.stringify({ data: dashboardData, savedAt: Date.now() })); } catch {}
+        setLoadError(false);
+      }
+    } catch {
+      if (requestId === dashReqRef.current) setLoadError(true);
+    } finally {
+      if (requestId === dashReqRef.current) setIsLoading(false);
+    }
+  }, [isRegularUser, dashboardCacheKey]);
+
+  useEffect(() => {
     try {
       const cached = sessionStorage.getItem(dashboardCacheKey);
       if (cached) {
@@ -155,42 +189,16 @@ export default function Dashboard() {
       // A cache miss or malformed browser storage must never block loading.
     }
 
-    const loadDashboard = async () => {
-      try {
-        const response = await api.get("/dashboard");
-        let dashboardData = response.data;
-
-        // Compatibility fallback for a running backend that still returns a
-        // user-scoped empty defect summary. The shared graph must show the
-        // same aggregate defect records for every dashboard role.
-        if (isRegularUser && !(dashboardData.defectiveParts || []).length) {
-          try {
-            const defectsResponse = await api.get("/defects");
-            const defectiveParts = summarizeDefectiveParts(defectsResponse.data.defects || []);
-            dashboardData = { ...dashboardData, defectiveParts };
-          } catch {
-            // Keep the dashboard usable if the fallback endpoint is unavailable.
-          }
-        }
-
-        if (!cancelled) {
-          setDashboard(dashboardData);
-          try { sessionStorage.setItem(dashboardCacheKey, JSON.stringify({ data: dashboardData, savedAt: Date.now() })); } catch {}
-          setLoadError(false);
-        }
-      } catch {
-        if (!cancelled) setLoadError(true);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
     loadDashboard();
-    const refreshTimer = window.setInterval(() => {
-      if (document.visibilityState === "visible") loadDashboard();
-    }, 30000);
-    return () => { cancelled = true; window.clearInterval(refreshTimer); };
-  }, [isRegularUser, dashboardCacheKey]);
+    return () => { dashReqRef.current += 1; };
+  }, [loadDashboard, dashboardCacheKey]);
+
+  // Any write in the app moves a KPI somewhere: refresh the numbers from the
+  // WebSocket notice instead of polling or reloading the page.
+  useRealtime(
+    ["po_details", "invoices", "assembly_units", "sales", "defectives", "phases", "models"],
+    () => { loadDashboard(); }
+  );
 
   const liveKpis = dashboard?.kpis || EMPTY_KPIS;
   const salesDashboard = activeView === "customerSales"
