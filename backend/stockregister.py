@@ -30,13 +30,16 @@ def _parse_pagination_params(args):
     return max(1, page), min(10000, max(1, limit))
 
 
-def _stock_key(data):
-    """A phase/item key keeps one stock balance per material and phase."""
-    return (
-        data.get("modelId", ""),
-        data.get("phaseId", "") or data.get("phase", ""),
-        data.get("code", ""),
-    )
+def _phase_candidates(model_id, phase_id, phase_name, code):
+    """The same stock row can be addressed by phase id (BOQ, production) or by
+    phase name (invoices), so both spellings must resolve to one row."""
+    candidates = []
+    for phase in (phase_id, phase_name):
+        if phase:
+            candidate = (model_id, phase, code)
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
 
 
 def _production_key(data):
@@ -53,37 +56,59 @@ def _collection_docs(path):
 @roles_required("admin", "coadmin", "production_incharge")
 @cached_read("stock-register", ttl_seconds=120)
 def list_stock_register():
-    """Read-only material stock derived from PO, invoice and BOQ data."""
+    """Read-only material stock derived from invoices and the BOQ.
+
+    Only materials that appear on an invoice are listed: the invoice creates
+    the row and its Qty Received adds to `purchased`.  The BOQ then enriches
+    those rows (description, make, model, UOM, qty per unit, minimum level),
+    and completed + QC-passed assembly units drive `consumed`.  PO Details is
+    deliberately not a source - an item shows up here only once it is
+    available on an invoice.
+    """
     try:
-        items = {}
-        po_line_keys = {}
+        items = {}       # stock key -> row
+        aliases = {}     # (modelId, phase id OR phase name, code) -> stock key
         completed_production = {}
 
         # These are independent Firestore reads. Fetching them sequentially
         # made users wait for the sum of every network round trip before the
         # first table page could be calculated.
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             model_future = executor.submit(_collection_docs, "models")
             phase_future = executor.submit(lambda: list(db.collection_group("phases").stream()))
             assembly_future = executor.submit(_collection_docs, "assembly_units")
-            po_future = executor.submit(_collection_docs, "po_details")
             boq_future = executor.submit(lambda: list(db.collection_group("boqs").stream()))
             invoice_future = executor.submit(_collection_docs, "invoices")
 
             model_docs = model_future.result()
             phase_docs = phase_future.result()
             assembly_docs = assembly_future.result()
-            po_docs = po_future.result()
             boq_docs = boq_future.result()
             invoice_docs = invoice_future.result()
 
         active_model_ids = {doc.id for doc in model_docs}
+        model_names = {}
+        for doc in model_docs:
+            model_names[doc.id] = (doc.to_dict() or {}).get("name", "")
         phase_names = {}
         for phase_doc in phase_docs:
             phase_data = phase_doc.to_dict() or {}
             model_ref = phase_doc.reference.parent.parent
             if model_ref:
                 phase_names[(model_ref.id, phase_doc.id)] = phase_data.get("name", "")
+
+        def find_item(model_id, phase_id, phase_name, code):
+            for candidate in _phase_candidates(model_id, phase_id, phase_name, code):
+                key = aliases.get(candidate)
+                if key is not None and key in items:
+                    return key
+                if candidate in items:
+                    return candidate
+            return None
+
+        def remember_item(key, model_id, phase_id, phase_name, code):
+            for candidate in _phase_candidates(model_id, phase_id, phase_name, code):
+                aliases.setdefault(candidate, key)
 
         # Workbook rule: only a Completed unit that has passed QC consumes
         # material.  Each unit consumes the BOQ quantity-per-unit (reqQty).
@@ -94,37 +119,42 @@ def list_stock_register():
             key = _production_key(data)
             completed_production[key] = completed_production.get(key, 0) + _number(data.get("qty"))
 
-        # PO lines define the materials being tracked.  No stock documents are
-        # created or changed by this endpoint.
-        for doc in po_docs:
+        # Invoices are the only source of rows: a material enters the register
+        # when it appears on an invoice, and Qty Received is the stock in.
+        # No stock documents are created or changed by this endpoint.
+        for doc in invoice_docs:
             data = doc.to_dict() or {}
             code = data.get("code", "")
             if not code:
                 continue
-            key = _stock_key(data)
-            item = items.setdefault(key, {
-                "phase": data.get("phase", ""),
-                "code": code,
-                "desc": data.get("desc", ""),
-                "make": data.get("make", ""),
-                "model": data.get("model", ""),
-                "uom": "",
-                "reqQty": 0,
-                "opening": 0,
-                "purchased": 0,
-                "consumed": 0,
-                "minLevel": 0,
-            })
+            model_id = data.get("modelId", "")
+            phase_id = data.get("phaseId", "")
+            phase_name = data.get("phase", "")
+            key = find_item(model_id, phase_id, phase_name, code)
+            if key is None:
+                key = (model_id, phase_id or phase_name, code)
+                items[key] = {
+                    "phase": phase_name,
+                    "code": code,
+                    "desc": data.get("desc", ""),
+                    "make": "",
+                    "model": "",
+                    "uom": "",
+                    "reqQty": 0,
+                    "opening": 0,
+                    "purchased": 0,
+                    "consumed": 0,
+                    "minLevel": 0,
+                }
+                remember_item(key, model_id, phase_id, phase_name, code)
+            item = items[key]
+            item["purchased"] += _number(data.get("qtyRecv"))
             if not item["desc"]:
                 item["desc"] = data.get("desc", "")
-            if not item["make"]:
-                item["make"] = data.get("make", "")
-            if not item["model"]:
-                item["model"] = data.get("model", "")
-            po_line_keys[(data.get("po", ""), code)] = key
 
-        # BOQ buffer quantities provide the configured minimum-stock level.
-        # Collection-group reads cover every model/phase without writes.
+        # The BOQ only enriches rows an invoice created - a material that has
+        # never been invoiced stays out of the register.  BOQ is the
+        # authoritative BOM definition, matching the workbook's lookup rules.
         for boq_doc in boq_docs:
             boq = boq_doc.to_dict() or {}
             phase_ref = boq_doc.reference.parent.parent
@@ -133,24 +163,19 @@ def list_stock_register():
             model_id = model_ref.id if model_ref else ""
             if not model_id or model_id not in active_model_ids:
                 continue
-            # Read all phase names once above instead of fetching a parent
-            # phase document for every BOQ document.
             phase_name = phase_names.get((model_id, phase_id), "")
             for row in boq.get("rows", []) or []:
                 code = row.get("code", "")
                 if not code:
                     continue
-                key = (model_id, phase_id or phase_name, code)
-                item = items.get(key)
-                if item is None and phase_name:
-                    item = items.get((model_id, phase_name, code))
-                if item is None:
+                key = find_item(model_id, phase_id, phase_name, code)
+                if key is None:
+                    # Not available on any invoice yet: not in the register.
                     continue
-                # BOQ is the authoritative material/BOM definition, matching
-                # the workbook's BOQ lookup formulas.
+                item = items[key]
                 item["desc"] = row.get("desc", "") or item["desc"]
                 item["make"] = row.get("make", "") or item["make"]
-                item["model"] = row.get("model", "") or item["model"]
+                item["model"] = row.get("model", "") or item["model"] or model_names.get(model_id, "")
                 if not item["uom"]:
                     item["uom"] = row.get("uom", "")
                 item["reqQty"] = _number(row.get("reqQty"))
@@ -158,24 +183,8 @@ def list_stock_register():
                 item["consumed"] = completed_production.get(
                     (model_id, phase_id), 0
                 ) * item["reqQty"]
-
-        # Qty Received on an invoice is the stock received against that PO.
-        for doc in invoice_docs:
-            data = doc.to_dict() or {}
-            code = data.get("code", "")
-            if not code:
-                continue
-            po_number = data.get("po", "")
-            po_key = (po_number, code)
-            if po_number and po_key not in po_line_keys:
-                continue
-            key = po_line_keys.get(po_key, _stock_key(data))
-            item = items.get(key)
-            if item is None:
-                continue
-            item["purchased"] += _number(data.get("qtyRecv"))
-            if not item["desc"]:
-                item["desc"] = data.get("desc", "")
+                # Both spellings of this row now resolve to the same item.
+                remember_item(key, model_id, phase_id, phase_name, code)
 
         rows = []
         for item in items.values():

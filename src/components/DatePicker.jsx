@@ -1,9 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDate } from "../utils/date";
 import "./DatePicker.css";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const POPOVER_WIDTH = 280;
+const VIEWPORT_GAP = 8;
 
 function toLocalDate(value) {
   if (!value) return new Date();
@@ -20,9 +23,10 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
   const [open, setOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
-  const [opensUpward, setOpensUpward] = useState(false);
+  const [popStyle, setPopStyle] = useState(null);
   const yearListRef = useRef(null);
   const pickerRef = useRef(null);
+  const popRef = useRef(null);
   const [month, setMonth] = useState(() => toLocalDate(value));
   const selectedIso = String(value || "").slice(0, 10);
   const years = useMemo(() => {
@@ -42,7 +46,8 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
   }, [yearOpen]);
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
-      if (!pickerRef.current?.contains(event.target)) {
+      // The calendar is portalled to <body>, so it is not inside pickerRef.
+      if (!pickerRef.current?.contains(event.target) && !popRef.current?.contains(event.target)) {
         setOpen(false);
         setMonthOpen(false);
         setYearOpen(false);
@@ -51,11 +56,37 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
     document.addEventListener("mousedown", closeOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, []);
+
+  // The calendar is rendered in a portal with fixed coordinates, so a scrolling
+  // form can keep clipping its own content.  Turning the modal's overflow off
+  // instead (the old `:has(.app-date-picker-popover)` rule) let the item cards
+  // spill over the footer and outside the dialog.
   useLayoutEffect(() => {
-    if (!open || !pickerRef.current) return;
-    const rect = pickerRef.current.getBoundingClientRect();
-    setOpensUpward(window.innerHeight - rect.bottom < 350 && rect.top > 350);
-  }, [open]);
+    if (!open) {
+      setPopStyle(null);
+      return undefined;
+    }
+    const place = () => {
+      const anchor = pickerRef.current?.getBoundingClientRect();
+      const pop = popRef.current?.getBoundingClientRect();
+      if (!anchor || !pop) return;
+      const width = pop.width || POPOVER_WIDTH;
+      const height = pop.height;
+      const up = window.innerHeight - anchor.bottom < height + 16 && anchor.top > height + 16;
+      const left = Math.min(Math.max(VIEWPORT_GAP, anchor.left), Math.max(VIEWPORT_GAP, window.innerWidth - width - VIEWPORT_GAP));
+      const top = up
+        ? Math.max(VIEWPORT_GAP, anchor.top - height - 4)
+        : Math.min(Math.max(VIEWPORT_GAP, anchor.bottom + 4), window.innerHeight - height - VIEWPORT_GAP);
+      setPopStyle({ position: "fixed", left, top, width, zIndex: 1200 });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, monthOpen, yearOpen]);
   const chooseDay = (date) => {
     onChange(toIsoDate(date));
     setOpen(false);
@@ -67,7 +98,14 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
         <span className={selectedIso ? "" : "app-date-picker-placeholder"}>{selectedIso ? formatDate(selectedIso) : "DD/MM/YYYY"}</span>
         <CalendarDays size={17} aria-hidden="true" />
       </button>
-      {open && !disabled && <div className={`app-date-picker-popover${opensUpward ? " app-date-picker-popover--up" : ""}`} role="dialog" aria-label="Calendar">
+      {open && !disabled && createPortal(
+        <div
+          ref={popRef}
+          className="app-date-picker-popover app-date-picker-popover--fixed"
+          style={{ ...popStyle, visibility: popStyle ? "visible" : "hidden" }}
+          role="dialog"
+          aria-label="Calendar"
+        >
         <div className="app-date-picker-header">
           <button type="button" onClick={() => changeMonth(-1)} aria-label="Previous month"><ChevronLeft size={17} /></button>
           <div className="app-date-picker-month-year">
@@ -91,7 +129,9 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
           {days.map((date, index) => !date ? <span key={`blank-${index}`} /> : <button type="button" key={toIsoDate(date)} onClick={() => chooseDay(date)} className={toIsoDate(date) === selectedIso ? "selected" : ""}>{date.getDate()}</button>)}
         </div>
         <div className="app-date-picker-footer"><button type="button" onClick={() => { onChange(""); setOpen(false); }}>Clear date</button></div>
-      </div>}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

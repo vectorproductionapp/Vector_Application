@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Swal from "sweetalert2";
 import { createPortal } from "react-dom";
-import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
 import PageFilter, { matchesPageFilter } from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
+import ListPagination from "../components/ListPagination";
 import StatusDropdown from "../components/StatusDropdown";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import { fmtINR } from "../data/mockData";
 import { formatDate } from "../utils/date";
 import DatePicker from "../components/DatePicker";
@@ -470,6 +472,7 @@ export default function SaleRegister() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -789,7 +792,7 @@ export default function SaleRegister() {
 
     try {
       const res = await api.get(SALES_API_URL, {
-        params: { page: pageToFetch, limit: PAGE_SIZE, search: query.trim() },
+        params: { page: pageToFetch, limit: pageSize, search: query.trim() },
       });
       const data = res.data;
       if (!data.success) {
@@ -810,11 +813,17 @@ export default function SaleRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, query]);
+  }, [page, pageSize, query]);
 
   useEffect(() => {
     fetchRows({ targetPage: page });
   }, [fetchRows, page]);
+
+  // Sale writes arrive as a WebSocket notice and refresh the table quietly.
+  // Skipped while the add/edit form or the details editor is open.
+  useRealtime(["sales"], () => fetchRows({ silent: true }), {
+    guard: () => !(modalOpen || saving || isEditingDetails || detailsSaving),
+  });
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1011,10 +1020,9 @@ export default function SaleRegister() {
 
   const allSelected = currentPageIds.length > 0 && selectedIds.size === currentPageIds.length;
 
-  const goToPage = (nextPage) => {
-    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
-    if (clamped === page) return;
-    setPage(clamped);
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
 
   const handleDeleteSelected = async () => {
@@ -1200,61 +1208,15 @@ export default function SaleRegister() {
       </div>
 
       {!loading && !loadError && rows.length > 0 && (
-        <div className="sales-pagination">
-          <p className="sales-hint">
-            Showing {rows.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
-            {"–"}
-            {(page - 1) * PAGE_SIZE + rows.length} of {totalCount} rows
-          </p>
-
-          <div className="sales-pagination-controls">
-            <button
-              type="button"
-              className="sales-page-btn sales-page-edge"
-              onClick={() => goToPage(1)}
-              disabled={page === 1}
-              aria-label="First page"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-
-            {page > 1 && (
-              <button
-                type="button"
-                className="sales-page-btn sales-page-nav"
-                onClick={() => goToPage(page - 1)}
-                aria-label="Previous page"
-              >
-                <ChevronLeft size={16} />
-                Prev
-              </button>
-            )}
-
-            <span className="sales-page-current" key={page}>{page}</span>
-
-            {page < totalPages && (
-              <button
-                type="button"
-                className="sales-page-btn sales-page-nav"
-                onClick={() => goToPage(page + 1)}
-                aria-label="Next page"
-              >
-                Next
-                <ChevronRight size={16} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="sales-page-btn sales-page-edge"
-              onClick={() => goToPage(totalPages)}
-              disabled={page === totalPages}
-              aria-label="Last page"
-            >
-              <ChevronsRight size={16} />
-            </button>
-          </div>
-        </div>
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          rowCount={rows.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
 
       {/* ---- Add Sale Modal ---- */}

@@ -133,6 +133,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/Auth";
 import ProtectedRoute from "./components/ProtectedRoute";
 import GlobalApiLoader from "./components/GlobalApiLoader";
+import { RealtimeProvider } from "./components/RealtimeProvider";
 import Sidebar from "./components/Sidebar";
 import navConfig from "./data/navConfig";
 import LoginPage from "./pages/LoginPage";
@@ -380,22 +381,25 @@ function AppShell() {
 }
 
 export default function App() {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <GlobalApiLoader />
-          <Routes>
-            <Route path="/" element={<LoginPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/admin/login" element={<Navigate to="/login" replace />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/register" element={<SignupPage />} />
-            <Route path="/unauthorized" element={<Unauthorized />} />
-            <Route path="/*" element={<AppShell />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ThemeProvider>
-  );
+return (
+<ThemeProvider>
+<AuthProvider>
+{/* One WebSocket for the app: pages refresh their own view when data changes. */}
+<RealtimeProvider>
+<BrowserRouter>
+<GlobalApiLoader />
+<Routes>
+<Route path="/" element={<LoginPage />} />
+<Route path="/login" element={<LoginPage />} />
+<Route path="/admin/login" element={<Navigate to="/login" replace />} />
+<Route path="/forgot-password" element={<ForgotPassword />} />
+<Route path="/register" element={<SignupPage />} />
+<Route path="/unauthorized" element={<Unauthorized />} />
+<Route path="/*" element={<AppShell />} />
+</Routes>
+</BrowserRouter>
+</RealtimeProvider>
+</AuthProvider>
+</ThemeProvider>
+);
 }

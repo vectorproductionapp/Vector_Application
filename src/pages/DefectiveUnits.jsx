@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
 import {
   Plus,
@@ -20,10 +21,6 @@ import {
   Check,
   MoreVertical,
   Pencil,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   ArrowLeft,
   ExternalLink,
 } from "lucide-react";
@@ -32,6 +29,7 @@ import PageFilter, { matchesPageFilter } from "../components/PageFilter";
 import StatusDropdown from "../components/StatusDropdown";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
+import ListPagination from "../components/ListPagination";
 import { formatDate } from "../utils/date";
 import DatePicker from "../components/DatePicker";
 import "./DefectiveUnits.css";
@@ -225,6 +223,7 @@ export default function DefectiveUnits() {
 
   // ---------- Pagination state (same pattern as Sale Register) ----------
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -314,7 +313,7 @@ export default function DefectiveUnits() {
 
     try {
       const res = await api.get("/defects", {
-        params: { page: pageToFetch, limit: PAGE_SIZE },
+        params: { page: pageToFetch, limit: pageSize },
       });
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load Defective Units");
@@ -334,16 +333,21 @@ export default function DefectiveUnits() {
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page]);
+  }, [page, pageSize]);
 
   useEffect(() => {
     fetchDefects({ targetPage: page });
   }, [fetchDefects, page]);
 
-  const goToPage = (nextPage) => {
-    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
-    if (clamped === page) return;
-    setPage(clamped);
+  // Defect writes arrive as a WebSocket notice and refresh the table quietly.
+  // Skipped while the add/edit form or a bulk delete is running.
+  useRealtime(["defectives"], () => fetchDefects({ silent: true }), {
+    guard: () => !(modalOpen || saving || bulkDeleting),
+  });
+
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
 
   // ---------- Date range validation ----------
@@ -765,61 +769,15 @@ export default function DefectiveUnits() {
       </div>
 
       {!rowsLoading && !rowsError && rows.length > 0 && (
-        <div className="defects-pagination">
-          <p className="defects-hint">
-            Showing {rows.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
-            {"–"}
-            {(page - 1) * PAGE_SIZE + rows.length} of {totalCount} rows
-          </p>
-
-          <div className="defects-pagination-controls">
-            <button
-              type="button"
-              className="defects-page-btn defects-page-edge"
-              onClick={() => goToPage(1)}
-              disabled={page === 1}
-              aria-label="First page"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-
-            {page > 1 && (
-              <button
-                type="button"
-                className="defects-page-btn defects-page-nav"
-                onClick={() => goToPage(page - 1)}
-                aria-label="Previous page"
-              >
-                <ChevronLeft size={16} />
-                Prev
-              </button>
-            )}
-
-            <span className="defects-page-current" key={page}>{page}</span>
-
-            {page < totalPages && (
-              <button
-                type="button"
-                className="defects-page-btn defects-page-nav"
-                onClick={() => goToPage(page + 1)}
-                aria-label="Next page"
-              >
-                Next
-                <ChevronRight size={16} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="defects-page-btn defects-page-edge"
-              onClick={() => goToPage(totalPages)}
-              disabled={page === totalPages}
-              aria-label="Last page"
-            >
-              <ChevronsRight size={16} />
-            </button>
-          </div>
-        </div>
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          rowCount={rows.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
 
       {/* ---------- Add/Edit Defective Unit Modal ---------- */}

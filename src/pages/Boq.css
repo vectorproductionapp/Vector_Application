@@ -196,7 +196,17 @@
   padding: 4px 0;
 }
 
-.boq-add-item-btn { margin-top: 4px; }
+/* Header "+ Add item" button: same shape as Bulk upload so the two read as a
+   pair (the old bottom link used this class with .link-btn). */
+.boq-add-item-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.boq-add-item-btn:hover:not(:disabled) { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
+.boq-add-item-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* FIELD GRID */
 .boq-field-grid, .boq-field-grid * { box-sizing: border-box; }
@@ -205,11 +215,42 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 18px 20px;
-  align-items: start;
+  /* Stretch instead of `start` so a label that wraps to two lines never pushes
+     its input out of line with the fields beside it. */
+  align-items: stretch;
   width: 100%;
 }
 
 .boq-field-wide { grid-column: span 2; }
+
+/* Live GST breakdown under a BOQ item, styled like the PO form's preview. */
+.boq-gst-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.boq-gst-totals-item strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.boq-gst-totals-final strong { color: var(--accent); font-size: 13.5px; }
+
+.boq-gst-totals-total {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
 
 .boq-field {
   display: flex;
@@ -223,6 +264,14 @@
   width: 100%;
   min-width: 0;
 }
+
+/* Keeps every control on the same baseline inside a row, whatever height the
+   label above it takes. */
+.boq-field > span { min-height: 1.15em; }
+
+.boq-field > input,
+.boq-field > .searchable-select,
+.boq-field > .status-dropdown { margin-top: auto; }
 
 .boq-field input {
   box-sizing: border-box;
@@ -349,9 +398,108 @@
 @media (max-width: 520px) {
   .boq-field-grid { grid-template-columns: 1fr; }
   .boq-field-wide { grid-column: 1 / -1; }
+  .boq-gst-totals { justify-content: flex-start; }
+  /* Stacked on phones: the divider between items would break the layout. */
+  .boq-gst-totals { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .boq-gst-totals-total { padding-left: 0; border-left: none; }
 }
 
 @media (max-width: 640px) {
   .boq-toolbar-actions { display: none; }
   .model-kebab-wrapper { display: block; margin-left: auto; flex: 0 0 auto; }
+
+  /* Keep Back + title + kebab on a single row; the heading/subtitle shrink
+     with an ellipsis instead of overflowing the viewport. */
+  .boq-toolbar { flex-wrap: nowrap; align-items: center; gap: 10px; }
+  .boq-toolbar .phase-toolbar-left { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; gap: 10px; }
+  .boq-toolbar .phase-toolbar-left > div { min-width: 0; }
+  .boq-page .model-heading {
+    font-size: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .boq-page .boq-subtitle {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .boq-page .panel { padding: 12px; }
+  /* The pagination footer already reports the same total on mobile. */
+  .boq-count { display: none; }
+}
+
+/* Header action group + Bulk upload button in the BOQ editor. */
+.modal-header-actions { display: flex; align-items: center; gap: 10px; }
+.boq-upload-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 0 16px; border: 1px solid var(--accent); border-radius: var(--r-md);
+  background: var(--accent); color: var(--accent-contrast);
+  font-family: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.boq-upload-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-contrast); }
+
+@media (max-width: 520px) {
+  .boq-upload-btn,
+  .modal-header-actions .boq-add-item-btn { padding: 8px 12px; font-size: 13px; }
+}
+
+/* The BOQ editor renders .modal-overlay / .modal-container itself, so this
+   file has to own their layout instead of relying on another page's
+   stylesheet being loaded: without the flex column the dialog grows past the
+   viewport, and the header (with the Bulk upload control) loses its row. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: overlayFadeIn 180ms ease;
+}
+.modal-overlay.closing { animation: overlayFadeOut 180ms ease forwards; }
+.modal-container, .modal-container * { box-sizing: border-box; }
+.modal-container {
+  background: var(--bg-surface);
+  border-radius: var(--r-xl);
+  width: 100%;
+  max-width: 1080px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideIn 200ms ease;
+  overflow: hidden;
+}
+.modal-container.closing { animation: modalSlideOut 180ms ease forwards; }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-header h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.modal-close {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary);
+  display: flex; align-items: center; padding: 4px; border-radius: var(--r-sm); flex-shrink: 0;
+}
+.modal-close:hover { background: var(--bg-table-hover); }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-table-stripe);
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }

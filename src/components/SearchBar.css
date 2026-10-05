@@ -226,6 +226,60 @@
   background: var(--accent-soft-border);
 }
 
+/* Row wrapper that keeps the option text and its edit/delete buttons on the
+   same line; only the master-list selects pass the action handlers. */
+.searchable-select-option-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+}
+
+.searchable-select-option-wrap .searchable-select-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.searchable-select-option-wrap:hover {
+  background: var(--bg-table-hover);
+}
+
+.searchable-select-option-wrap.selected {
+  background: var(--accent-soft-bg);
+}
+
+.searchable-select-option-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.searchable-select-option-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.searchable-select-option-action:hover {
+  background: var(--bg-surface);
+  color: var(--accent);
+}
+
+.searchable-select-option-action.danger:hover {
+  color: var(--danger, #d64545);
+}
+
 .searchable-select-empty {
   padding: 12px;
   font-size: 12px;
@@ -257,6 +311,39 @@
   outline: none;
   background: var(--accent-soft-bg);
   box-shadow: inset 0 0 0 1px var(--accent-soft-border);
+}
+
+/* Long supplier names must not push the action buttons out of the panel. */
+.searchable-select-option-wrap .searchable-select-option {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Touch devices get finger-sized targets for edit / delete. */
+@media (pointer: coarse) {
+  .searchable-select-option-action {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+@media (max-width: 640px) {
+  .searchable-select-panel {
+    min-width: 0;
+    max-width: calc(100vw - 20px);
+  }
+
+  .searchable-select-option,
+  .searchable-select-option-wrap .searchable-select-option {
+    padding: 11px 10px;
+    font-size: 14px;
+  }
+
+  .searchable-select-option-action {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 @keyframes searchable-select-in {

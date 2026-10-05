@@ -634,7 +634,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: #a98a10 !important; 
   .po-add-btn, .po-btn-primary, .sale-add-btn, .sale-btn-primary, .stock-add-btn,
   .stock-btn-primary, .admin-create-user-submit, .admin-create-user-btn, .export-pdf-btn,
   .modal-btn-submit, .dtp-done-btn, .acu-submit-btn, .edit-btn, .edit-button,
-  .delete-button, .acu-delete-btn,
+  .delete-button, .acu-delete-btn, .phase-upload-btn, .boq-upload-btn, .po-upload-btn,
   [class$="-btn-primary"], [class$="-add-btn"], [class$="-edit-btn"], [class$="-delete-btn"]
 ) {
   min-height: 36px !important;
@@ -659,14 +659,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: #a98a10 !important; 
   .po-add-btn, .po-btn-primary, .sale-add-btn, .sale-btn-primary, .stock-add-btn,
   .stock-btn-primary, .admin-create-user-submit, .admin-create-user-btn, .export-pdf-btn,
   .modal-btn-submit, .dtp-done-btn, .acu-submit-btn, .edit-btn, .edit-button,
-  .delete-button, .acu-delete-btn,
+  .delete-button, .acu-delete-btn, .phase-upload-btn, .boq-upload-btn, .po-upload-btn,
   [class$="-btn-primary"], [class$="-add-btn"], [class$="-edit-btn"], [class$="-delete-btn"]
 ):is(:hover, :focus-visible):not(:disabled) {
   background: var(--accent-hover) !important;
   border-color: var(--accent-hover) !important;
 }
 .app-main :is(
-  .create-btn, .btn-primary, .delete-button, [class$="-btn-primary"], [class$="-add-btn"], [class$="-delete-btn"]
+  .create-btn, .btn-primary, .delete-button, .phase-upload-btn, .boq-upload-btn, .po-upload-btn, [class$="-btn-primary"], [class$="-add-btn"], [class$="-delete-btn"]
 ):active:not(:disabled) { background: var(--accent-active) !important; border-color: var(--accent-active) !important; }
 
 .app-main :is(
@@ -992,6 +992,10 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
 }
 
 .swal2-container:has(.swal-vector-popup) { background: rgba(31, 26, 14, 0.34) !important; backdrop-filter: blur(6px); }
+/* SweetAlert2 defaults to z-index 1060 while floating panels (dropdowns,
+   date pickers) sit at 5300 and full-screen overlays (attachment manager,
+   lightbox) at 7000 - keep dialogs on top of all of them, on every screen. */
+.swal2-container { z-index: 8000 !important; }
 .swal-vector-popup .swal2-loader { border-color: var(--accent) transparent var(--accent) transparent !important; }
 .swal-vector-popup .swal2-title { color: var(--text-primary) !important; }
 
@@ -1485,7 +1489,7 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
   .po-add-btn, .po-btn-primary, .sale-add-btn, .sale-btn-primary, .stock-add-btn,
   .stock-btn-primary, .admin-create-user-submit, .admin-create-user-btn, .export-pdf-btn,
   .modal-btn-submit, .dtp-done-btn, .acu-submit-btn, .edit-btn, .edit-button,
-  .delete-button, .acu-delete-btn,
+  .delete-button, .acu-delete-btn, .phase-upload-btn, .boq-upload-btn, .po-upload-btn,
   [class$="-btn-primary"], [class$="-add-btn"], [class$="-edit-btn"], [class$="-delete-btn"]
 ):is(:hover, :focus-visible):not(:disabled) {
   color: #FFFFFF !important;
@@ -1498,7 +1502,7 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
   .po-add-btn, .po-btn-primary, .sale-add-btn, .sale-btn-primary, .stock-add-btn,
   .stock-btn-primary, .admin-create-user-submit, .admin-create-user-btn, .export-pdf-btn,
   .modal-btn-submit, .dtp-done-btn, .acu-submit-btn, .edit-btn, .edit-button,
-  .delete-button, .acu-delete-btn,
+  .delete-button, .acu-delete-btn, .phase-upload-btn, .boq-upload-btn, .po-upload-btn,
   [class$="-btn-primary"], [class$="-add-btn"], [class$="-edit-btn"], [class$="-delete-btn"]
 ):is(:hover, :focus-visible):not(:disabled) svg {
   color: currentColor !important;

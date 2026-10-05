@@ -166,4 +166,11 @@ api.get = (url, config = {}) => {
   return requestPromise;
 };
 
+// A WebSocket notice means some tab changed this data: drop every cached GET
+// so the refresh that follows can never serve a stale copy (attachment counts,
+// lists, cards).
+api.invalidateGetCache = () => {
+  getCache.clear();
+};
+
 export default api;

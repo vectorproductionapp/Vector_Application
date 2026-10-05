@@ -1,10 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   LayoutDashboard,
   Loader2,
   RefreshCw,
@@ -13,9 +9,11 @@ import {
 } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import api from "../components/Api";
+import { useRealtime } from "../components/RealtimeProvider";
 import PageFilter, { matchesPageFilter } from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
+import ListPagination from "../components/ListPagination";
 import StockDashboard from "../components/StockDashboard";
 import "./StockRegister.css";
 
@@ -66,6 +64,7 @@ export default function StockRegister() {
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -78,7 +77,7 @@ export default function StockRegister() {
     const pageToFetch = targetPage ?? page;
     try {
       const response = await api.get(`${API_BASE_URL}/stock-register`, {
-        params: { page: pageToFetch, limit: PAGE_SIZE },
+        params: { page: pageToFetch, limit: pageSize },
       });
       if (!response.data.success) throw new Error(response.data.message || "Failed to load stock register");
       setRows(response.data.stockRows || []);
@@ -91,13 +90,18 @@ export default function StockRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page]);
+  }, [page, pageSize]);
 
   // Only fetch table data for admins while they're actually on the table view.
   useEffect(() => {
     if (isAdminView && effectiveView === "table") fetchStock({ targetPage: page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, isAdminView, effectiveView]);
+  }, [page, pageSize, isAdminView, effectiveView]);
+
+  // Stock rows are derived from invoices, so invoice writes are what change
+  // this page.  Read-only table: no guard, and the details modal keeps its
+  // own copy of the row.
+  useRealtime(["invoices"], () => fetchStock({ silent: true }));
 
   const openDetails = (row) => setDetailsRow(row);
   const closeDetails = useCallback(() => setDetailsRow(null), []);
@@ -118,8 +122,9 @@ export default function StockRegister() {
     });
   }, [query, rows, pageFilter]);
 
-  const goToPage = (nextPage) => {
-    if (nextPage >= 1 && nextPage <= totalPages && nextPage !== page) setPage(nextPage);
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
 
   // Regular users: dashboard only, no toggle, no table chrome.
@@ -177,16 +182,15 @@ export default function StockRegister() {
           </div>
 
           {!loading && !loadError && rows.length > 0 && (
-            <div className="stock-pagination">
-              <p className="stock-hint">Showing {(page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + rows.length} of {totalCount} rows</p>
-              <div className="stock-pagination-controls">
-                <button type="button" className="stock-page-btn" onClick={() => goToPage(1)} disabled={page === 1} aria-label="First page"><ChevronsLeft size={16} /></button>
-                {page > 1 && <button type="button" className="stock-page-btn" onClick={() => goToPage(page - 1)} aria-label="Previous page"><ChevronLeft size={16} /> Prev</button>}
-                <span className="stock-page-current" key={page}>{page}</span>
-                {page < totalPages && <button type="button" className="stock-page-btn" onClick={() => goToPage(page + 1)} aria-label="Next page">Next <ChevronRight size={16} /></button>}
-                <button type="button" className="stock-page-btn" onClick={() => goToPage(totalPages)} disabled={page === totalPages} aria-label="Last page"><ChevronsRight size={16} /></button>
-              </div>
-            </div>
+            <ListPagination
+              page={page}
+              pageSize={pageSize}
+              totalPages={totalPages}
+              totalCount={totalCount}
+              rowCount={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+            />
           )}
 
           {detailsRow && createPortal(

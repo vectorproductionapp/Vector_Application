@@ -72,6 +72,54 @@
 }
 .invoices-delete-btn:hover { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
 
+/* Items area of the Add Invoice form.  These used to be PO classes, so on a
+   fresh visit to this page the bar, the count and the empty state had no
+   styling at all. */
+.invoices-items-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 16px 0 10px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-table-stripe);
+}
+.invoices-items-bar-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary);
+}
+.invoices-items-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 11.5px; font-weight: 700;
+}
+.invoices-items-empty {
+  padding: 18px 14px; border: 1px dashed var(--border); border-radius: var(--r-md);
+  color: var(--text-secondary); font-size: 13px; text-align: center;
+}
+
+/* One attachments section for the whole invoice number, not one per item. */
+.invoices-level-attachments {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+/* Header action group + Add item, styled like the Cancel / secondary buttons:
+   plain surface, soft border, no yellow fill. */
+.modal-header-actions { display: flex; align-items: center; gap: 10px; }
+.invoices-add-item-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.invoices-add-item-btn:hover:not(:disabled) { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
+.invoices-add-item-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+@media (max-width: 520px) {
+  .modal-header-actions .invoices-add-item-btn { padding: 8px 12px; font-size: 13px; }
+}
+
 .invoices-row-checkbox { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
 
 .invoices-kebab-wrapper { position: relative; display: none; }
@@ -153,9 +201,22 @@
 }
 .invoice-entry-modal .po-new-line-heading + .invoices-form-grid { padding-top: 20px; }
 .invoices-form-error { background: var(--accent-soft-bg); border: 1px solid var(--accent-soft-border); color: var(--accent); padding: 10px 14px; border-radius: var(--r-md); font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+.invoices-form-totals { margin-top: 18px; }
 
 .invoices-form-grid, .invoices-form-grid * { box-sizing: border-box; }
 .invoices-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: start; width: 100%; }
+
+/* Invoice header: only Invoice No / Date / Phase, the items follow below. */
+.invoices-header-grid { grid-template-columns: repeat(3, 1fr); }
+
+@media (max-width: 900px) {
+  .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, 1fr); }
+}
+/* Same height for the select and date-picker controls as the plain inputs, so
+   a header row never looks ragged. */
+.invoices-field .searchable-select-trigger,
+.invoices-field .app-date-picker-trigger { height: 44px; }
+
 .invoices-field-span2 { grid-column: span 2; }
 
 .invoices-field {
@@ -181,8 +242,13 @@
 .invoices-field-helper.error { color: var(--accent); }
 .invoices-field input:disabled, .invoices-field input[readonly] { background: var(--bg-table-stripe); color: var(--text-secondary); cursor: not-allowed; }
 
-@media (max-width: 900px) { .invoices-form-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 520px) { .invoices-form-grid { grid-template-columns: 1fr; } .invoices-field-span2 { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .invoices-form-grid, .invoices-header-grid { grid-template-columns: 1fr; } .invoices-field-span2 { grid-column: 1 / -1; } }
+
+/* Item blocks match the compact sizing used in the PO modal. */
+.invoice-entry-modal .boq-item-card { padding: 14px 16px 16px; }
+.invoice-entry-modal .boq-item-card .invoices-form-grid { gap: 14px 16px; }
+.invoice-entry-modal .boq-item-card-header { padding-bottom: 10px; }
 
 .invoices-field .invoices-status-dropdown { width: 100%; }
 .invoices-status-dropdown { position: relative; width: 100%; }
@@ -266,4 +332,47 @@
 @media (max-width: 640px) {
   .invoices-details-container { max-height: 94vh; border-radius: var(--r-lg); }
   .invoices-details-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Card drill-down: phase -> invoice -> line items (mirrors PO Details) ---- */
+.invoices-toolbar { justify-content: space-between; }
+
+.invoices-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.invoices-heading { min-width: 0; }
+
+.invoices-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.invoices-back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.invoices-card { width: 100%; text-align: left; font-family: inherit; color: var(--text-primary); }
+.invoices-card .model-card-name { flex: 1 1 auto; }
+
+.invoices-card-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .invoices-toolbar-left { flex: 1 1 100%; }
+  .invoices-heading { font-size: 17px; }
 }

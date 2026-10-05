@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, X, ChevronDown, Loader2 } from "lucide-react";
+import { Search, X, ChevronDown, Loader2, Pencil, Trash2 } from "lucide-react";
 import "./SearchBar.css";
  
 // ---- Plain text search bar (used in toolbars, tables, etc.) ----
@@ -40,6 +40,8 @@ export function SearchableSelect({
   emptyMessage = "No options available",
   actionOption,
   allowCustomValue = false,
+  onEditOption,
+  onDeleteOption,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -169,14 +171,56 @@ export function SearchableSelect({
               <div className="searchable-select-empty">{emptyMessage}</div>
             ) : (
               filteredOptions.map((opt) => (
-                <button
-                  type="button"
+                <div
                   key={opt.value}
-                  className={`searchable-select-option${opt.value === value ? " selected" : ""}`}
-                  onClick={() => handleSelect(opt)}
+                  className={`searchable-select-option-wrap${
+                    opt.value === value ? " selected" : ""
+                  }`}
                 >
-                  {opt.label}
-                </button>
+                  <button
+                    type="button"
+                    className={`searchable-select-option${
+                      opt.value === value ? " selected" : ""
+                    }`}
+                    onClick={() => handleSelect(opt)}
+                  >
+                    {opt.label}
+                  </button>
+                  {(onEditOption || onDeleteOption) && (
+                    <span className="searchable-select-option-actions">
+                      {onEditOption && (
+                        <button
+                          type="button"
+                          className="searchable-select-option-action"
+                          aria-label={`Edit ${opt.label}`}
+                          title="Edit"
+                          onClick={() => {
+                            // Close first: the confirm dialog must not be
+                            // covered by this floating panel.
+                            close();
+                            onEditOption(opt);
+                          }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {onDeleteOption && (
+                        <button
+                          type="button"
+                          className="searchable-select-option-action danger"
+                          aria-label={`Delete ${opt.label}`}
+                          title="Delete"
+                          onClick={() => {
+                            close();
+                            onDeleteOption(opt);
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
               ))
             )}
           </div>

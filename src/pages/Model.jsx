@@ -3,11 +3,30 @@ import api from "../components/Api";
 import Swal from "sweetalert2";
 import { Plus, Layers, Pencil, Trash2, X, Check, MoreVertical } from "lucide-react";
 import CreateEntityModal from "../components/CreateEntityModal";
+import { useRealtime } from "../components/RealtimeProvider";
 import Phase from "./Phase";
 import { useAuth } from "../context/Auth";
 import "./Model.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
+
+// The model this tab was drilled into, kept across a browser refresh.
+const DRILL_KEY = "vector_active_model";
+const readDrill = (key) => {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) || "null") || null;
+  } catch {
+    return null;
+  }
+};
+const writeDrill = (key, value) => {
+  try {
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+};
 
 // ---- Themed SweetAlert2 helpers (brand colors, shared style across pages) ----
 const swalConfirm = ({ title, text, confirmText = "Yes, delete it" }) =>
@@ -50,7 +69,12 @@ export default function Model() {
   const canManageModels = role === "admin";
   const [models, setModels] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [activeModel, setActiveModel] = useState(null);
+  // A refresh reopens the model's phase list instead of the card grid.
+  const [activeModel, setActiveModel] = useState(() => readDrill(DRILL_KEY));
+
+  useEffect(() => {
+    writeDrill(DRILL_KEY, activeModel);
+  }, [activeModel]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -68,7 +92,12 @@ export default function Model() {
     try {
       const response = await api.get(`${API_BASE_URL}/models`, { __vectorSuppressLoader: true });
       if (response.data.success) {
-        setModels(response.data.models || []);
+        const list = response.data.models || [];
+        setModels(list);
+        // A restored model that no longer exists falls back to the card grid.
+        if (activeModel && list.length && !list.some((model) => model.id === activeModel.id)) {
+          setActiveModel(null);
+        }
       } else {
         setError(response.data.message || "Failed to load models");
       }
@@ -82,6 +111,12 @@ export default function Model() {
   useEffect(() => {
     loadModels();
   }, []);
+
+  // A model created, renamed, or deleted anywhere arrives as a WebSocket
+  // notice: reload the card grid without a page refresh.
+  useRealtime(["models"], loadModels, {
+    guard: () => !(showModal || deleting),
+  });
 
   // Close the kebab menu when clicking outside it
   useEffect(() => {
@@ -145,7 +180,7 @@ export default function Model() {
       const res = await api.put(`${API_BASE_URL}/models/${m.id}`, { name: newName.trim() });
       if (res.data.success) {
         await loadModels();
-        swalSuccess("Model renamed", `"${m.name}" â†’ "${newName.trim()}"`);
+        swalSuccess("Model renamed", `"${m.name}" → "${newName.trim()}"`);
       } else {
         swalError("Rename failed", res.data.message || "Failed to rename model");
       }
