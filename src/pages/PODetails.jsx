@@ -1912,11 +1912,6 @@ export default function PODetails() {
   };
 
   // Live GST / PO Value preview for the Add PO form — the rate is per line.
-  const formTotals = calculatePoAmounts(formValues.qty, formValues.rate, formValues.gstRate);
-  const formSubtotal = formTotals
-    ? Math.round(Number(formValues.qty) * Number(formValues.rate) * 100) / 100
-    : null;
-
   const supplierOptions = useMemo(
     () => suppliers.map((supplier) => ({ value: supplier, label: supplier })),
     [suppliers]

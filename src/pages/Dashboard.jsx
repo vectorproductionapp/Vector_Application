@@ -87,7 +87,6 @@ export default function Dashboard() {
   const chartTheme = useThemeColors();
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
   const { role } = useAuth();
   const dashboardCacheKey = `vector_dashboard_v2_${role || "guest"}`;
   const isRegularUser = role === "user";
@@ -166,10 +165,8 @@ export default function Dashboard() {
       if (requestId === dashReqRef.current) {
         setDashboard(dashboardData);
         try { sessionStorage.setItem(dashboardCacheKey, JSON.stringify({ data: dashboardData, savedAt: Date.now() })); } catch {}
-        setLoadError(false);
       }
     } catch {
-      if (requestId === dashReqRef.current) setLoadError(true);
     } finally {
       if (requestId === dashReqRef.current) setIsLoading(false);
     }
