@@ -1154,26 +1154,23 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     [boq, filterBoqRows]
   );
 
-  // Grand total over every exported row (all pages), not just the visible page.
-  const totalMaterialCost = useMemo(
+  // Use exactly the same calculation as the three money columns.  Summing the
+  // stored `materialCost` value here let an old/stale saved value disagree with
+  // the line shown in the table, especially after a rate, quantity, or GST
+  // slab was changed.
+  const boqTotals = useMemo(
     () =>
       exportRows.reduce(
-        (sum, row) => sum + (Number(String(row.materialCost ?? 0).replace(/,/g, "")) || 0),
-        0
+        (totals, row) => {
+          const amounts = boqGstAmounts(row);
+          return {
+            base: totals.base + (amounts?.base || 0),
+            gst: totals.gst + (amounts?.gst || 0),
+            total: totals.total + (amounts?.total || 0),
+          };
+        },
+        { base: 0, gst: 0, total: 0 }
       ),
-    [exportRows]
-  );
-
-  // The same rows without their GST portion, so the badge can show both.
-  const totalMaterialCostExclGst = useMemo(
-    () =>
-      exportRows.reduce((sum, row) => {
-        const amounts = boqGstAmounts(row);
-        if (amounts) return sum + amounts.base;
-        // No unit rate on the row: strip GST from the stored inclusive cost.
-        const incl = Number(String(row.materialCost ?? 0).replace(/,/g, "")) || 0;
-        return sum + Math.round((incl / (1 + boqGstRate(row) / 100)) * 100) / 100;
-      }, 0),
     [exportRows]
   );
 
@@ -1460,17 +1457,17 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
                 <span className="table-total">
                   <span className="table-total-label">Total</span>
                   <span className="table-total-value">
-                    {fmtINR(totalMaterialCostExclGst)}{" "}
+                    {fmtINR(boqTotals.base)}{" "}
                     <span className="table-total-scope">(Basic Price)</span>
                   </span>
                   <span className="table-total-scope">|</span>
                   <span className="table-total-value">
-                    {fmtINR(totalMaterialCost - totalMaterialCostExclGst)}{" "}
+                    {fmtINR(boqTotals.gst)}{" "}
                     <span className="table-total-scope">(GST Price)</span>
                   </span>
                   <span className="table-total-scope">|</span>
                   <span className="table-total-value">
-                    {fmtINR(totalMaterialCost)}{" "}
+                    {fmtINR(boqTotals.total)}{" "}
                     <span className="table-total-scope">(Total incl. GST)</span>
                   </span>
                 </span>
@@ -1488,7 +1485,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
 
           {/* <div className="table-total-outside">
             <span className="table-total-label">Total Material Cost incl. GST</span>
-            <span className="table-total-value">{fmtINR(totalMaterialCost)}</span>
+            <span className="table-total-value">{fmtINR(boqTotals.total)}</span>
           </div> */}
 
           <ListPagination
