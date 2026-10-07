@@ -18,7 +18,20 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Same build-time API URL as the merge workflow; without it the preview
+      # build would call relative API paths and receive index.html.
+      - name: Verify API base URL is configured
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
+        run: |
+          if [ -z "$REACT_APP_API_BASE_URL" ]; then
+            echo "::error::Repository variable REACT_APP_API_BASE_URL is not set."
+            exit 1
+          fi
+          echo "Building with REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
       - run: npm run build
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
