@@ -860,7 +860,6 @@ export default function PODetails() {
   // it), so the preview can correct or drop a row before it is uploaded.  The
   // ready rows and the issue list are both derived from it.
   const [uploadEntries, setUploadEntries] = useState([]);
-  const [uploadEditingLine, setUploadEditingLine] = useState(null);
   const [uploadNotice, setUploadNotice] = useState("");
   const [uploading, setUploading] = useState(false);
 
@@ -1533,7 +1532,6 @@ export default function PODetails() {
   const resetUpload = () => {
     setUploadFile(null);
     setUploadEntries([]);
-    setUploadEditingLine(null);
     setUploadNotice("");
     setUploading(false);
   };
@@ -1583,7 +1581,6 @@ export default function PODetails() {
 
     setUploadFile(file);
     setUploadEntries([]);
-    setUploadEditingLine(null);
     setUploadNotice("");
 
     if (!file) return;
@@ -1604,7 +1601,6 @@ export default function PODetails() {
   // a row is either dropped here or corrected there - never half-edited.
   const deleteUploadEntry = (line) => {
     setUploadEntries((previous) => previous.filter((entry) => entry.line !== line));
-    setUploadEditingLine((current) => (current === line ? null : current));
   };
 
   // The two counters always describe what would be uploaded right now.
@@ -1922,7 +1918,6 @@ export default function PODetails() {
     }
 
     const originalForm = buildEditForm(detailsRow);
-    const originalLine = buildEditLineDraft(detailsRow);
     // PO header travels with the record, exactly like the Add form merges it
     // into every line it posts.
     const header = {
@@ -3407,4 +3402,3 @@ export default function PODetails() {
     </div>
   );
 }
-
