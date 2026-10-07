@@ -15,7 +15,21 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Build-time API URL. Without it the bundle falls back to relative paths,
+      # Firebase Hosting rewrites them to index.html, and login fails with
+      # "You need to enable JavaScript to run this app."
+      - name: Verify API base URL is configured
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
+        run: |
+          if [ -z "$REACT_APP_API_BASE_URL" ]; then
+            echo "::error::Repository variable REACT_APP_API_BASE_URL is not set."
+            exit 1
+          fi
+          echo "Building with REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
       - run: npm run build
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
