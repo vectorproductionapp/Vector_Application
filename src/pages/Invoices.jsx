@@ -236,6 +236,16 @@ export default function Invoices() {
         : null
     );
   }, [selectedPhase, selectedInvoice]);
+
+  // Clicking "Invoices" in the sidebar re-opens the phase card grid.
+  useEffect(() => {
+    const resetDrill = () => {
+      setSelectedPhase(null);
+      setSelectedInvoice(null);
+    };
+    window.addEventListener("vector:invoices-reset", resetDrill);
+    return () => window.removeEventListener("vector:invoices-reset", resetDrill);
+  }, []);
   const [filterOptions, setFilterOptions] = useState({});
  
   const [modalOpen, setModalOpen] = useState(false);
@@ -247,6 +257,9 @@ export default function Invoices() {
   const [invoiceAttachments, setInvoiceAttachments] = useState([]);
   const lastItemRef = useRef(null);
   const initialFormValuesRef = useRef(emptyInvoiceForm);
+// Item blocks count as unsaved work too, now that Edit uses them as well.
+const initialItemDraftsRef = useRef([]);
+const initialAttachmentsRef = useRef([]);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [boqPhases, setBoqPhases] = useState([]);
@@ -492,11 +505,13 @@ export default function Invoices() {
   }, [filterOptions]);
  
 const openAddModal = () => {
-  setIsEditMode(false);
-  initialFormValuesRef.current = emptyInvoiceForm;
-  setFormValues(emptyInvoiceForm);
-  setItemDrafts([]);
-  setInvoiceAttachments([]);
+    setIsEditMode(false);
+    initialFormValuesRef.current = emptyInvoiceForm;
+    initialItemDraftsRef.current = [];
+    initialAttachmentsRef.current = [];
+    setFormValues(emptyInvoiceForm);
+    setItemDrafts([]);
+    setInvoiceAttachments([]);
     setFormError("");
     setClosing(false);
     setModalOpen(true);
@@ -522,6 +537,21 @@ const openAddModal = () => {
     };
     initialFormValuesRef.current = initialValues;
     setFormValues(initialValues);
+    // Edit uses the same item blocks as Add, so the saved line becomes Item 1
+    // and "Add item" can extend the invoice with further lines.
+    const savedLine = {
+      id: row.id,
+      po: initialValues.po,
+      code: initialValues.code,
+      desc: initialValues.desc,
+      qtyInv: initialValues.qtyInv,
+      qtyRecv: initialValues.qtyRecv,
+      verifiedBy: initialValues.verifiedBy,
+    };
+    setItemDrafts([savedLine]);
+    initialItemDraftsRef.current = [savedLine];
+    setInvoiceAttachments(initialValues.attachments);
+    initialAttachmentsRef.current = initialValues.attachments;
     setFormError("");
     setClosing(false);
     setModalOpen(true);
@@ -535,6 +565,8 @@ const openAddModal = () => {
           if (!res.data?.success) return;
           const files = attachmentsOf(res.data.invoice);
           if (!files.length) return;
+          setInvoiceAttachments(files);
+          initialAttachmentsRef.current = files;
           setFormValues((current) =>
             current.id === row.id ? { ...current, attachments: files } : current
           );
@@ -548,7 +580,11 @@ const openAddModal = () => {
  
   const requestClose = async (skipConfirmation = false) => {
     if (closing) return;
-    if (skipConfirmation !== true && JSON.stringify(formValues) !== JSON.stringify(initialFormValuesRef.current)) {
+    const dirty =
+      JSON.stringify(formValues) !== JSON.stringify(initialFormValuesRef.current) ||
+      JSON.stringify(itemDrafts) !== JSON.stringify(initialItemDraftsRef.current) ||
+      JSON.stringify(invoiceAttachments) !== JSON.stringify(initialAttachmentsRef.current);
+    if (skipConfirmation !== true && dirty) {
       const result = await swalConfirm({
         title: "Discard unsaved changes?",
         text: "Your invoice changes will be lost unless you save them.",
@@ -595,33 +631,18 @@ const openAddModal = () => {
 
   // Item codes belong to the PO picked inside each item block, so the option
   // list is derived per item rather than from the (now unused) header PO.
-  const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
+const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
     .filter((line) => line.po === po && line.code)
     .map((line) => ({ value: line.code, label: line.desc ? `${line.code}  ${line.desc}` : line.code })),
   [invoicePoLines]);
-
-  const itemCodeOptions = useMemo(
-    () => itemCodeOptionsForPo(formValues.po),
-    [itemCodeOptionsForPo, formValues.po]
-  );
 
   const handlePhaseSelect = (value) => {
     const phase = boqPhases.find((item) => `${item.modelId}::${item.phaseId}` === value);
     setFormError("");
     setFormValues((prev) => ({ ...prev, modelId: phase?.modelId || "", phaseId: phase?.phaseId || "",
-      phase: phase?.phaseName || "", po: "", code: "", desc: "" }));
+      phase: phase?.phaseName || "" }));
     // Existing items point at PO lines of the previous phase.
-    if (!isEditMode) setItemDrafts([]);
-  };
-
-  const handlePoSelect = (po) => {
-    setFormError("");
-    setFormValues((prev) => ({ ...prev, po, code: "", desc: "" }));
-  };
-
-  const handleItemCodeSelect = (code) => {
-    const item = invoicePoLines.find((line) => line.po === formValues.po && line.code === code);
-    setFormValues((prev) => ({ ...prev, code, desc: item?.desc || "" }));
+    setItemDrafts([]);
   };
 
   const handlePageSizeChange = (nextPageSize) => {
@@ -746,23 +767,64 @@ const openAddModal = () => {
   const handleSave = async (startAnother = false) => {
     if (saving) return;
 
-    // Editing an existing record keeps the single-line form it was opened with.
+    // Editing keeps the Add form's shape: header above, one block per line below.
+    // A block that was loaded from the server is updated; a block added with
+    // "Add item" is posted as a new line of the same invoice.
     if (isEditMode) {
-      const error = validateInvoiceForm(formValues);
-      if (error) {
-        reportSaveBlocked(error);
+      if (!itemDrafts.length) {
+        reportSaveBlocked('Add at least one item with the "Add item" button in the header.');
         return;
+      }
+
+      const header = {
+        invoice: formValues.invoice,
+        date: formValues.date,
+        modelId: formValues.modelId,
+        phaseId: formValues.phaseId,
+        phase: formValues.phase,
+      };
+      const lines = itemDrafts.map((draft) => ({ ...draft, ...header }));
+      for (let index = 0; index < lines.length; index += 1) {
+        const error = validateInvoiceForm(lines[index]);
+        if (error) {
+          reportSaveBlocked(`Item ${index + 1}: ${error}`);
+          return;
+        }
       }
 
       setSaving(true);
       setFormError("");
       try {
-        const res = await api.put(`${API_BASE_URL}/invoices/${formValues.id}`, { ...formValues });
-        if (!res.data.success) throw new Error(res.data.message || "Failed to save Invoice");
+        let added = 0;
+        for (const line of lines) {
+          const res = line.id
+            ? await api.put(`${API_BASE_URL}/invoices/${line.id}`, line)
+            : await api.post(`${API_BASE_URL}/invoices`, line);
+          if (!res.data.success) throw new Error(res.data.message || "Failed to save Invoice");
+          if (!line.id) added += 1;
+        }
+
+        // The files belong to the invoice number, not to a single line.
+        if (invoiceAttachments.length) {
+          const headerRes = await api.post(`${API_BASE_URL}/invoices/header`, {
+            invoice: formValues.invoice,
+            date: formValues.date,
+            phase: formValues.phase,
+            attachments: invoiceAttachments,
+          });
+          if (!headerRes.data.success) {
+            throw new Error(headerRes.data.message || "Failed to save invoice attachments");
+          }
+        }
 
         setSaving(false);
         requestClose(true);
-        await swalSuccess("Invoice Updated", "The Invoice has been updated successfully.");
+        await swalSuccess(
+          "Invoice Updated",
+          added
+            ? `The invoice was updated and ${added} new line${added === 1 ? "" : "s"} added.`
+            : "The Invoice has been updated successfully."
+        );
         await refreshData({ silent: true, targetPage: page });
       } catch (err) {
         setSaving(false);
@@ -1253,17 +1315,15 @@ const openAddModal = () => {
               <h2>{isEditMode ? "Edit Invoice" : "Add Invoice"}</h2>
               <div className="modal-header-actions">
                 {/* In the header, so adding a line never needs a scroll. */}
-                {!isEditMode && (
-                  <button
-                    type="button"
-                    className="invoices-add-item-btn"
-                    onClick={addItemDraft}
-                    disabled={saving}
-                    title="Add another item to this invoice"
-                  >
-                    <Plus size={15} /> Add item
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="invoices-add-item-btn"
+                  onClick={addItemDraft}
+                  disabled={saving}
+                  title="Add another item to this invoice"
+                >
+                  <Plus size={15} /> Add item
+                </button>
                 <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
                   <X size={22} />
                 </button>
@@ -1291,12 +1351,12 @@ const openAddModal = () => {
                     readOnly={isEditMode}
                   />
                 </label>
- 
+
                 <label className="invoices-field">
                   <span>Invoice Date <span className="invoices-required-asterisk">*</span></span>
                   <DatePicker value={formValues.date} onChange={(date) => setFormValues((prev) => ({ ...prev, date }))} ariaLabel="Select invoice date" />
                 </label>
- 
+
                 <label className="invoices-field">
                   <span>Phase <span className="invoices-required-asterisk">*</span></span>
                   <SearchableSelect
@@ -1311,56 +1371,8 @@ const openAddModal = () => {
                 </label>
               </div>
 
-              {isEditMode ? (
-                <div className="invoices-form-grid">
-                  <label className="invoices-field">
-                    <span>PO No <span className="invoices-required-asterisk">*</span></span>
-                    <SearchableSelect
-                      options={poOptions}
-                      value={formValues.po}
-                      onChange={handlePoSelect}
-                      placeholder={formValues.phaseId ? "Select PO No" : "Select Phase first"}
-                      disabled={!formValues.phaseId}
-                      loading={invoicePoLinesLoading}
-                      emptyMessage={invoicePoLinesError || "No PO numbers found for this phase"}
-                    />
-                  </label>
-
-                  <label className="invoices-field">
-                    <span>Item Code <span className="invoices-required-asterisk">*</span></span>
-                    <SearchableSelect
-                      options={itemCodeOptions}
-                      value={formValues.code}
-                      onChange={handleItemCodeSelect}
-                      placeholder={formValues.po ? "Select Item Code" : "Select PO No first"}
-                      disabled={!formValues.po}
-                      loading={invoicePoLinesLoading}
-                      emptyMessage={invoicePoLinesError || "No item codes found for this PO"}
-                    />
-                  </label>
- 
-                  <label className="invoices-field invoices-field-span2">
-                    <span>Item Description <span className="invoices-required-asterisk">*</span></span>
-                    <input name="desc" value={formValues.desc} readOnly disabled placeholder="Auto-filled from selected item code" />
-                  </label>
- 
-                  <label className="invoices-field">
-                    <span>Qty Invoiced <span className="invoices-required-asterisk">*</span></span>
-                    <input type="number" min="0" name="qtyInv" value={formValues.qtyInv} onChange={handleFormChange} placeholder="e.g. 100" />
-                  </label>
- 
-                  <label className="invoices-field">
-                    <span>Qty Received <span className="invoices-required-asterisk">*</span></span>
-                    <input type="number" min="0" name="qtyRecv" value={formValues.qtyRecv} onChange={handleFormChange} placeholder="e.g. 100" />
-                  </label>
- 
-                  <label className="invoices-field">
-                    <span>Verified By <span className="invoices-required-asterisk">*</span></span>
-                    <input name="verifiedBy" value={formValues.verifiedBy} onChange={handleFormChange} placeholder="e.g. A. Sharma" />
-                  </label>
-                </div>
-              ) : (
-                <>
+              {/* ---- Items: one card per line, the same in Add and Edit ---- */}
+              <>
                   <div className="invoices-items-bar">
                     <span className="invoices-items-bar-label">
                       Items
@@ -1384,15 +1396,19 @@ const openAddModal = () => {
                           {draft.code ? ` · ${draft.code}` : ""}
                         </span>
                         <div className="boq-item-card-actions">
-                          <button
-                            type="button"
-                            className="icon-btn boq-item-remove"
-                            onClick={() => removeItemDraft(index)}
-                            aria-label={`Remove item ${index + 1}`}
-                            title="Remove this item"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {/* A line that already exists is only removed from
+                              the table, never silently dropped by the form. */}
+                          {!(isEditMode && draft.id) && (
+                            <button
+                              type="button"
+                              className="icon-btn boq-item-remove"
+                              onClick={() => removeItemDraft(index)}
+                              aria-label={`Remove item ${index + 1}`}
+                              title="Remove this item"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1483,22 +1499,7 @@ const openAddModal = () => {
                       disabled={saving}
                     />
                   </div>
-                </>
-              )}
-
-              {isEditMode && (
-                <div className="invoices-form-totals">
-                  <AttachmentsEditor
-                    files={formValues.attachments || []}
-                    onChange={(attachments) =>
-                      setFormValues((prev) => ({ ...prev, attachments: attachments || [] }))
-                    }
-                    label="Attach invoice files"
-                    uploadEndpoint={`${API_BASE_URL}/invoices/attachments/upload`}
-                    disabled={saving}
-                  />
-                </div>
-              )}
+              </>
             </form>
  
             <div className="modal-footer">

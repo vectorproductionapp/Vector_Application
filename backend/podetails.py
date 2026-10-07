@@ -572,8 +572,9 @@ def list_po_details():
 
     Supports pagination via `?page=<n>&limit=<n>` query params (defaults: page=1, limit=10)
     plus optional server-side filters `?q=<text>&filterField=<key>&filterValue=<value>`.
-    `totals.poValue` and `pagination.totalCount` always cover every row that
-    matches the active filters, not just the requested page.
+    `totals.poValue`, `totals.poValueExclGst`, `totals.poGst` and
+    `pagination.totalCount` always cover every row that matches the active
+    filters, not just the requested page.
 
     Response shape:
 
@@ -599,7 +600,7 @@ def list_po_details():
 
         },
 
-        "totals": { "poValue": 1234567.89 }
+        "totals": { "poValue": 1234567.89, "poValueExclGst": 1046074.49, "poGst": 188493.4 }
 
     }
 
@@ -633,6 +634,8 @@ def list_po_details():
         filtered_rows = []
         all_rows = []
         total_value = 0
+        total_value_excl_gst = 0
+        total_gst = 0
         for doc in base_query.stream():
             row = _serialize(doc)
             po_files = header_files.get(_header_doc_id(
@@ -648,10 +651,18 @@ def list_po_details():
                 continue
             filtered_rows.append(row)
             try:
-                total_value += float(row.get("value") or 0)
+                row_value = float(row.get("value") or 0)
+                row_gst = float(row.get("gst") or 0)
             except (TypeError, ValueError):
                 continue
+            total_value += row_value
+            total_gst += row_gst
+            # value = base (qty x rate) + gst, so the pre-GST figure is the
+            # same total minus the GST portion of every line.
+            total_value_excl_gst += row_value - row_gst
         total_value = round(total_value, 2)
+        total_value_excl_gst = round(total_value_excl_gst, 2)
+        total_gst = round(total_gst, 2)
 
         # The page reads "phase first, then PO number", so the paged rows are
         # ordered the same way instead of purely by newest-created.
@@ -690,7 +701,7 @@ def list_po_details():
 
             "poDetails": page_rows,
 
-            "totals": {"poValue": total_value},
+            "totals": {"poValue": total_value, "poValueExclGst": total_value_excl_gst, "poGst": total_gst},
 
             "filterOptions": filter_options,
 
@@ -738,32 +749,54 @@ def list_po_groups():
                 value = float(row.get("value") or 0)
             except (TypeError, ValueError):
                 value = 0.0
+            try:
+                gst = float(row.get("gst") or 0)
+            except (TypeError, ValueError):
+                gst = 0.0
+            # value = base (qty x rate) + gst, so the pre-GST figure is the
+            # same line minus its GST portion.
+            base = value - gst
 
             group = groups.setdefault(phase_name.lower(), {
                 "phase": phase_name,
                 "date": date,
                 "rowCount": 0,
                 "totalValue": 0.0,
+                "totalGst": 0.0,
+                "totalValueExclGst": 0.0,
                 "pos": {},
             })
             group["rowCount"] += 1
             group["totalValue"] += value
+            group["totalGst"] += gst
+            group["totalValueExclGst"] += base
 
             po = group["pos"].setdefault(po_name.lower(), {
                 "po": po_name,
                 "date": date,
                 "rowCount": 0,
                 "totalValue": 0.0,
+                "totalGst": 0.0,
+                "totalValueExclGst": 0.0,
             })
             po["rowCount"] += 1
             po["totalValue"] += value
+            po["totalGst"] += gst
+            po["totalValueExclGst"] += base
 
         payload = []
         for group in groups.values():
             group["totalValue"] = round(group["totalValue"], 2)
+            group["totalGst"] = round(group["totalGst"], 2)
+            group["totalValueExclGst"] = round(group["totalValueExclGst"], 2)
             group["pos"] = sorted(
                 (
-                    {**po, "totalValue": round(po["totalValue"], 2)}
+                    {
+                        **po,
+                        "totalValue": round(po["totalValue"], 2),
+                        "totalGst": round(po["totalGst"], 2),
+                        "totalValueExclGst": round(po["totalValueExclGst"], 2),
+                    }
                     for po in group["pos"].values()
                 ),
                 key=lambda item: item["po"].lower(),

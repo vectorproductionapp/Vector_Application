@@ -1,0 +1,559 @@
+2026-10-06 14:08:14,323 INFO vector.realtime realtime WebSocket listening on /ws
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.175:5000
+Press CTRL+C to quit
+slow_request method=GET path=/po-details status=200 total_ms=1450.6 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:08:32] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:08:35] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:08:35] "GET /boq/phases HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=988.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:09:08] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:11:42] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:11:42] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:12:41] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:12:41] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=743.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:13:29] "GET /po-details?page=1&limit=12 HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=546.8 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:16:16] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:19:26] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:19:26] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:19:28] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:19:28] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:20:07] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:24:02] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=561.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:24:02] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=607.6 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:24:02] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:24:04] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:24:04] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:24:09] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/pRwbIH6iI2fnOxd55Q5M/boq HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:24:29] "GET /po-details?page=1&limit=10&filterField=po&filterValue=42123&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:28:27] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:28:27] "GET /boq/phases HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=509.0 auth_ms=0.2
+127.0.0.1 - - [06/Oct/2026 14:34:54] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=729.4 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 14:34:55] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:34:56] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:35:02] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/NQ8MXHdZXoeoHlPFCSm2/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:08] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=528.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:37:09] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:10] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:12] "GET /po-details?page=1&limit=10&filterField=po&filterValue=534&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:12] "GET /po-details/images?ids=kPne2wEB9KEzPiKDL0ag HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:15] "GET /po-details?page=1&limit=10&filterField=po&filterValue=cd578&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:23] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:33] "GET /po-details?page=1&limit=10&filterField=po&filterValue=42123&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:38] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:41] "GET /po-details?page=1&limit=10&filterField=po&filterValue=EUE657&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:43] "GET /po-details?page=1&limit=10&filterField=po&filterValue=TEST-STG-3&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:37:43] "GET /po-details/images?ids=hyiSAqS1yfIk0QImlQ2Y HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:38:30] "GET /po-details?page=1&limit=10&filterField=po&filterValue=123333&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:38:32] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:38:36] "GET /po-details?page=1&limit=10&filterField=po&filterValue=42123&filterField=phase&filterValue=Tower+1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:41:38] "GET /po-details?page=1&limit=10&filterField=po&filterValue=42123&filterField=phase&filterValue=Tower+1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:41:45] "GET /po-details?page=1&limit=10&filterField=po&filterValue=123333&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:41:49] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:28] "GET /main.b8ff2618c4d5279ab758.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:44:29] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:29] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:29] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:36] "GET /main.1f7fb431ec4a06c03fc8.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:44:37] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:37] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:44:37] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:06] "GET /main.91adcabce64274798166.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:45:06] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:06] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:06] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:45] "GET /main.7d001dfa37027bc0cdcf.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:45:45] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:45] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:45:45] "GET /po-details?page=1&limit=10&filterField=po&filterValue=1234&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=746.8 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:49:17] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:19] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:22] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=603.5 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:49:24] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:24] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:33] "GET /po-details?page=1&limit=10&filterField=po&filterValue=534&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:33] "GET /po-details/images?ids=kPne2wEB9KEzPiKDL0ag HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:36] "GET /po-details?page=1&limit=10&filterField=po&filterValue=cd578&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=595.6 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 14:49:47] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:49:47] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:03] "GET /po-details?page=1&limit=10&filterField=po&filterValue=42123&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:12] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:45] "GET /po-details?page=1&limit=10&filterField=po&filterValue=EUE657&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:47] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:47] "GET /po-details?page=1&limit=10&filterField=po&filterValue=EUE657&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:47] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:51] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:51] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:51] "GET /po-details?page=1&limit=10&filterField=po&filterValue=EUE657&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:53] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:53] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:50:53] "GET /po-details?page=1&limit=10&filterField=po&filterValue=EUE657&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=590.2 auth_ms=0.4
+127.0.0.1 - - [06/Oct/2026 14:53:19] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:53:21] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:53:27] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:53:32] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+C:\Users\ADMIN\AppData\Local\Programs\Python\Python311\Lib\site-packages\google\cloud\firestore_v1\base_collection.py:317: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+  return query.where(field_path, op_string, value)
+127.0.0.1 - - [06/Oct/2026 14:53:34] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:53:34] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:56:49] "GET /main.2d9b3a457939455f3338.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:56:53] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:56:54] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:03] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:05] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:05] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=517.1 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 14:57:06] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=554.1 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 14:57:06] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:11] "GET /main.59bdfdfb9baa2687c099.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 14:57:12] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:12] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:12] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:57:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:58:17] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:58:17] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 14:58:20] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:00:34] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:00:45] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:00:46] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:00:59] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:00:59] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:01:05] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:01:05] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:04] "GET /main.3bbe32882b38055532ae.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:02:04] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:02:05] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:07] "GET /main.437481ce0d7fa1ffe010.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:02:07] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:02:08] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:15] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:36] "GET /main.47708cd9c299dad7f06a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:02:37] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:42] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:44] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:47] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:49] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:58] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:02:59] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:03:00] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:03:08] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:03:08] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:04:47] "GET /main.69faee94171e943b2d92.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models status=200 total_ms=542.9 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 15:04:48] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:11] "GET /main.8fe1cb41a6bc799095a6.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:05:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:31] "GET /main.d6b06b976e07b4f42740.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:05:31] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:34] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:36] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:37] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:37] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:39] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:41] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:41] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:41] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:49] "GET /sales?page=1&limit=10&search= HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:51] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:05:55] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:21] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=244445 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:29] "GET /po-details?page=1&limit=10&filterField=po&filterValue=123333&filterField=phase&filterValue=Phase-2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:51] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:52] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:53] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:54] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:59] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:06:59] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:07:01] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:07:01] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:07:02] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:07:03] "GET /boq/phases HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=546.5 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:14:06] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=781.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:14:10] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1334 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:14:10] "GET /invoices/images?ids=XztmvlQWSFcm2dJTuld6 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:30] "GET /invoices/XztmvlQWSFcm2dJTuld6 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:33] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:33] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:42] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=546.5 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:15:44] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:44] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:15:45] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:16:31] "GET /models/SaGGImpUuG7QUrhgLVtM/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:16:33] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:16:35] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:02] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:02] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:02] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:47] "GET /main.33788fccb52a0b7227b8.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:18:48] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:48] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:18:48] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:13] "GET /main.3ef3d202833a823ca273.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:21:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:14] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:17] "GET /main.e431651f2925c7c67cc8.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:21:17] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:17] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:21:17] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:27:30] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:27:30] "GET /item-codes HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=596.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:27:57] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=577.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:27:59] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:27:59] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:28:00] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:28:00] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:28:13] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:28:49] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:28:50] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=803.2 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:37:51] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=651.2 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 15:37:54] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:38:33] "GET /main.fa8fdf85c9358da8debd.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:38:34] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:38:34] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:38:35] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:03] "GET /main.3c6da1df277c48beeaf7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:39:04] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:04] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:04] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:19] "GET /main.801043e3cfd273503dca.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:39:20] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:20] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:20] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:22] "GET /main.2d6960682e29d3c5361c.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:39:23] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:23] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:23] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:39] "GET /main.d00e612719615a744b4a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 15:39:40] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:40] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 15:39:40] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/suppliers status=200 total_ms=1597.9 auth_ms=0.2
+127.0.0.1 - - [06/Oct/2026 16:08:21] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=1793.4 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:08:21] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=1932.9 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:08:21] "GET /po-details?page=1&limit=10&filterField=po&filterValue=5678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:08:51] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:08:52] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:08:58] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=584.2 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:09:00] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:00] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:05] "GET /invoices/IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/invoice-options status=200 total_ms=532.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:09:07] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=589.4 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 16:09:34] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:35] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:37] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=507.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:09:46] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:46] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:09:50] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=764.4 auth_ms=0.3
+127.0.0.1 - - [06/Oct/2026 16:14:42] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/boq/phases status=200 total_ms=920.9 auth_ms=0.4
+127.0.0.1 - - [06/Oct/2026 16:14:42] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:15] "GET /main.ed65e6120a39ed08887d.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=893.8 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:24:18] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/suppliers status=200 total_ms=1013.7 auth_ms=0.1
+127.0.0.1 - - [06/Oct/2026 16:24:18] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=1233.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:24:18] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:20] "GET /main.2d2cb385c252a11b1550.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:24:20] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:21] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:21] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:21] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:27] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:37] "GET /main.c35e4a36bfe54a077f8b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:24:39] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:39] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:39] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:42] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:24:59] "GET /main.6b8c2432bbd9f643cad6.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:25:01] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:01] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:01] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:01] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:46] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:46] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:49] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:53] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:53] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:54] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:55] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:25:56] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:26:15] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=554.5 auth_ms=0.3
+127.0.0.1 - - [06/Oct/2026 16:26:16] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:26:17] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:26:26] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:26:39] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:13] "GET /main.0c247ed2d0e8517d1d28.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:28:15] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:15] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:15] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:19] "GET /main.1b06365f32c344af3b6c.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:28:20] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:20] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:21] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:23] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:23] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:23] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:25] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:25] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=679.4 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:28:28] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:30] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:31] "GET /main.7ee45f9fb3fa92bc0797.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:28:32] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:32] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:32] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:32] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:34] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:28:35] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:29:19] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:29:19] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:29:20] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:29:21] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:29:22] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:31:17] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=900.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:31:17] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=1304.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:31:18] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:31:18] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:31:20] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:31:55] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=728.9 auth_ms=0.2
+127.0.0.1 - - [06/Oct/2026 16:31:56] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:31:57] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:32:01] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:32:50] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:33:52] "GET /main.22404a6800b927bf4609.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:33:53] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=614.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:33:54] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/groups status=200 total_ms=685.9 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:33:54] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:33:57] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:02] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:10] "GET /main.3fd0426e315e594c2556.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:34:11] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:11] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:11] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:15] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=509.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:34:17] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:19] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:20] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:22] "GET /invoices/IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:24] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:24] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:34:57] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:35:39] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:35:39] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:35:39] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:35:39] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:35:41] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:36:27] "GET /main.d6a512b5d88260848925.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:36:28] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:36:28] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:36:28] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:36:29] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:36:34] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:37:42] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=722.3 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:37:44] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:37:44] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:37:46] "GET /invoices/IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:37:48] "GET /boq/phases HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/invoice-options status=200 total_ms=579.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:37:48] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:38:58] "GET /main.4c1b8d5760f6dc069d88.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:38:59] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:38:59] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:39:00] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=901.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:43:29] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=1111.4 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:43:29] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:43:30] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:43:35] "GET /invoices/IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:43:37] "GET /boq/phases HTTP/1.1" 200 -
+slow_request method=GET path=/po-details/invoice-options status=200 total_ms=521.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:43:37] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:22] "GET /main.884e3628b4c1af26b195.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/invoices status=200 total_ms=609.2 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:46:24] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=693.5 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:46:24] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:27] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:43] "GET /main.d5fa03c47e4f7c190da9.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:46:44] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:44] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:48] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:50] "GET /main.cd9c704a60ad74eb1b75.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:46:52] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:52] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:55] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:56] "GET /main.3535121cca2180aee966.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:46:57] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:46:57] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:00] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:14] "GET /main.19d8ec0e4d1f2542545d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:16] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:16] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:19] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:20] "GET /main.7c02899e3fef6adc9f91.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:22] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:22] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:25] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:26] "GET /main.015a88f7dc3b04d57a45.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:27] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:27] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:31] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:32] "GET /main.b22f33e34294e2169656.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:33] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:33] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:37] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:39] "GET /main.470d7d085ca6276a886f.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:40] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:40] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:44] "GET /main.e56e887b0c349e72b9e5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:44] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:45] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:45] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:49] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:52] "GET /main.215808031210d690a47d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:53] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:53] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:57] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:57] "GET /main.0393590a1780c1afbb18.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:47:59] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:47:59] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:48:02] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:48:02] "GET /main.0aa729f858a6e6d07f63.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:48:04] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:48:04] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:48:07] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:49:21] "GET /main.a053f9a4990aef1f855f.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:49:23] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=520.6 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 16:49:23] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:49:26] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:49:27] "GET /main.1d78dab15e9b0e6c1d70.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 16:49:28] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:49:29] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 16:49:32] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=1969.7 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 17:13:26] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=2045.9 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 17:13:26] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=1328.4 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 17:13:27] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=1346.0 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 17:13:27] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase+3&filterField=invoice&filterValue=1243 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:27] "GET /invoices/images?ids=IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:30] "GET /invoices/IExndqCjdJNgPTDQnLzN HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:32] "GET /po-details/invoice-options?modelId=NTLXxofAdCi8ksLWmhpH&phaseId=pRwbIH6iI2fnOxd55Q5M HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:32] "GET /boq/phases HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:56] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:56] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:58] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:13:58] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:14:00] "GET /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:14:33] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:09] "GET /main.71a5a357ce6c7e6a0345.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:16:11] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:12] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:12] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:18] "GET /main.4dd086df08461d07b981.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:16:18] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:20] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:20] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:20] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:24] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:56] "GET /main.570415137673648d613a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:16:57] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:57] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:16:57] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:17:02] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:17:30] "GET /main.b27152069da561255455.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:17:33] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:17:33] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:17:33] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:17:35] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+192.168.0.142 - - [06/Oct/2026 17:18:08] code 400, message Bad request syntax ('\x06\x01\x00\x0f\x02')
+192.168.0.142 - - [06/Oct/2026 17:18:08] "\x06\x01\x00\x0f\x02" 400 -
+127.0.0.1 - - [06/Oct/2026 17:19:27] "GET /main.0f592f75dfeae59f1199.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:19:28] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:28] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:28] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:30] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:54] "GET /main.d6218ba2760e249b9ac5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:19:55] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:55] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:55] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:19:58] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:20] "GET /main.fe86498c51adb0ad7643.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:20:21] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:21] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:21] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:24] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:28] "GET /main.6a62b45e0c982509b541.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:20:30] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:30] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:30] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:35] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:35] "GET /main.e4ea73511698ad82dc37.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:20:36] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:36] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:36] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:20:40] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:22:53] "GET /main.89af5b22045438d77eeb.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:22:54] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:22:55] "GET /po-details/groups HTTP/1.1" 200 -
+slow_request method=GET path=/po-details status=200 total_ms=503.1 auth_ms=0.0
+127.0.0.1 - - [06/Oct/2026 17:22:55] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:22:59] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:07] "GET /main.3235bd6fa307c28c11d4.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:23:08] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:08] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:08] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:13] "GET /main.0f30cd95dc62f5bbea1e.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Oct/2026 17:23:14] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:14] "GET /po-details/groups HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:14] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:14] "GET /po-details?page=1&limit=10&filterField=po&filterValue=2435&filterField=phase&filterValue=phase+3 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Oct/2026 17:23:21] "GET /po-details/images?ids=ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+2026-10-06 17:25:31,911 INFO vector.realtime realtime notice scope=po_details action=put clients=0
+127.0.0.1 - - [06/Oct/2026 17:25:31] "PUT /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -
+slow_request method=PUT path=/po-details/ElCmqR19E4rwgIRcXwzu status=200 total_ms=507.4 auth_ms=0.0
+2026-10-06 17:25:49,582 INFO vector.realtime realtime notice scope=po_details action=put clients=0
+127.0.0.1 - - [06/Oct/2026 17:25:49] "PUT /po-details/ElCmqR19E4rwgIRcXwzu HTTP/1.1" 200 -

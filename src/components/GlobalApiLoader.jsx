@@ -30,9 +30,6 @@ export default function GlobalApiLoader() {
 
   if (!loading) return null;
   return (
-    <div className="global-api-loader" role="status" aria-live="polite" aria-label="Loading page data">
-      <div className="global-api-loader-spinner" />
-      <span>Loading data...</span>
-    </div>
+    <></>
   );
 }

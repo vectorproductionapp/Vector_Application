@@ -225,8 +225,13 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(900px, 100%);
-  max-height: 88vh;
+  /* global.css pins every *-details-container to 720px !important, which is
+     fine for a two-column read-only list but too narrow for the Edit view's
+     4-up field grid.  Match the Add PO / Edit BOQ dialog (.modal-container,
+     pinned to min(94vw, 1100px)) instead. */
+  width: min(94vw, 1100px) !important;
+  max-width: 1100px !important;
+  max-height: 92vh !important;
   overflow: hidden;
   box-sizing: border-box;
   color: var(--text-primary);
@@ -478,6 +483,31 @@
 }
 .po-details-close-btn:hover { background: var(--accent-hover); }
 .po-details-close-btn:active { transform: translateY(0); }
+
+/* EDIT MODE — same building blocks as the Edit BOQ dialog: a grey item card
+   with a 4-up field grid (label above control) instead of label-left rows. */
+.po-details-body .boq-item-card { margin-bottom: 16px; }
+.po-details-body .boq-item-card:last-child { margin-bottom: 0; }
+/* Same spacing the Add PO modal gives its item blocks. */
+.po-details-body .boq-item-card .po-form-grid { padding: 18px 22px 22px; }
+.po-details-body .po-form-grid { padding: 0 0 4px; }
+.po-details-body .po-header-grid { padding: 0 0 4px; }
+.po-details-body .po-items-bar { padding-top: 18px; }
+.po-details-body .boq-item-card .po-form-totals { margin-top: 12px; }
+.po-details-container .boq-field input:disabled {
+  background: var(--bg-table-stripe);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+/* BOQ has no date fields, so its `margin-top: auto` rule does not cover the
+   picker; without it a wrapping label drops the calendar below its row. */
+.po-details-container .boq-field > .app-date-picker { margin-top: auto; }
+.po-details-container .boq-field > .status-dropdown { margin-top: auto; }
+/* Same one-height-per-row treatment the Add PO form gives its controls
+   (.po-field): the shared select is 40px by default, the inputs are 44px. */
+.po-details-container .boq-field .app-date-picker-trigger,
+.po-details-container .boq-field .searchable-select-trigger,
+.po-details-container .boq-field .status-dropdown-trigger { height: 44px; }
 
 .po-pagination {
   display: flex;
@@ -853,12 +883,16 @@
   background: var(--bg-surface);
   overflow-x: auto;
 }
-.po-upload-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }
+/* Content-sized columns so the table fits the dialog and the S.No. / Actions
+   columns never wrap ("S.NO / ." or "ACTI / ONS"). */
+.po-upload-preview table { width: 100%; table-layout: auto; border-collapse: collapse; font-size: 12px; }
 .po-upload-preview th,
 .po-upload-preview td {
-  padding: 8px 10px;
+  padding: 8px 8px;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
   border-bottom: 1px solid var(--border);
 }
 .po-upload-preview th {
@@ -872,6 +906,39 @@
 .po-upload-preview td { color: var(--text-primary); }
 .po-upload-preview tbody tr:last-child td { border-bottom: none; }
 .po-upload-preview-hint { margin: 8px 2px 0; font-size: 11.5px; color: var(--text-secondary); }
+
+.po-upload-summary-hint { color: var(--text-muted); font-size: 12px; }
+.po-upload-index-head,
+.po-upload-actions-head { white-space: nowrap; text-align: center; }
+.po-upload-index { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.po-upload-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.po-upload-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.po-upload-row-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.po-upload-row-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.po-upload-row-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.po-upload-row-invalid { background: var(--accent-soft-bg); }
+.po-upload-row-warning { margin-left: 5px; vertical-align: middle; color: var(--danger); }
 
 .po-upload-hint { margin: 0; font-size: 12px; color: var(--text-muted); }
 
@@ -927,6 +994,33 @@
 .po-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
 .po-card .model-card-name { flex: 1 1 auto; }
 .po-card-meta { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+/* GST breakdown on the phase / PO cards: incl. GST total, then the
+   without-GST figure and the GST portion on their own rows. */
+.po-card-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+}
+
+.po-card-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.po-card-total-amount {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
 .po-form-totals {
   display: flex;

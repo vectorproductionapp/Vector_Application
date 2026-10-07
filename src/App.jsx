@@ -160,6 +160,16 @@ const ROLE_LABELS = {
   user: "User",
 };
 
+// Sections that remember their drill-down (kept across a browser refresh).
+// Clicking their sidebar item must re-open the section at its first page:
+// clear the stored drill keys (covers returning from another tab) and tell
+// the mounted page, if any, to drop its drill-down right away.
+const NAV_DRILL_RESETS = {
+  "/models": { keys: ["vector_active_model", "vector_active_phase"], event: "vector:models-reset" },
+  "/po": { keys: ["vector_po_drill"], event: "vector:po-reset" },
+  "/invoices": { keys: ["vector_invoices_drill"], event: "vector:invoices-reset" },
+};
+
 function Unauthorized() {
   return (
     <div style={{ padding: "3rem", textAlign: "center" }}>
@@ -231,6 +241,17 @@ function AppShell() {
   const handleSelect = (id) => {
     const tab = visibleNav.find((item) => item.id === id);
     if (tab) {
+      const reset = NAV_DRILL_RESETS[tab.path];
+      if (reset) {
+        reset.keys.forEach((key) => {
+          try {
+            sessionStorage.removeItem(key);
+          } catch {
+            /* storage unavailable */
+          }
+        });
+        window.dispatchEvent(new Event(reset.event));
+      }
       navigate(tab.path);
     }
   };

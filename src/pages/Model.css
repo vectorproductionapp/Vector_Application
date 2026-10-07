@@ -145,6 +145,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* GST breakdown under a card's heading: without-GST and GST rows above the
+   accent-coloured inclusive total.  Same layout as the PO Details cards. */
+.model-card-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+}
+
+.model-card-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-card-total-amount {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 
 .model-card-add {
   align-items: center;
