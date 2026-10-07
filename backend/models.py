@@ -272,33 +272,46 @@ def _row_gst_rate(row):
 
 def _phase_cost_totals(model_id, phase_id):
     """GST split over every BOQ row of one phase: total (incl. GST), the
-    pre-GST base and the GST portion.  The base prefers the real
-    rate x qty and falls back to stripping GST from the stored inclusive
-    cost, so the three figures always add back up to the displayed total."""
+    pre-GST base and the GST portion.  Calculate from rate, quantity and the
+    row's GST slab whenever those fields exist.  `materialCost` is a derived
+    value and older/imported rows can retain a stale value, which must not
+    make the Phase card disagree with the BOQ table."""
     total = 0.0
     excl_gst = 0.0
+    gst_total = 0.0
     try:
         for boq_doc in _boq_collection(model_id, phase_id).limit(1).stream():
             for row in (boq_doc.to_dict() or {}).get("rows", []) or []:
                 try:
                     cost = float(row.get("materialCost") or 0)
                 except (TypeError, ValueError):
-                    continue
+                    cost = 0.0
                 try:
                     rate = float(row.get("rate") or 0)
                     qty = float(row.get("reqQty") or 0)
                 except (TypeError, ValueError):
                     rate = qty = 0.0
-                total += cost
                 if rate and qty:
-                    excl_gst += round(rate * qty, 2)
+                    base = rate * qty
+                    gst = round(base * _row_gst_rate(row) / 100, 2)
+                    line_total = round(base + gst, 2)
+                    excl_gst += base
+                    gst_total += gst
+                    # Match the browser's boqGstAmounts() calculation rather
+                    # than trusting the saved materialCost field.
+                    total += line_total
                 else:
-                    excl_gst += round(cost / (1 + _row_gst_rate(row) / 100), 2)
+                    # Legacy row without enough inputs to recalculate: retain
+                    # its saved inclusive cost and derive its split from it.
+                    base = round(cost / (1 + _row_gst_rate(row) / 100), 2)
+                    excl_gst += base
+                    gst_total += round(cost - base, 2)
+                    total += cost
     except Exception:
         return {"total": 0.0, "exclGst": 0.0, "gst": 0.0}
     total = round(total, 2)
     excl_gst = round(excl_gst, 2)
-    return {"total": total, "exclGst": excl_gst, "gst": round(total - excl_gst, 2)}
+    return {"total": total, "exclGst": excl_gst, "gst": round(gst_total, 2)}
 
 
 @models_bp.route("/models/<model_id>/phases", methods=["GET"])
