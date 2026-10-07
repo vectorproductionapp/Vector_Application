@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
-import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch } from "lucide-react";
+import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
 import PageFilter from "../components/PageFilter";
@@ -11,7 +11,7 @@ import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
 import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
-import { applyColumnFormulas } from "../components/BulkUploadModal";
+import { applyColumnFormulas, applyDateColumnFormats, toDateCellDate } from "../components/BulkUploadModal";
 import ImageStrip from "../components/ImageStrip";
 import "../components/ImageAttachment.css";
 import StatusDropdown from "../components/StatusDropdown";
@@ -93,6 +93,15 @@ const formatGstRate = (value) =>
     ? ""
     : `${value}%`;
 
+// Basic Price = Qty x Unit Rate.  Derived here rather than stored, so it stays
+// correct even for rows saved before the column existed.
+const poBasicPrice = (row) => {
+  const qty = Number(row?.qty);
+  const rate = Number(row?.rate);
+  if (!Number.isFinite(qty) || !Number.isFinite(rate)) return 0;
+  return Math.round(qty * rate * 100) / 100;
+};
+
 const columns = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No", mono: true },
@@ -103,8 +112,10 @@ const columns = [
   { key: "qty", label: "Qty Ordered" },
   { key: "rate", label: "Unit Rate", format: fmtINR },
   { key: "gstRate", label: "GST %", format: formatGstRate },
-  { key: "gst", label: "GST Amount", format: fmtINR },
-  { key: "value", label: "PO Value", format: fmtINR },
+  // Basic Price = Qty x Unit Rate, the pre-GST figure the row's GST sits on.
+  { key: "basicPrice", label: "Basic Price", render: (row) => fmtINR(poBasicPrice(row)), format: (value, row) => fmtINR(poBasicPrice(row) || value) },
+  { key: "gst", label: "GST Price", format: fmtINR },
+  { key: "value", label: "Total incl. GST", format: fmtINR },
   { key: "status", label: "Status" },
 ];
 const PO_FILTER_FIELDS = columns.filter((column) =>
@@ -142,36 +153,38 @@ const BULK_COLUMNS = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No" },
   { key: "supplier", label: "Supplier" },
-  { key: "date", label: "PO Date" },
+  { key: "date", label: "PO Date", isDate: true },
   { key: "code", label: "Item Code" },
   { key: "desc", label: "Item Description" },
   { key: "qty", label: "Qty Ordered" },
   { key: "rate", label: "Unit Rate" },
   { key: "gstRate", label: "GST %" },
-  // Calculated in Excel from Unit Rate + GST % + Qty Ordered (blank GST means
-  // 18%). Hidden from the import preview and ignored when the file is parsed.
+  // Basic Price / GST Price / Total incl. GST, calculated in Excel from Unit
+  // Rate + GST % + Qty Ordered (blank GST means 18%) - the same three figures
+  // the table and the cards show.  Hidden from the import preview and ignored
+  // when the file is parsed.
   {
-    key: "unitGst",
-    label: "GST per Unit (INR)",
+    key: "basicPrice",
+    label: "Basic Price (INR)",
     required: false,
     hidden: true,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2)),"")`,
+    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{qty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{qty}")},2)),"")`,
   },
   {
-    key: "materialCostUnit",
-    label: "Material Cost per Unit incl. GST (INR)",
+    key: "gstPrice",
+    label: "GST Price (INR)",
     required: false,
     hidden: true,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}+ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}*${excelGst("{gstRate}")},2)),"")`,
   },
   {
-    key: "lineTotalQty",
-    label: "Total for Qty incl. GST (INR)",
+    key: "totalInclGst",
+    label: "Total incl. GST (INR)",
     required: false,
     hidden: true,
-    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{qty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{qty}")}+ROUND(${excelNum("{rate}")}*${excelNum("{qty}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}+${excelNum("{gstPrice}")},2)),"")`,
   },
-  { key: "expectedDeliveryDate", label: "Expected Delivery Date" },
+  { key: "expectedDeliveryDate", label: "Expected Delivery Date", isDate: true },
   { key: "status", label: "Status" },
 ];
 
@@ -181,34 +194,37 @@ const BULK_COLUMNS = [
 const BULK_OPTIONAL_COLUMNS = new Set([
   "supplier",
   "gstRate",
-  "unitGst",
-  "materialCostUnit",
-  "lineTotalQty",
+  "basicPrice",
+  "gstPrice",
+  "totalInclGst",
 ]);
 
 const BULK_COLUMN_NOTES = {
   phase: ["BOQ phase name exactly as shown in the app (e.g. phase-1).", "phase-1"],
   po: ["Purchase order number (e.g. PO-4521).", "PO-4521"],
   supplier: ["Supplier / vendor name for the PO. Optional.", "Steel Authority"],
-  date: ["PO date, DD-MM-YYYY or YYYY-MM-DD.", "05-08-2026"],
+  date: ["PO date. Click the cell for the date picker, or type 2026-08-20 (ISO works everywhere).", "2026-08-05"],
   code: ["BOQ item code (e.g. ITM-074).", "ITM-074"],
   desc: ["Description of the item being ordered.", "LED"],
   qty: ["Quantity ordered, numbers only.", "10"],
   rate: ["Price per unit, numbers only.", "7"],
   gstRate: ["GST percentage for this line, 0-100. Optional — blank means 18%.", "18"],
-  unitGst: [
-    "Calculated automatically = Unit Rate x GST % (blank GST uses 18%). Do not type in this column.",
-    "1.26",
+  basicPrice: [
+    "Calculated automatically = Qty Ordered x Unit Rate (before GST). Do not type in this column.",
+    "70",
   ],
-  materialCostUnit: [
-    "Calculated automatically = Unit Rate + GST per Unit. Do not type in this column.",
-    "8.26",
+  gstPrice: [
+    "Calculated automatically = Basic Price x GST % (blank GST uses 18%). Do not type in this column.",
+    "12.6",
   ],
-  lineTotalQty: [
-    "Calculated automatically = Material Cost per Unit incl. GST x Qty Ordered. Do not type here.",
-    "82.60",
+  totalInclGst: [
+    "Calculated automatically = Basic Price + GST Price. Do not type in this column.",
+    "82.6",
   ],
-  expectedDeliveryDate: ["Expected delivery date, DD-MM-YYYY or YYYY-MM-DD.", "20-08-2026"],
+  expectedDeliveryDate: [
+    "Expected delivery date. Click the cell for the date picker, or type 2026-08-20 (ISO works everywhere).",
+    "2026-08-20",
+  ],
   status: [`One of: ${STATUS_OPTIONS.join(", ")}.`, "Pending"],
 };
 
@@ -244,6 +260,18 @@ const BULK_HEADER_ALIASES = {
   gstpercentage: "gstRate",
   gstslab: "gstRate",
   taxrate: "gstRate",
+  // Files exported before the Basic Price / GST Price / Total rename still
+  // carry the old calculated headers; they are ignored on import either way.
+  basicprice: "basicPrice",
+  gstprice: "gstPrice",
+  materialcost: "totalInclGst",
+  materialcostunit: "totalInclGst",
+  materialcostinr: "totalInclGst",
+  materialcostinclgst: "totalInclGst",
+  linecost: "totalInclGst",
+  totalforqtyinclgst: "totalInclGst",
+  totalinclg: "totalInclGst",
+  total: "totalInclGst",
   expecteddelivery: "expectedDeliveryDate",
   expecteddeliverydate: "expectedDeliveryDate",
   deliverydate: "expectedDeliveryDate",
@@ -470,30 +498,34 @@ function parseBulkWorkbook(workbook) {
     throw new Error(`Missing column(s): ${missingHeaders.join(", ")}.`);
   }
 
-  const rows = [];
-  const issues = [];
+const rows = [];
+    const issues = [];
+    const entries = [];
 
-  for (let index = headerIndex + 1; index < matrix.length; index += 1) {
-    const raw = matrix[index] || [];
-    if (raw.every((cell) => cell === null || cell === undefined || String(cell).trim() === "")) {
-      continue;
+    for (let index = headerIndex + 1; index < matrix.length; index += 1) {
+      const raw = matrix[index] || [];
+      if (raw.every((cell) => cell === null || cell === undefined || String(cell).trim() === "")) {
+        continue;
+      }
+
+      const draft = {};
+      BULK_COLUMNS.forEach((column) => {
+        draft[column.key] = raw[columnMap[column.key]];
+      });
+
+      const { row, problems } = normalizeBulkRow(draft);
+      // Every data row is kept, problems included: the preview can correct a
+      // bad row instead of dropping it.
+      entries.push({ line: index + 1, draft, row, problems });
+      if (problems.length) issues.push({ row: index + 1, message: problems.join("; ") });
+      else rows.push(row);
     }
-
-    const draft = {};
-    BULK_COLUMNS.forEach((column) => {
-      draft[column.key] = raw[columnMap[column.key]];
-    });
-
-    const { row, problems } = normalizeBulkRow(draft);
-    if (problems.length) issues.push({ row: index + 1, message: problems.join("; ") });
-    else rows.push(row);
-  }
 
   if (!rows.length && !issues.length) {
     throw new Error("No data rows were found below the header row.");
   }
 
-  return { rows, issues };
+  return { rows, issues, entries };
 }
 
 
@@ -505,12 +537,13 @@ const PO_DETAIL_FIELDS = [
   { key: "code", label: "Item Code" },
   { key: "make", label: "Make" },
   { key: "model", label: "Model" },
-  { key: "desc", label: "Item Description" },
+  { key: "desc", label: "Item Description", wide: true },
   { key: "qty", label: "Qty Ordered", editable: true, isNumber: true },
   { key: "rate", label: "Unit Rate", isCurrency: true, editable: true, isNumber: true },
   { key: "gstRate", label: "GST %", editable: true, isNumber: true, isPercent: true },
-  { key: "gst", label: "GST Amount", isCurrency: true },
-  { key: "value", label: "PO Value", isCurrency: true },
+  { key: "basicPrice", label: "Basic Price", isCurrency: true },
+  { key: "gst", label: "GST Price", isCurrency: true },
+  { key: "value", label: "Total incl. GST", isCurrency: true },
   { key: "status", label: "Status", editable: true, isStatus: true },
 ];
 
@@ -592,21 +625,6 @@ function validatePoForm(values) {
   return null;
 }
 
-function validateEditForm(values) {
-  if (!String(values.po ?? "").trim()) return "PO No cannot be empty.";
-  if (!String(values.date ?? "").trim()) return "PO Date cannot be empty.";
-  if (!String(values.qty ?? "").trim()) return "Qty Ordered cannot be empty.";
-  if (Number.isNaN(Number(values.qty))) return "Qty Ordered must be a number.";
-  if (!String(values.rate ?? "").trim()) return "Unit Rate cannot be empty.";
-  if (Number.isNaN(Number(values.rate))) return "Unit Rate must be a number.";
-  if (String(values.gstRate ?? "").trim() !== "") {
-    const gstRate = Number(values.gstRate);
-    if (!Number.isFinite(gstRate)) return "GST % must be a number.";
-    if (gstRate < 0 || gstRate > 100) return "GST % must be between 0 and 100.";
-  }
-  return null;
-}
-
 function formatDateDisplay(value) {
   return formatDate(value, "Not Provided");
 }
@@ -618,7 +636,9 @@ function toDateInputValue(value) {
 }
 
 function formatDetailValue(field, row) {
-  const raw = row[field.key];
+        // Basic Price is derived, never stored on the record.
+        if (field.key === "basicPrice") return fmtINR(poBasicPrice(row));
+        const raw = row[field.key];
   if (raw === null || raw === undefined || String(raw).trim() === "") {
     return "Not Provided";
   }
@@ -663,6 +683,56 @@ function buildEditForm(row) {
   };
 }
 
+// Edit shows one item block per line, like the Add form, so the line's own
+// fields live in a draft instead of the flat edit form above.
+function buildEditLineDraft(row) {
+  return {
+    id: getRowId(row) || null,
+    code: row?.code ?? "",
+    make: row?.make ?? "",
+    model: row?.model ?? "",
+    desc: row?.desc ?? "",
+    qty: row?.qty ?? "",
+    rate: row?.rate ?? "",
+    gstRate: row?.gstRate ?? "",
+    status: row?.status || "",
+    expectedDeliveryDate: toDateInputValue(row?.expectedDeliveryDate),
+  };
+}
+
+const emptyEditLineDraft = {
+  id: null,
+  code: "",
+  make: "",
+  model: "",
+  desc: "",
+  qty: "",
+  rate: "",
+  gstRate: "",
+  status: "",
+  expectedDeliveryDate: "",
+};
+
+// One item block has to satisfy the same rules the Add form enforces on a line.
+function validateEditLine(draft, label) {
+  if (!String(draft.code ?? "").trim()) return `${label}: Item Code cannot be empty.`;
+  if (!String(draft.desc ?? "").trim()) return `${label}: Item Description cannot be empty.`;
+  if (!String(draft.qty ?? "").trim()) return `${label}: Qty Ordered cannot be empty.`;
+  if (Number.isNaN(Number(draft.qty))) return `${label}: Qty Ordered must be a number.`;
+  if (!String(draft.rate ?? "").trim()) return `${label}: Unit Rate cannot be empty.`;
+  if (Number.isNaN(Number(draft.rate))) return `${label}: Unit Rate must be a number.`;
+  if (String(draft.gstRate ?? "").trim() !== "") {
+    const gstRate = Number(draft.gstRate);
+    if (!Number.isFinite(gstRate)) return `${label}: GST % must be a number.`;
+    if (gstRate < 0 || gstRate > 100) return `${label}: GST % must be between 0 and 100.`;
+  }
+  if (!String(draft.expectedDeliveryDate ?? "").trim()) {
+    return `${label}: Expected Delivery Date cannot be empty.`;
+  }
+  if (!String(draft.status ?? "").trim()) return `${label}: Status cannot be empty.`;
+  return null;
+}
+
 function calculatePoAmounts(qty, rate, gstRate = "") {
   if (String(qty ?? "").trim() === "" || String(rate ?? "").trim() === "") {
     return null;
@@ -704,6 +774,16 @@ export default function PODetails() {
     );
   }, [selectedPo, selectedPhase]);
 
+  // Clicking "PO Details" in the sidebar re-opens the phase card grid.
+  useEffect(() => {
+    const resetDrill = () => {
+      setSelectedPo(null);
+      setSelectedPhase(null);
+    };
+    window.addEventListener("vector:po-reset", resetDrill);
+    return () => window.removeEventListener("vector:po-reset", resetDrill);
+  }, []);
+
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState("");
 
@@ -712,6 +792,8 @@ export default function PODetails() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPoValue, setTotalPoValue] = useState(0);
+  const [totalPoValueExclGst, setTotalPoValueExclGst] = useState(0);
+  const [totalPoGst, setTotalPoGst] = useState(0);
   const [filterOptions, setFilterOptions] = useState({});
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -743,6 +825,11 @@ export default function PODetails() {
   const [editForm, setEditForm] = useState({});
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  // Edit mirrors the Add form: the PO header in `editForm`, one item block per
+  // line below it.
+  const [detailsItemDrafts, setDetailsItemDrafts] = useState([]);
+  const detailsInitialDraftsRef = useRef([]);
+  const detailsLastItemRef = useRef(null);
 
   const previewDetailsRow = useMemo(() => {
     if (!detailsRow || !detailsEditMode) return detailsRow;
@@ -769,8 +856,11 @@ export default function PODetails() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadClosing, setUploadClosing] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
-  const [uploadRows, setUploadRows] = useState([]);
-  const [uploadIssues, setUploadIssues] = useState([]);
+  // One entry per spreadsheet row (raw draft + what normalizeBulkRow made of
+  // it), so the preview can correct or drop a row before it is uploaded.  The
+  // ready rows and the issue list are both derived from it.
+  const [uploadEntries, setUploadEntries] = useState([]);
+  const [uploadEditingLine, setUploadEditingLine] = useState(null);
   const [uploadNotice, setUploadNotice] = useState("");
   const [uploading, setUploading] = useState(false);
 
@@ -820,6 +910,8 @@ export default function PODetails() {
       setDetailsClosing(false);
       setDetailsRow(null);
       setEditForm({});
+      setDetailsItemDrafts([]);
+      detailsInitialDraftsRef.current = [];
       setDetailsEditMode(false);
       setDetailsError("");
     }, 200);
@@ -827,12 +919,16 @@ export default function PODetails() {
 
   const requestCloseDetails = useCallback(async () => {
     if (detailsClosing) return;
-    if (detailsEditMode && JSON.stringify(editForm) !== JSON.stringify(buildEditForm(detailsRow))) {
+    const dirty =
+      detailsEditMode &&
+      (JSON.stringify(editForm) !== JSON.stringify(buildEditForm(detailsRow)) ||
+        JSON.stringify(detailsItemDrafts) !== JSON.stringify(detailsInitialDraftsRef.current));
+    if (dirty) {
       const result = await Swal.fire({ title: "Discard unsaved changes?", text: "Your PO Detail changes will be lost unless you save them.", icon: "warning", showCancelButton: true, confirmButtonText: "Discard changes", cancelButtonText: "Keep editing", reverseButtons: true, customClass: { popup: "swal-vector-popup" } });
       if (!result.isConfirmed) return;
     }
     closeDetails();
-  }, [detailsClosing, detailsEditMode, editForm, detailsRow, closeDetails]);
+  }, [detailsClosing, detailsEditMode, editForm, detailsItemDrafts, detailsRow, closeDetails]);
 
   useEffect(() => {
     if (!detailsOpen) return;
@@ -841,6 +937,8 @@ export default function PODetails() {
         if (detailsEditMode) {
           setDetailsEditMode(false);
           setEditForm(buildEditForm(detailsRow));
+          setDetailsItemDrafts([]);
+          detailsInitialDraftsRef.current = [];
           setDetailsError("");
         } else {
           requestCloseDetails();
@@ -941,6 +1039,8 @@ export default function PODetails() {
       // Server-computed over the whole filtered set, so the badge always
       // matches the card scope plus whatever the search box/PageFilter select.
       setTotalPoValue(Number(res.data.totals?.poValue) || 0);
+      setTotalPoValueExclGst(Number(res.data.totals?.poValueExclGst) || 0);
+      setTotalPoGst(Number(res.data.totals?.poGst) || 0);
       setFilterOptions(res.data.filterOptions || {});
 
       const pagination = res.data.pagination;
@@ -1432,8 +1532,8 @@ export default function PODetails() {
   // ---------- Excel bulk upload ----------
   const resetUpload = () => {
     setUploadFile(null);
-    setUploadRows([]);
-    setUploadIssues([]);
+    setUploadEntries([]);
+    setUploadEditingLine(null);
     setUploadNotice("");
     setUploading(false);
   };
@@ -1482,33 +1582,61 @@ export default function PODetails() {
     const file = event.target.files?.[0] || null;
 
     setUploadFile(file);
-    setUploadRows([]);
-    setUploadIssues([]);
+    setUploadEntries([]);
+    setUploadEditingLine(null);
     setUploadNotice("");
 
     if (!file) return;
 
     try {
       const workbook = await readBulkWorkbook(file);
-      const { rows, issues } = parseBulkWorkbook(workbook);
-      setUploadRows(rows);
-      setUploadIssues(issues);
+      const { rows, entries } = parseBulkWorkbook(workbook);
+      setUploadEntries(entries);
       if (!rows.length) {
-        setUploadNotice("No valid rows found yet — fix the issues listed below and re-select the file.");
+        setUploadNotice("No valid rows found yet — fix the rows listed below, or delete them here.");
       }
     } catch (err) {
       setUploadNotice(err?.message || "Unable to read this file.");
     }
   };
 
+  // Delete in the preview. Editing is handled by the page's own Edit dialog, so
+  // a row is either dropped here or corrected there - never half-edited.
+  const deleteUploadEntry = (line) => {
+    setUploadEntries((previous) => previous.filter((entry) => entry.line !== line));
+    setUploadEditingLine((current) => (current === line ? null : current));
+  };
+
+  // The two counters always describe what would be uploaded right now.
+  const uploadReadyRows = useMemo(
+    () => uploadEntries.filter((entry) => !entry.problems.length).map((entry) => entry.row),
+    [uploadEntries]
+  );
+  const uploadLiveIssues = useMemo(
+    () =>
+      uploadEntries
+        .filter((entry) => entry.problems.length)
+        .map((entry) => ({ row: entry.line, message: entry.problems.join("; ") })),
+    [uploadEntries]
+  );
+
   const handleExportTemplate = () => {
     const headers = BULK_COLUMNS.map((column) => column.label);
 
-    const templateSheet = XLSX.utils.aoa_to_sheet([headers]);
+    // A date typed into a General-formatted cell stays text, and a text cell
+    // has no date picker.  One real date per date column gives those columns
+    // Excel's date format; the example row is what the user overwrites.
+    const example = { date: "05-08-2026", expectedDeliveryDate: "20-08-2026" };
+    const exampleRow = BULK_COLUMNS.map((column) =>
+      column.isDate ? toDateCellDate(example[column.key]) : ""
+    );
+
+    const templateSheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
     templateSheet["!cols"] = [16, 14, 22, 14, 14, 32, 14, 14, 10, 20, 30, 30, 24, 16].map((wch) => ({ wch }));
-    // GST per Unit, Material Cost per Unit and the Qty total fill themselves
+    // GST per Unit, Basic Price, GST Price and Total incl. GST fill themselves
     // in Excel as soon as Unit Rate and GST % are typed.
     applyColumnFormulas(templateSheet, BULK_COLUMNS, 200);
+    applyDateColumnFormats(templateSheet, BULK_COLUMNS, exampleRow);
 
     const notesSheet = XLSX.utils.aoa_to_sheet([
       ["Column", "Description", "Example"],
@@ -1518,6 +1646,16 @@ export default function PODetails() {
       }),
       [],
       ["Note", "Fill one row per PO line. Completely blank rows are ignored.", ""],
+      [
+        "Note",
+        "PO Date and Expected Delivery Date ship as real Excel dates: click a cell for the date picker, or type the date as 2026-08-20 (ISO works in every locale). 05-08-2026, 05/08/2026 and Excel date cells are accepted too.",
+        "",
+      ],
+      [
+        "Note",
+        "Need the picker on every row? Copy the example date cell and paste it down the column, or select the column and set Format Cells to Date (DD-MM-YYYY).",
+        "",
+      ],
       [
         "Note",
         "GST per Unit, Material Cost per Unit incl. GST and Total for Qty incl. GST calculate themselves from Unit Rate, GST % and Qty (blank GST means 18%).",
@@ -1618,7 +1756,7 @@ export default function PODetails() {
         .slice(0, 6)
         .map((issue) => `<li>Row ${escapeHtml(issue.row)}: ${escapeHtml(issue.message)}</li>`)
         .join("")}${
-        issues.length > 6 ? `<li>…and ${issues.length - 6} more</li>` : ""
+        issues.length > 6 ? `<li>⬦and ${issues.length - 6} more</li>` : ""
       }</ul>`,
       icon: "warning",
       confirmButtonText: "OK",
@@ -1627,12 +1765,12 @@ export default function PODetails() {
     });
 
   const handleBulkUpload = async () => {
-    if (uploading || !uploadRows.length) return;
+    if (uploading || !uploadReadyRows.length) return;
 
     setUploading(true);
 
     try {
-      const rows = await enrichBulkRows(uploadRows);
+      const rows = await enrichBulkRows(uploadReadyRows);
       const res = await api.post(`${API_BASE_URL}/po-details/bulk`, { rows });
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to upload PO Details");
@@ -1673,28 +1811,90 @@ export default function PODetails() {
 
   const startEditingDetails = () => {
     if (!detailsRow) return;
+    const savedLine = buildEditLineDraft(detailsRow);
     setEditForm(buildEditForm(detailsRow));
+    setDetailsItemDrafts([savedLine]);
+    detailsInitialDraftsRef.current = [savedLine];
     setDetailsError("");
     setDetailsEditMode(true);
+    // Item codes, their BOQ rates and the make/model they carry come from the
+    // phase this line belongs to.
+    if (detailsRow.modelId && detailsRow.phaseId) {
+      fetchBoqItems(detailsRow.modelId, detailsRow.phaseId);
+    }
   };
 
   const cancelEditingDetails = () => {
-    if (detailsRow) setEditForm(buildEditForm(detailsRow));
+    if (detailsRow) {
+      setEditForm(buildEditForm(detailsRow));
+      const savedLine = buildEditLineDraft(detailsRow);
+      setDetailsItemDrafts([savedLine]);
+      detailsInitialDraftsRef.current = [savedLine];
+    }
     setDetailsError("");
     setDetailsEditMode(false);
   };
 
   const handleEditFormChange = (event) => {
     const { name, value } = event.target;
+    setDetailsError("");
     setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // ---------- Edit item blocks (same shape as the Add form) ----------
+
+  const handleDetailsItemChange = (index, field, value) => {
+    setDetailsError("");
+    setDetailsItemDrafts((previous) =>
+      previous.map((draft, position) =>
+        position === index ? { ...draft, [field]: value } : draft
+      )
+    );
+  };
+
+  const handleDetailsItemDateChange = (index, field, value) => {
+    handleDetailsItemChange(index, field, value);
+  };
+
+  const handleDetailsItemCodeSelect = (index, code) => {
+    const found = boqItems.find((item) => item.code === code);
+    setDetailsError("");
+    setDetailsItemDrafts((previous) =>
+      previous.map((draft, position) => {
+        if (position !== index) return draft;
+        const boqGstRate =
+          found?.gstRate === null || found?.gstRate === undefined || String(found.gstRate).trim() === ""
+            ? draft.gstRate || "18"
+            : found.gstRate;
+        return {
+          ...draft,
+          code,
+          make: found?.make || "",
+          model: found?.model || "",
+          desc: found?.desc || "",
+          rate: found?.rate ?? draft.rate,
+          gstRate: boqGstRate,
+        };
+      })
+    );
+  };
+
+  const addDetailsItemDraft = () => {
+    setDetailsItemDrafts((previous) => [...previous, { ...emptyEditLineDraft }]);
+    window.requestAnimationFrame(() => {
+      detailsLastItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  };
+
+  const removeDetailsItemDraft = (index) => {
+    setDetailsItemDrafts((previous) => previous.filter((_, position) => position !== index));
   };
 
   const handleSaveDetails = async () => {
     if (!detailsRow || detailsSaving) return;
 
-    const validationError = validateEditForm(editForm);
-    if (validationError) {
-      setDetailsError(validationError);
+    if (!detailsItemDrafts.length) {
+      setDetailsError('Add at least one item with the "Add item" button in the header.');
       return;
     }
 
@@ -1704,39 +1904,112 @@ export default function PODetails() {
       return;
     }
 
-    const original = buildEditForm(detailsRow);
-    const payload = {};
-
-    if (editForm.po !== original.po) payload.po = editForm.po.trim();
-    if (editForm.supplier !== original.supplier) payload.supplier = editForm.supplier.trim();
-    if (editForm.date !== original.date) payload.date = editForm.date;
-    if (String(editForm.qty) !== String(original.qty)) payload.qty = editForm.qty;
-    if (String(editForm.rate) !== String(original.rate)) payload.rate = editForm.rate;
-    if (String(editForm.gstRate) !== String(original.gstRate)) payload.gstRate = editForm.gstRate;
-    if (JSON.stringify(editForm.attachments || []) !== JSON.stringify(original.attachments || [])) {
-      payload.attachments = editForm.attachments || [];
-    }
-    if (editForm.status !== original.status) payload.status = editForm.status || null;
-    if (editForm.expectedDeliveryDate !== original.expectedDeliveryDate) {
-      payload.expectedDeliveryDate = editForm.expectedDeliveryDate || null;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      closeDetails();
+    if (!String(editForm.po ?? "").trim()) {
+      setDetailsError("PO No cannot be empty.");
       return;
     }
+    if (!String(editForm.date ?? "").trim()) {
+      setDetailsError("PO Date cannot be empty.");
+      return;
+    }
+
+    for (let index = 0; index < detailsItemDrafts.length; index += 1) {
+      const error = validateEditLine(detailsItemDrafts[index], `Item ${index + 1}`);
+      if (error) {
+        setDetailsError(error);
+        return;
+      }
+    }
+
+    const originalForm = buildEditForm(detailsRow);
+    const originalLine = buildEditLineDraft(detailsRow);
+    // PO header travels with the record, exactly like the Add form merges it
+    // into every line it posts.
+    const header = {
+      phase: detailsRow.phase,
+      modelId: detailsRow.modelId,
+      phaseId: detailsRow.phaseId,
+      po: editForm.po.trim(),
+      supplier: editForm.supplier.trim(),
+      date: editForm.date,
+    };
+    const attachmentsChanged =
+      JSON.stringify(editForm.attachments || []) !== JSON.stringify(originalForm.attachments || []);
 
     setDetailsSaving(true);
     setDetailsError("");
 
     try {
-      const res = await api.put(`${API_BASE_URL}/po-details/${id}`, payload);
-      if (!res.data.success) {
-        throw new Error(res.data.message || "Failed to update PO Detail");
+      const savedLine = detailsItemDrafts.find((draft) => draft.id) || detailsItemDrafts[0];
+      let added = 0;
+
+      for (const draft of detailsItemDrafts) {
+        const line = { ...draft, ...header };
+        if (draft.id) {
+          // Only the saved record is updated, and only with what changed.
+          const payload = {};
+          if (line.po !== detailsRow.po) payload.po = line.po;
+          if (line.supplier !== (detailsRow.supplier || "")) payload.supplier = line.supplier;
+          if (line.date !== toDateInputValue(detailsRow.date)) payload.date = line.date;
+          if (String(line.code) !== String(detailsRow.code || "")) {
+            payload.code = line.code;
+            payload.make = line.make;
+            payload.model = line.model;
+            payload.desc = line.desc;
+          }
+          if (String(line.qty) !== String(detailsRow.qty ?? "")) payload.qty = line.qty;
+          if (String(line.rate) !== String(detailsRow.rate ?? "")) payload.rate = line.rate;
+          if (String(line.gstRate) !== String(detailsRow.gstRate ?? "")) payload.gstRate = line.gstRate;
+          if (line.status !== (detailsRow.status || "")) payload.status = line.status || null;
+          if (line.expectedDeliveryDate !== toDateInputValue(detailsRow.expectedDeliveryDate)) {
+            payload.expectedDeliveryDate = line.expectedDeliveryDate || null;
+          }
+          if (Object.keys(payload).length) {
+            const res = await api.put(`${API_BASE_URL}/po-details/${draft.id}`, payload);
+            if (!res.data.success) {
+              throw new Error(res.data.message || "Failed to update PO Detail");
+            }
+          }
+        } else {
+          // A block added with "Add item" is a new line of the same PO.
+          const res = await api.post(`${API_BASE_URL}/po-details`, {
+            ...line,
+            id: undefined,
+            status: line.status || null,
+          });
+          if (!res.data.success) {
+            throw new Error(res.data.message || "Failed to save PO Detail");
+          }
+          added += 1;
+        }
       }
 
+      // The PO's files live on the header document, so one update carries them.
+      if (attachmentsChanged) {
+        const res = await api.put(`${API_BASE_URL}/po-details/${savedLine.id || id}`, {
+          attachments: editForm.attachments || [],
+        });
+        if (!res.data.success) {
+          throw new Error(res.data.message || "Failed to update PO attachments");
+        }
+      }
+
+      setDetailsItemDrafts([]);
+      detailsInitialDraftsRef.current = [];
       setDetailsEditMode(false);
-      await swalSuccess("PO Detail Updated", "The PO Detail has been updated successfully.");
+      await swalSuccess(
+        "PO Detail Updated",
+        added
+          ? `The PO was updated and ${added} new line${added === 1 ? "" : "s"} added.`
+          : "The PO Detail has been updated successfully."
+      );
+
+      // A renamed PO number leaves the open table, so step back to the cards.
+      if (header.po !== (detailsRow.po || "")) {
+        setSelectedPo(null);
+        setPage(1);
+        await fetchPhaseCards();
+      }
 
       // One refresh covers the open popup copy, the table beneath it, and the
       // top phase cards - no page reload needed.
@@ -1902,6 +2175,8 @@ export default function PODetails() {
       : "";
 
   const itemCodeDisabled = !formValues.phaseId;
+  // Editing an existing line needs a phase on the record to load its BOQ items.
+  const detailsItemCodeDisabled = !detailsRow?.phaseId;
   const itemCodeEmptyMessage = boqItemsError
     ? boqItemsError
     : "No BOQ items found for this phase.";
@@ -1955,7 +2230,7 @@ export default function PODetails() {
           .map((name) => (name.toLowerCase() === option.value.toLowerCase() ? trimmed : name))
           .sort((a, b) => a.localeCompare(b))
       );
-      await swalSuccess("Supplier renamed", `“${option.value}” is now “${trimmed}”.`);
+      await swalSuccess("Supplier renamed", `"${option.value}" is now "${trimmed}".`);
     } catch (err) {
       await swalError(
         "Rename failed",
@@ -1966,7 +2241,7 @@ export default function PODetails() {
 
   const handleDeleteSupplier = async (option) => {
     const confirmed = await Swal.fire({
-      title: `Delete “${option.value}”?`,
+      title: `Delete "${option.value}"`,
       text: "It disappears from the supplier list. PO lines already saved keep the name they were saved with.",
       icon: "warning",
       showCancelButton: true,
@@ -1992,7 +2267,7 @@ export default function PODetails() {
           (name) => name.toLowerCase() !== option.value.toLowerCase()
         )
       );
-      await swalSuccess("Supplier deleted", `“${option.value}” was removed from the list.`);
+      await swalSuccess("Supplier deleted", `"${option.value}" was removed from the list.`);
     } catch (err) {
       await swalError(
         "Delete failed",
@@ -2159,10 +2434,20 @@ export default function PODetails() {
                   <span className="model-card-name">{card.phase}</span>
                 </div>
                 {card.date && <span className="model-card-time">{formatDate(card.date)}</span>}
-                <span className="model-card-total">
-                  <span className="model-card-total-label">Phase Value</span>
-                  <span className="model-card-total-value">{fmtINR(card.totalValue)}</span>
-                </span>
+                <div className="po-card-totals">
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">Basic Price</span>
+                    <span className="po-card-total-amount">{fmtINR(Number(card.totalValueExclGst) || 0)}</span>
+                  </span>
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">GST Price</span>
+                    <span className="po-card-total-amount">{fmtINR(Number(card.totalGst) || 0)}</span>
+                  </span>
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">Phase Total incl. GST</span>
+                    <span className="model-card-total-value">{fmtINR(card.totalValue)}</span>
+                  </span>
+                </div>
                 <span className="po-card-meta">
                   {card.rowCount} line{card.rowCount === 1 ? "" : "s"} · {card.pos.length} PO
                   {card.pos.length === 1 ? "" : "s"}
@@ -2188,10 +2473,20 @@ export default function PODetails() {
                   <span className="model-card-name">{po.po}</span>
                 </div>
                 {po.date && <span className="model-card-time">{formatDate(po.date)}</span>}
-                <span className="model-card-total">
-                  <span className="model-card-total-label">PO Value</span>
-                  <span className="model-card-total-value">{fmtINR(po.totalValue)}</span>
-                </span>
+                <div className="po-card-totals">
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">Basic Price</span>
+                    <span className="po-card-total-amount">{fmtINR(Number(po.totalValueExclGst) || 0)}</span>
+                  </span>
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">GST Price</span>
+                    <span className="po-card-total-amount">{fmtINR(Number(po.totalGst) || 0)}</span>
+                  </span>
+                  <span className="po-card-total-row">
+                    <span className="model-card-total-label">PO Total incl. GST</span>
+                    <span className="model-card-total-value">{fmtINR(po.totalValue)}</span>
+                  </span>
+                </div>
                 <span className="po-card-meta">
                   {po.rowCount} line{po.rowCount === 1 ? "" : "s"}
                 </span>
@@ -2213,8 +2508,21 @@ export default function PODetails() {
               </div>
               <div className="table-controls-right">
                 <span className="table-total">
-                  <span className="table-total-label">Total PO Value</span>
-                  <span className="table-total-value">{fmtINR(totalPoValue)}</span>
+<span className="table-total-label">Total</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalPoValueExclGst)}{" "}
+                    <span className="table-total-scope">(Basic Price)</span>
+                  </span>
+                  <span className="table-total-scope">|</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalPoGst)}{" "}
+                    <span className="table-total-scope">(GST Price)</span>
+                  </span>
+                  <span className="table-total-scope">|</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalPoValue)}{" "}
+                    <span className="table-total-scope">(Total incl. GST)</span>
+                  </span>
                 </span>
                 <ImageStrip
                   rows={filteredRows}
@@ -2592,7 +2900,7 @@ export default function PODetails() {
                 <input
                   id="po-bulk-upload-input"
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".xlsx,.xls"
                   onChange={handleUploadFileChange}
                   disabled={uploading}
                 />
@@ -2603,50 +2911,100 @@ export default function PODetails() {
               {uploadFile && !uploadNotice && (
                 <div className="po-upload-summary">
                   <span>
-                    <strong>{uploadRows.length}</strong> row(s) ready to upload
+                    <strong>{uploadReadyRows.length}</strong> row(s) ready to upload
                   </span>
-                  {uploadIssues.length > 0 && (
+                  {uploadLiveIssues.length > 0 && (
                     <span className="po-upload-summary-issues">
-                      {uploadIssues.length} row(s) will be skipped
+                      {uploadLiveIssues.length} row(s) will be skipped
                     </span>
                   )}
+                  <span className="po-upload-summary-hint">
+                    Edit opens that PO line in its own Edit dialog; Delete drops it. Untouched rows are uploaded
+                    as they are.
+                  </span>
                 </div>
               )}
 
-              {uploadIssues.length > 0 && (
+              {uploadLiveIssues.length > 0 && (
                 <ul className="po-upload-issue-list">
-                  {uploadIssues.slice(0, 6).map((issue, index) => (
+                  {uploadLiveIssues.slice(0, 6).map((issue, index) => (
                     <li key={`${issue.row}-${index}`}>
                       Row {issue.row}: {issue.message}
                     </li>
                   ))}
-                  {uploadIssues.length > 6 && <li>…and {uploadIssues.length - 6} more</li>}
+                  {uploadLiveIssues.length > 6 && <li>⬦and {uploadLiveIssues.length - 6} more</li>}
                 </ul>
               )}
 
-              {uploadRows.length > 0 && (
+              {uploadEntries.length > 0 && (
                 <div className="po-upload-preview">
                   <table>
                     <thead>
                       <tr>
+                        <th className="po-upload-index-head">S.No.</th>
                         {BULK_COLUMNS.filter((column) => !column.hidden).map((column) => (
                           <th key={column.key}>{column.label}</th>
                         ))}
+                        <th className="po-upload-actions-head">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {uploadRows.slice(0, 5).map((row, index) => (
-                        <tr key={`${row.po}-${row.code}-${index}`}>
+                      {uploadEntries.slice(0, 50).map((entry, index) => (
+                        <tr
+                          key={entry.line}
+                          className={entry.problems.length ? "po-upload-row-invalid" : ""}
+                        >
+                          <td className="po-upload-index" data-label="S.No.">
+                            {index + 1}
+                            {entry.problems.length > 0 && (
+                              <AlertTriangle
+                                size={13}
+                                className="po-upload-row-warning"
+                                aria-label={entry.problems.join("; ")}
+                              />
+                            )}
+                          </td>
                           {BULK_COLUMNS.filter((column) => !column.hidden).map((column) => (
-                            <td key={column.key}>{String(row[column.key] ?? "")}</td>
+                            <td key={column.key} data-label={column.label}>
+                              {String(entry.row[column.key] ?? "")}
+                            </td>
                           ))}
+                          <td className="po-upload-row-actions" data-label="Actions">
+                            <button
+                              type="button"
+                              className="po-upload-row-btn"
+                              onClick={() => {
+                                // Hand the line to the page's own Edit dialog,
+                                // exactly as opening it from the table would.
+                                closeUpload();
+                                setUploadNotice("");
+                                openDetails(entry.row);
+                                startEditingDetails();
+                              }}
+                              disabled={uploading || entry.problems.length > 0}
+                              aria-label={`Edit row ${index + 1}`}
+                              title={entry.problems.length ? "Fix this row in the file first" : "Edit this PO line"}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="po-upload-row-btn danger"
+                              onClick={() => deleteUploadEntry(entry.line)}
+                              disabled={uploading}
+                              aria-label={`Delete row ${index + 1}`}
+                              title="Remove this row"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {uploadRows.length > 5 && (
+                  {uploadEntries.length > 50 && (
                     <p className="po-upload-preview-hint">
-                      Showing the first 5 of {uploadRows.length} rows.
+                      Showing the first 50 of {uploadEntries.length} rows.
                     </p>
                   )}
                 </div>
@@ -2667,7 +3025,7 @@ export default function PODetails() {
                 type="button"
                 className="po-btn-primary"
                 onClick={handleBulkUpload}
-                disabled={uploading || !uploadRows.length}
+                disabled={uploading || !uploadReadyRows.length}
               >
                 {uploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
                 {uploading ? "Uploading..." : "Upload"}
@@ -2692,7 +3050,12 @@ export default function PODetails() {
             aria-label="PO Details"
           >
             <div className="po-details-header">
-              <h2>PO Details</h2>
+              <div>
+                <h2>{detailsEditMode ? "Edit PO Details" : "PO Details"}</h2>
+                <p className="boq-form-subtitle">
+                  {[detailsRow.phase, detailsRow.po].filter(Boolean).join(" · ")}
+                </p>
+              </div>
               <div className="po-details-header-actions">
                 {!detailsEditMode && (
                   <button
@@ -2703,6 +3066,17 @@ export default function PODetails() {
                   >
                     <Pencil size={15} />
                     Edit
+                  </button>
+                )}
+                {detailsEditMode && (
+                  <button
+                    type="button"
+                    className="po-add-item-btn"
+                    onClick={addDetailsItemDraft}
+                    disabled={detailsSaving}
+                    title="Add another item to this PO"
+                  >
+                    <Plus size={15} /> Add item
                   </button>
                 )}
                 <button
@@ -2717,91 +3091,282 @@ export default function PODetails() {
             </div>
 
             <div className="po-details-body">
-              {detailsError && <div className="po-form-error">{detailsError}</div>}
+              {detailsError && <div className="boq-form-error">{detailsError}</div>}
 
-              <section className="po-details-section">
-                <h3>PO Details</h3>
-                <div className="po-details-grid">
-                  {PO_DETAIL_FIELDS.map((field) => (
-                    <React.Fragment key={field.key}>
-                      <div className="po-details-label">{field.label}</div>
-                      <div className="po-details-value">
-                        {detailsEditMode && field.editable ? (
-                          field.isStatus ? (
+              {/* Edit mirrors the Add PO form: the PO header on top, one item
+                  block per line below it. */}
+              {detailsEditMode ? (
+                <>
+                  <div className="po-form-grid po-header-grid">
+                    <label className="po-field">
+                      <span>Phase</span>
+                      <input
+                        name="phase"
+                        value={detailsRow.phase || ""}
+                        readOnly
+                        disabled
+                      />
+                    </label>
+
+                    <label className="po-field">
+                      <span>PO No <span className="po-required-asterisk">*</span></span>
+                      <input
+                        name="po"
+                        value={editForm.po}
+                        onChange={handleEditFormChange}
+                        placeholder="e.g. PO-4521"
+                      />
+                    </label>
+
+                    <label className="po-field">
+                      <span>Supplier</span>
+                      <SearchableSelect
+                        options={supplierOptions}
+                        value={editForm.supplier}
+                        onChange={(supplier) =>
+                          setEditForm((prev) => ({ ...prev, supplier: supplier || "" }))
+                        }
+                        placeholder="Select or enter supplier"
+                        emptyMessage="Type a supplier name to add it"
+                        allowCustomValue
+                        onEditOption={handleEditSupplier}
+                        onDeleteOption={handleDeleteSupplier}
+                      />
+                    </label>
+
+                    <label className="po-field">
+                      <span>PO Date <span className="po-required-asterisk">*</span></span>
+                      <DatePicker
+                        value={editForm.date}
+                        onChange={(date) => setEditForm((prev) => ({ ...prev, date }))}
+                        ariaLabel="Select PO date"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="po-items-bar">
+                    <span className="po-items-bar-label">
+                      Items
+                      <span className="po-items-count">{detailsItemDrafts.length}</span>
+                    </span>
+                  </div>
+
+                  {detailsItemDrafts.length === 0 && (
+                    <div className="po-items-empty">No items yet — use the &ldquo;Add item&rdquo; button in the header above.</div>
+                  )}
+
+                  {detailsItemDrafts.map((draft, index) => {
+                    const totals = calculatePoAmounts(draft.qty, draft.rate, draft.gstRate);
+                    const subtotal =
+                      totals && draft.qty !== "" && draft.rate !== ""
+                        ? Math.round(Number(draft.qty) * Number(draft.rate) * 100) / 100
+                        : null;
+                    return (
+                      <section
+                        className="boq-item-card"
+                        key={`edit-item-${index}`}
+                        ref={index === detailsItemDrafts.length - 1 ? detailsLastItemRef : null}
+                      >
+                        <div className="boq-item-card-header">
+                          <span className="boq-item-number">
+                            Item {index + 1}
+                            {draft.code ? ` · ${draft.code}` : ""}
+                          </span>
+                          <div className="boq-item-card-actions">
+                            {/* A line already on the server is removed from
+                                the table, never dropped by the form. */}
+                            {!draft.id && (
+                              <button
+                                type="button"
+                                className="icon-btn boq-item-remove"
+                                onClick={() => removeDetailsItemDraft(index)}
+                                aria-label={`Remove item ${index + 1}`}
+                                title="Remove this item"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="po-form-grid">
+                          <label className="po-field">
+                            <span>Item Code <span className="po-required-asterisk">*</span></span>
+                            <SearchableSelect
+                              options={itemCodeOptions}
+                              value={draft.code}
+                              onChange={(code) => handleDetailsItemCodeSelect(index, code)}
+                              placeholder={detailsItemCodeDisabled ? "No phase on this record" : "Select Item Code"}
+                              disabled={detailsItemCodeDisabled}
+                              loading={boqItemsLoading}
+                              emptyMessage={itemCodeEmptyMessage}
+                            />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Make</span>
+                            <input name={`make-${index}`} value={draft.make} readOnly disabled placeholder="Auto-filled from BOQ" />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Model</span>
+                            <input name={`model-${index}`} value={draft.model} readOnly disabled placeholder="Auto-filled from BOQ" />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Qty Ordered <span className="po-required-asterisk">*</span></span>
+                            <input
+                              type="number"
+                              min="0"
+                              name={`qty-${index}`}
+                              value={draft.qty}
+                              onChange={(event) => handleDetailsItemChange(index, "qty", event.target.value)}
+                              placeholder="e.g. 10"
+                            />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Unit Rate <span className="po-required-asterisk">*</span></span>
+                            <input
+                              type="number"
+                              name={`rate-${index}`}
+                              value={draft.rate}
+                              readOnly
+                              disabled={!draft.code}
+                              placeholder={!draft.code ? "Select Item Code first" : "Auto-filled from BOQ"}
+                            />
+                          </label>
+
+                          <label className="po-field">
+                            <span>GST %</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="any"
+                              name={`gstRate-${index}`}
+                              value={draft.gstRate}
+                              onChange={(event) => handleDetailsItemChange(index, "gstRate", event.target.value)}
+                              placeholder="e.g. 18"
+                            />
+                          </label>
+
+                          <label className="po-field po-field-span2">
+                            <span>Item Description <span className="po-required-asterisk">*</span></span>
+                            <input
+                              name={`desc-${index}`}
+                              value={draft.desc}
+                              readOnly
+                              disabled
+                              placeholder="Auto-filled from BOQ"
+                            />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Expected Delivery Date <span className="po-required-asterisk">*</span></span>
+                            <DatePicker
+                              value={draft.expectedDeliveryDate}
+                              onChange={(date) => handleDetailsItemDateChange(index, "expectedDeliveryDate", date)}
+                              ariaLabel={`Select expected delivery date for item ${index + 1}`}
+                            />
+                          </label>
+
+                          <label className="po-field">
+                            <span>Status <span className="po-required-asterisk">*</span></span>
                             <StatusDropdown
-                              name="status"
-                              value={editForm.status}
+                              name={`status-${index}`}
+                              value={draft.status}
                               options={STATUS_OPTIONS}
-                              onChange={handleEditFormChange}
+                              onChange={(event) => handleDetailsItemChange(index, "status", event.target.value)}
                               placeholder="Select status"
                             />
-                          ) : (
-                            field.isSupplier ? (
-                              <SearchableSelect
-                                options={supplierOptions}
-                                value={editForm.supplier}
-                                onChange={(supplier) =>
-                                  setEditForm((prev) => ({ ...prev, supplier: supplier || "" }))
-                                }
-                                placeholder="Select or enter supplier"
-                                emptyMessage="Type a supplier name to add it"
-                                allowCustomValue
-                                onEditOption={handleEditSupplier}
-                                onDeleteOption={handleDeleteSupplier}
-                              />
-                            ) : field.isDate ? (
-                              <DatePicker value={editForm[field.key] ?? ""} onChange={(date) => setEditForm((prev) => ({ ...prev, [field.key]: date }))} ariaLabel={`Select ${field.label}`} />
-                            ) : (
-                              <input type={field.isNumber ? "number" : "text"} className="po-details-edit-input" name={field.key} value={editForm[field.key] ?? ""} onChange={handleEditFormChange} {...(field.isPercent ? { min: 0, max: 100, step: "any" } : {})} />
-                            )
-                          )
-                        ) : (
-                          formatDetailValue(field, previewDetailsRow)
-                        )}
-                      </div>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </section>
+                          </label>
+                        </div>
 
-              {(detailsEditMode || attachmentsOf(detailsRow).length > 0) && (
-                <section className="po-details-section">
-                  <h3>Attachments</h3>
-                  <AttachmentsEditor
-                    compact
-                    readOnly={!detailsEditMode}
-                    files={
-                      detailsEditMode
-                        ? editForm.attachments || []
-                        : attachmentsOf(detailsRow)
-                    }
-                    onChange={(attachments) =>
-                      setEditForm((prev) => ({ ...prev, attachments: attachments || [] }))
-                    }
-                        label="Attach PO files"
-                        uploadEndpoint={`${API_BASE_URL}/po-details/attachments/upload`}
-                        disabled={detailsSaving}
-                  />
-                </section>
+                        {totals && (
+                          <div className="po-form-totals">
+                            <span className="po-form-totals-item">
+                              Subtotal: <strong>{fmtINR(subtotal)}</strong>
+                            </span>
+                            <span className="po-form-totals-item">
+                              GST ({draft.gstRate || 18}%): <strong>{fmtINR(totals.gst)}</strong>
+                            </span>
+                            <span className="po-form-totals-item po-form-totals-final">
+                              PO Value: <strong>{fmtINR(totals.value)}</strong>
+                            </span>
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <section className="po-details-section">
+                    <h3>PO Details</h3>
+                    <div className="po-details-grid">
+                      {PO_DETAIL_FIELDS.map((field) => (
+                        <React.Fragment key={field.key}>
+                          <div className="po-details-label">{field.label}</div>
+                          <div className="po-details-value">
+                            {formatDetailValue(field, previewDetailsRow)}
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="po-details-section">
+                    <h3>Delivery Details</h3>
+                    <div className="po-details-grid">
+                      {DELIVERY_DETAIL_FIELDS.map((field) => (
+                        <React.Fragment key={field.key}>
+                          <div className="po-details-label">{field.label}</div>
+                          <div className="po-details-value">
+                            {formatDetailValue(field, detailsRow)}
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </section>
+                </>
               )}
 
-              <section className="po-details-section">
-                <h3>Delivery Details</h3>
-                <div className="po-details-grid">
-                  {DELIVERY_DETAIL_FIELDS.map((field) => (
-                    <React.Fragment key={field.key}>
-                      <div className="po-details-label">{field.label}</div>
-                      <div className="po-details-value">
-                        {detailsEditMode && field.editable ? (
-                          <DatePicker value={editForm[field.key] ?? ""} onChange={(date) => setEditForm((prev) => ({ ...prev, [field.key]: date }))} ariaLabel={`Select ${field.label}`} />
-                        ) : (
-                          formatDetailValue(field, detailsRow)
-                        )}
-                      </div>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </section>
+              {(detailsEditMode || attachmentsOf(detailsRow).length > 0) && (
+                detailsEditMode ? (
+                  <div className="boq-item-card">
+                    <div className="boq-item-card-header">
+                      <span className="boq-item-number">Attachments</span>
+                    </div>
+                    <AttachmentsEditor
+                      compact
+                      readOnly={false}
+                      files={editForm.attachments || []}
+                      onChange={(attachments) =>
+                        setEditForm((prev) => ({ ...prev, attachments: attachments || [] }))
+                      }
+                      label="Attach PO files"
+                      uploadEndpoint={`${API_BASE_URL}/po-details/attachments/upload`}
+                      disabled={detailsSaving}
+                    />
+                  </div>
+                ) : (
+                  <section className="po-details-section">
+                    <h3>Attachments</h3>
+                    <AttachmentsEditor
+                      compact
+                      readOnly
+                      files={attachmentsOf(detailsRow)}
+                      onChange={(attachments) =>
+                        setEditForm((prev) => ({ ...prev, attachments: attachments || [] }))
+                      }
+                      label="Attach PO files"
+                      uploadEndpoint={`${API_BASE_URL}/po-details/attachments/upload`}
+                      disabled={detailsSaving}
+                    />
+                  </section>
+                )
+              )}
             </div>
 
             <div className="po-details-footer">
@@ -2809,7 +3374,7 @@ export default function PODetails() {
                 <>
                   <button
                     type="button"
-                    className="po-btn-secondary"
+                    className="btn-secondary"
                     onClick={cancelEditingDetails}
                     disabled={detailsSaving}
                   >
@@ -2817,7 +3382,7 @@ export default function PODetails() {
                   </button>
                   <button
                     type="button"
-                    className="po-details-close-btn"
+                    className="create-btn"
                     onClick={handleSaveDetails}
                     disabled={detailsSaving}
                   >
@@ -2828,7 +3393,7 @@ export default function PODetails() {
               ) : (
                 <button
                   type="button"
-                  className="po-btn-secondary"
+                  className="btn-secondary"
                   onClick={requestCloseDetails}
                 >
                   Close

@@ -41,29 +41,37 @@ const BOQ_BULK_COLUMNS = [
   { key: "uom", label: "UOM" },
   { key: "reqQty", label: "Req. Qty / Unit" },
   { key: "minStock", label: "Min Stock (Buffer)" },
-  { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
+  // Buffer total = Req. Qty / Unit x Min Stock, calculated in Excel exactly as
+  // the editor does, so the sample rows are never blank.
+  {
+    key: "minStockQty",
+    label: "Min Stock Qty (Buffer)",
+    required: false,
+    formula: `IFERROR(IF(OR(${excelNum("{reqQty}")}="",${excelNum("{minStock}")}=""),"",ROUND(${excelNum("{reqQty}")}*${excelNum("{minStock}")},2)),"")`,
+  },
   { key: "vendor", label: "Supplier Name" },
   { key: "rate", label: "Unit Rate (INR)" },
   { key: "gstRate", label: "GST %" },
-  // Calculated in Excel from Unit Rate + GST % + Req. Qty, exactly like the
-  // editor does; `required: false` keeps them out of the import checks.
+  // Basic Price / GST Price / Total incl. GST, calculated in Excel from
+  // Req. Qty + Unit Rate + GST %, exactly like the editor does; `required:
+  // false` keeps them out of the import checks.
   {
-    key: "unitGst",
-    label: "GST per Unit (INR)",
+    key: "basicPrice",
+    label: "Basic Price (INR)",
     required: false,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2)),"")`,
+    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{reqQty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")},2)),"")`,
   },
   {
-    key: "materialCostUnit",
-    label: "Material Cost per Unit incl. GST (INR)",
+    key: "gstPrice",
+    label: "GST Price (INR)",
     required: false,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}+ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}*${excelGst("{gstRate}")},2)),"")`,
   },
   {
-    key: "lineTotalQty",
-    label: "Material Cost incl. GST (Total) (INR)",
+    key: "totalInclGst",
+    label: "Total incl. GST (INR)",
     required: false,
-    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{reqQty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}+ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}+${excelNum("{gstPrice}")},2)),"")`,
   },
   { key: "remarks", label: "Remarks" },
 ];
@@ -93,23 +101,23 @@ const BOQ_BULK_NOTES = {
   reqQty: ["Quantity needed per finished unit.", "12"],
   minStock: ["Buffer stock in units. Optional, 0 for none.", "5"],
   minStockQty: [
-    "Total buffer = Req. Qty x Min Stock. Optional, blank is calculated for you.",
+    "Calculated automatically = Req. Qty / Unit x Min Stock (Buffer). Do not type in this column.",
     "60",
   ],
   vendor: ["Preferred supplier / vendor. Optional.", "Steel Authority"],
   rate: ["Unit price, numbers only. Optional.", "145.50"],
   gstRate: ["GST percentage, 0-100. Blank means 18%.", "18"],
-  unitGst: [
-    "Calculated automatically = Unit Rate x GST % (blank GST uses 18%). Do not type in this column.",
-    "1.08",
+  basicPrice: [
+    "Calculated automatically = Req. Qty / Unit x Unit Rate (before GST). Do not type in this column.",
+    "30",
   ],
-  materialCostUnit: [
-    "Calculated automatically = Unit Rate + GST per Unit. Do not type in this column.",
-    "7.08",
+  gstPrice: [
+    "Calculated automatically = Basic Price x GST % (blank GST uses 18%). Do not type in this column.",
+    "5.4",
   ],
-  lineTotalQty: [
-    "Calculated automatically = Material Cost per Unit incl. GST x Req. Qty / Unit. Do not type here.",
-    "35.40",
+  totalInclGst: [
+    "Calculated automatically = Basic Price + GST Price. Do not type in this column.",
+    "35.4",
   ],
   remarks: ["Free text note. Optional.", "ISI marked"],
 };
@@ -168,6 +176,17 @@ const BOQ_BULK_ALIASES = {
   gstpercentage: "gstRate",
   gstslab: "gstRate",
   taxrate: "gstRate",
+  // Files exported before the Basic Price / GST Price / Total rename still
+  // carry the old calculated headers; they are ignored on import either way.
+  basicprice: "basicPrice",
+  gstprice: "gstPrice",
+  materialcost: "totalInclGst",
+  materialcostunit: "totalInclGst",
+  materialcostinr: "totalInclGst",
+  materialcostinclgst: "totalInclGst",
+  linecost: "totalInclGst",
+  totalinclg: "totalInclGst",
+  total: "totalInclGst",
   remarks: "remarks",
   remark: "remarks",
   notes: "remarks",
@@ -309,29 +328,19 @@ const BOQ_COLUMNS = [
   { key: "vendor", label: "Vendor" },
   { key: "rate", label: "Unit Rate (INR)", format: fmtINR },
   { key: "gstRate", label: "GST %", format: (value) => (value === null || value === undefined || String(value).trim() === "" ? "18%" : `${value}%`) },
-  {
-    key: "materialCost",
-    label: "Material Cost / Unit incl. GST (INR)",
-    // Per-unit cost = rate x (1 + GST%); the line total is shown separately so
-    // the two are never confused.  `render` drives the table (it gets the whole
-    // row), `format` drives the Excel/PDF export (value + row).
-    render: (row) => {
-      const rate = Number(row?.rate) || 0;
-      if (!rate) return fmtINR(row?.materialCost ?? 0);
-      return fmtINR(Math.round(rate * (1 + boqGstRate(row) / 100) * 100) / 100);
-    },
-    format: (value, row) => {
-      const rate = Number(row?.rate) || 0;
-      if (!rate) return fmtINR(value ?? 0);
-      return fmtINR(Math.round(rate * (1 + boqGstRate(row) / 100) * 100) / 100);
-    },
-  },
-  {
-    key: "lineTotal",
-    label: "Material Cost incl. GST Total (INR)",
-    render: (row) => fmtINR(boqGstAmounts(row)?.total ?? row?.materialCost ?? 0),
-    format: (value, row) => fmtINR(boqGstAmounts(row)?.total ?? value ?? 0),
-  },
+  // Money trio: Basic = Req. Qty x Unit Rate, GST is that base times the line's
+  // slab, Total is Basic + GST.  `render` drives the table (it gets the whole
+  // row), `format` drives the Excel/PDF export (value + row).
+  ...[
+    { key: "basicPrice", label: "Basic Price (INR)", pick: "base" },
+    { key: "gstAmount", label: "GST Price (INR)", pick: "gst" },
+    { key: "lineTotal", label: "Total incl. GST (INR)", pick: "total" },
+  ].map(({ key, label, pick }) => ({
+    key,
+    label,
+    render: (row) => fmtINR(boqGstAmounts(row)?.[pick] ?? 0),
+    format: (value, row) => fmtINR(boqGstAmounts(row)?.[pick] ?? (Number(value) || 0)),
+  })),
   { key: "remarks", label: "Remarks" },
 ];
 const BOQ_FILTER_FIELDS = BOQ_COLUMNS.filter((column) => ["phase", "make", "model", "uom", "vendor"].includes(column.key));
@@ -362,8 +371,10 @@ function boqGstAmounts(row) {
   return { rate, reqQty, gstRate, unitGst, unitTotal, base, gst, total: Math.round((base + gst) * 100) / 100 };
 }
 
-// Recomputes the auto-calculated fields for a single row
-const withCalculatedFields = (row) => {
+// Recomputes the auto-calculated fields for a single row.  Exported because the
+// Phases page imports rows straight from Excel and must derive the same figures
+// as the editor.
+export const withCalculatedFields = (row) => {
   const reqQty = Number(row.reqQty) || 0;
   const minStock = Number(row.minStock) || 0;
   const amounts = boqGstAmounts(row);
@@ -522,7 +533,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
           .map((name) => (name.toLowerCase() === option.value.toLowerCase() ? trimmed : name))
           .sort((a, b) => a.localeCompare(b))
       );
-      await swalSuccess("Supplier renamed", `“${option.value}” is now “${trimmed}”.`);
+      await swalSuccess("Supplier renamed", `"${option.value}" is now "${trimmed}".`);
     } catch (err) {
       await swalError("Rename failed", err?.response?.data?.message || err?.message || "Failed to rename supplier.");
     }
@@ -530,7 +541,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
 
   const handleDeleteSupplier = async (option) => {
     const confirmed = await swalConfirm({
-      title: `Delete “${option.value}”?`,
+      title: `Delete "${option.value}"`,
       text: "It disappears from the supplier list. BOQ rows already saved keep the name they were saved with.",
       confirmText: "Yes, delete it",
     });
@@ -548,7 +559,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
           (name) => name.toLowerCase() !== option.value.toLowerCase()
         )
       );
-      await swalSuccess("Supplier deleted", `“${option.value}” was removed from the list.`);
+      await swalSuccess("Supplier deleted", `"${option.value}" was removed from the list.`);
     } catch (err) {
       await swalError("Delete failed", err?.response?.data?.message || err?.message || "Failed to delete supplier.");
     }
@@ -931,12 +942,23 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
                   />
                 </label>
 
+                {/* Same three money figures the table shows: Req. Qty x Unit
+                    Rate, the GST on that base, and Basic + GST. */}
                 <label className="boq-field">
-                  <span>Material Cost incl. GST (Total)</span>
+                  <span>Basic Price (INR)</span>
+                  <input type="number" value={totals ? totals.base : 0} readOnly disabled />
+                </label>
+
+                <label className="boq-field">
+                  <span>GST Price (INR)</span>
+                  <input type="number" value={totals ? totals.gst : 0} readOnly disabled />
+                </label>
+
+                <label className="boq-field">
+                  <span>Total incl. GST (INR)</span>
                   <input type="number" value={row.materialCost ?? 0} readOnly disabled />
                 </label>
 
-                
               </div>
 
               {totals && (
@@ -948,12 +970,18 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
                     GST ({totals.gstRate}%) per Unit: <strong>{fmtINR(totals.unitGst)}</strong>
                   </span>
                   <span className="boq-gst-totals-item boq-gst-totals-final">
-                    Material Cost per Unit incl. GST: <strong>{fmtINR(totals.unitTotal)}</strong>
+                    Total per Unit incl. GST: <strong>{fmtINR(totals.unitTotal)}</strong>
+                  </span>
+                  <span className="boq-gst-totals-item">
+                    Basic Price ({totals.reqQty} × {fmtINR(totals.rate)}):{" "}
+                    <strong>{fmtINR(totals.base)}</strong>
+                  </span>
+                  <span className="boq-gst-totals-item">
+                    GST Price: <strong>{fmtINR(totals.gst)}</strong>
                   </span>
                   {totals.reqQty > 0 && (
                     <span className="boq-gst-totals-item boq-gst-totals-total">
-                      Total for {totals.reqQty} Unit{totals.reqQty === 1 ? "" : "s"} incl. GST:{" "}
-                      <strong>{fmtINR(totals.total)}</strong>
+                      Total incl. GST: <strong>{fmtINR(totals.total)}</strong>
                     </span>
                   )}
                 </div>
@@ -1009,7 +1037,6 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   // Bulk upload lives on this page (like PO Details) and inside the editor.
   const [uploadOpen, setUploadOpen] = useState(false);
   // Rows waiting from a bulk upload: they join the editor, not the database.
-  const [pendingImport, setPendingImport] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
@@ -1115,6 +1142,13 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     () => filterBoqRows(boq?.rows || []),
     [boq, filterBoqRows]
   );
+
+  // A BOQ document can survive with no rows in it (every line was deleted, or
+  // the upload preview never saved).  That is the same situation as never
+  // having had a BOQ, so the page offers "Add BOQ" and the empty state again
+  // instead of an empty table under an "Edit BOQ" button.
+  const hasBoqRows = Boolean(boq && (boq.allRows || boq.rows || []).length);
+
   const exportRows = useMemo(
     () => filterBoqRows(boq?.allRows || boq?.rows || []),
     [boq, filterBoqRows]
@@ -1130,27 +1164,43 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     [exportRows]
   );
 
-  const persistRows = useCallback(async (rows) => {
+  // The same rows without their GST portion, so the badge can show both.
+  const totalMaterialCostExclGst = useMemo(
+    () =>
+      exportRows.reduce((sum, row) => {
+        const amounts = boqGstAmounts(row);
+        if (amounts) return sum + amounts.base;
+        // No unit rate on the row: strip GST from the stored inclusive cost.
+        const incl = Number(String(row.materialCost ?? 0).replace(/,/g, "")) || 0;
+        return sum + Math.round((incl / (1 + boqGstRate(row) / 100)) * 100) / 100;
+      }, 0),
+    [exportRows]
+  );
+
+  const persistRows = useCallback(async (rows, { createMissingItemCodes = false } = {}) => {
+    // A spreadsheet is how new Item Codes arrive, so an upload may register the
+    // codes it carries; the editor keeps its stricter "pick or create" flow.
+    const body = { rows, createMissingItemCodes };
     if (boq?.id) {
       return api.put(
         `${API_BASE_URL}/models/${resolvedModelId}/phases/${resolvedPhaseId}/boq/${boq.id}`,
-        { rows },
+        body,
         { __vectorSuppressBusy: true }
       );
     }
       return api.post(
         `${API_BASE_URL}/models/${resolvedModelId}/phases/${resolvedPhaseId}/boq`,
-        { rows },
+        body,
         { __vectorSuppressBusy: true }
       );
   }, [boq, resolvedModelId, resolvedPhaseId]);
 
   // Create vs update messaging is decided *before* the save, since after
   // persistRows() succeeds boq.id will always be truthy either way.
-  const handleSave = async (rows, { keepEditorOpen = false } = {}) => {
+  const handleSave = async (rows, { keepEditorOpen = false, addedCount = 0, createMissingItemCodes = false } = {}) => {
     const wasExisting = Boolean(boq?.id);
     try {
-      await persistRows(rows);
+      await persistRows(rows, { createMissingItemCodes });
       if (keepEditorOpen) {
         setBoq((current) => current ? {
           ...current,
@@ -1164,9 +1214,11 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
       if (!keepEditorOpen) setEditorOpen(false);
       swalSuccess(
         keepEditorOpen ? "BOQ item saved" : (wasExisting ? "BOQ updated" : "BOQ created"),
-        wasExisting
-          ? `The BOQ for ${phaseName} has been updated with ${rows.length} item(s).`
-          : `The BOQ for ${phaseName} has been created with ${rows.length} item(s).`
+        addedCount
+          ? `${addedCount} row${addedCount === 1 ? "" : "s"} added to the BOQ for ${phaseName}.`
+          : wasExisting
+            ? `The BOQ for ${phaseName} has been updated with ${rows.length} item(s).`
+            : `The BOQ for ${phaseName} has been created with ${rows.length} item(s).`
       );
       return true;
     } catch (err) {
@@ -1316,7 +1368,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
       <>
       <button type="button" className="create-btn" onClick={openEditor}>
       <Pencil size={16} />
-      {boq ? "Edit BOQ" : "Add BOQ"}
+      {hasBoqRows ? "Edit BOQ" : "Add BOQ"}
       </button>
       <button
         type="button"
@@ -1326,7 +1378,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
       >
         <FileSpreadsheet size={15} /> Bulk upload
       </button>
-              {boq && boq.rows?.length > 0 && (
+              {hasBoqRows && (
                 <button type="button" className="delete-button" onClick={toggleSelectMode}>
                   <Trash2 size={16} /> Delete Rows
                 </button>
@@ -1370,9 +1422,9 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
                 <>
                   <button type="button" className="model-menu-item" onClick={openEditor}>
                     <Pencil size={16} />
-                    {boq ? "Edit BOQ" : "Add BOQ"}
+                    {hasBoqRows ? "Edit BOQ" : "Add BOQ"}
                   </button>
-                  {boq && boq.rows?.length > 0 && (
+                  {hasBoqRows && (
                     <button type="button" className="model-menu-item" onClick={toggleSelectMode}>
                       <Trash2 size={16} /> Delete Rows
                     </button>
@@ -1387,7 +1439,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
       {error && <p className="model-error">{error}</p>}
       {loading && <p className="page-loading">Loading BOQ...</p>}
 
-      {!loading && !boq && (
+      {!loading && !hasBoqRows && (
         <div className="boq-empty">
           <ClipboardList size={34} />
           <h3>No BOQ added yet</h3>
@@ -1395,19 +1447,32 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
         </div>
       )}
 
-      {!loading && boq && (
+      {!loading && hasBoqRows && (
         <>
           <div className="panel">
             <div className="table-controls-row">
               <div className="table-controls-primary">
                 <SearchBar value={query} onChange={setQuery} placeholder="Search BOQ rows..." />
                 <PageFilter rows={boq.rows || []} fields={BOQ_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
-                <span className="boq-count">Showing {filteredRows.length} of {totalCount} rows</span>
+                {/* <span className="boq-count">Showing {filteredRows.length} of {totalCount} rows</span> */}
               </div>
               <div className="table-controls-right">
                 <span className="table-total">
-                  <span className="table-total-label">Total Material Cost incl. GST</span>
-                  <span className="table-total-value">{fmtINR(totalMaterialCost)}</span>
+                  <span className="table-total-label">Total</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalMaterialCostExclGst)}{" "}
+                    <span className="table-total-scope">(Basic Price)</span>
+                  </span>
+                  <span className="table-total-scope">|</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalMaterialCost - totalMaterialCostExclGst)}{" "}
+                    <span className="table-total-scope">(GST Price)</span>
+                  </span>
+                  <span className="table-total-scope">|</span>
+                  <span className="table-total-value">
+                    {fmtINR(totalMaterialCost)}{" "}
+                    <span className="table-total-scope">(Total incl. GST)</span>
+                  </span>
                 </span>
                 <ExportPdfButton
                   mode="table"
@@ -1446,14 +1511,8 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
         // The API paginates the table rows, but an edit replaces the
         // complete BOQ document. Give the editor every row so saving an
         // edit from page 1 cannot overwrite rows that are on page 2+.
-        rows={[
-          ...(boq?.allRows || boq?.rows || []),
-          ...pendingImport,
-        ]}
-        onClose={() => {
-          setPendingImport([]);
-          setEditorOpen(false);
-        }}
+        rows={boq?.allRows || boq?.rows || []}
+        onClose={() => setEditorOpen(false)}
         onSave={handleSave}
       />
       )}
@@ -1472,14 +1531,23 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
           normalizeRow={(draft) => normalizeBoqBulkRow(draft, phaseName)}
           previewFields={BOQ_BULK_PREVIEW}
       importLabel="Add to BOQ"
-      onImport={(imported) => {
-            // Imported rows go into the editor alongside the current ones, so
-            // nothing is written until "Save Overall" is pressed.
-            setUploadOpen(false);
-            setPendingImport((current) => [...current, ...imported]);
-            setEditorOpen(true);
-          }}
-        />
+onImport={(imported) => {
+          // The upload is a deliberate save: append the imported lines to the
+          // phase's own BOQ and refresh the table.  No detour through the
+          // editor, which used to open with the new items as unsaved drafts.
+          if (!imported.length) return;
+          const current = boq?.allRows || boq?.rows || [];
+          // Rows that never pass through the editor still need their derived
+          // fields (buffer total, GST-inclusive material cost), or the page
+          // totals read as zero.
+          const prepared = imported.map((row) => withCalculatedFields(row));
+          setUploadOpen(false);
+          handleSave([...current, ...prepared], {
+            addedCount: imported.length,
+            createMissingItemCodes: true,
+          });
+        }}
+      />
       )}
     </div>
   );

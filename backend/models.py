@@ -259,19 +259,46 @@ def _serialize_phase(doc):
     }
 
 
-def _phase_total_material_cost(model_id, phase_id):
-    """Sum of `materialCost` over every BOQ row of one phase."""
+def _row_gst_rate(row):
+    """GST percent of one BOQ row, defaulting to the standard slab."""
+    raw = row.get("gstRate")
+    if raw is None or str(raw).strip() == "":
+        return 18.0
+    try:
+        return float(str(raw).strip().replace("%", ""))
+    except (TypeError, ValueError):
+        return 18.0
+
+
+def _phase_cost_totals(model_id, phase_id):
+    """GST split over every BOQ row of one phase: total (incl. GST), the
+    pre-GST base and the GST portion.  The base prefers the real
+    rate x qty and falls back to stripping GST from the stored inclusive
+    cost, so the three figures always add back up to the displayed total."""
     total = 0.0
+    excl_gst = 0.0
     try:
         for boq_doc in _boq_collection(model_id, phase_id).limit(1).stream():
             for row in (boq_doc.to_dict() or {}).get("rows", []) or []:
                 try:
-                    total += float(row.get("materialCost") or 0)
+                    cost = float(row.get("materialCost") or 0)
                 except (TypeError, ValueError):
                     continue
+                try:
+                    rate = float(row.get("rate") or 0)
+                    qty = float(row.get("reqQty") or 0)
+                except (TypeError, ValueError):
+                    rate = qty = 0.0
+                total += cost
+                if rate and qty:
+                    excl_gst += round(rate * qty, 2)
+                else:
+                    excl_gst += round(cost / (1 + _row_gst_rate(row) / 100), 2)
     except Exception:
-        return 0.0
-    return round(total, 2)
+        return {"total": 0.0, "exclGst": 0.0, "gst": 0.0}
+    total = round(total, 2)
+    excl_gst = round(excl_gst, 2)
+    return {"total": total, "exclGst": excl_gst, "gst": round(total - excl_gst, 2)}
 
 
 @models_bp.route("/models/<model_id>/phases", methods=["GET"])
@@ -283,7 +310,10 @@ def list_phases(model_id):
         payload = []
         for doc in phases:
             phase = _serialize_phase(doc)
-            phase["totalMaterialCost"] = _phase_total_material_cost(model_id, doc.id)
+            totals = _phase_cost_totals(model_id, doc.id)
+            phase["totalMaterialCost"] = totals["total"]
+            phase["totalMaterialCostExclGst"] = totals["exclGst"]
+            phase["totalGst"] = totals["gst"]
             payload.append(phase)
         return jsonify({"success": True, "phases": payload}), 200
     except Exception as exc:
@@ -536,8 +566,13 @@ def generate_item_code():
         return jsonify({"success": False, "message": f"Failed to generate Item Code: {exc}"}), 500
 
 
-def _assign_global_item_codes(rows, existing_rows=None):
-    """Resolve BOQ rows to catalog Item Codes, preserving legacy payloads."""
+def _assign_global_item_codes(rows, existing_rows=None, create_missing=False):
+    """Resolve BOQ rows to catalog Item Codes, preserving legacy payloads.
+
+    `create_missing` lets a caller (the Excel bulk upload) register the codes it
+    carries instead of failing: a spreadsheet is how new codes arrive, and the
+    row's own description seeds the catalog entry.
+    """
     prepared_rows = [dict(row) for row in rows]
     rows_needing_codes = [
         row for row in prepared_rows if not _normalise_item_code(row.get("code"))
@@ -555,7 +590,33 @@ def _assign_global_item_codes(rows, existing_rows=None):
     code_docs = {doc.id: doc for doc in db.get_all([_item_code_ref(code) for code in codes])}
     missing_codes = sorted(code for code in codes if code not in code_docs or not code_docs[code].exists)
     if missing_codes:
-        raise ValueError(f"Item Code {missing_codes[0]} does not exist. Select an existing code or create a new one.")
+        if not create_missing:
+            raise ValueError(f"Item Code {missing_codes[0]} does not exist. Select an existing code or create a new one.")
+
+        # The upload is allowed to introduce codes.  Any custom number is
+        # remembered so the generated counter can never hand out the same one.
+        created = []
+        for code in missing_codes:
+            description = ""
+            for row in prepared_rows:
+                if _normalise_item_code(row.get("code")) == code:
+                    description = (row.get("desc") or "").strip()
+                    break
+            item_codes_collection.document(code).set({
+                "code": code,
+                "desc": description,
+                "createdAt": datetime.now(timezone.utc),
+                "source": "bulk-upload",
+            })
+            created.append(code)
+
+        # The generated ITM-0xx counter must start above every custom number.
+        highest = max(_item_code_number(code) for code in created)
+        db.collection("_counters").document("boq_item_codes").set(
+            {"lastItemCodeNumber": max(highest, 0), "updatedAt": datetime.now(timezone.utc)},
+            merge=True,
+        )
+        code_docs = {doc.id: doc for doc in db.get_all([_item_code_ref(code) for code in codes])}
 
     batch = db.batch()
     for row in prepared_rows:
@@ -662,7 +723,10 @@ def create_boq(model_id, phase_id):
         if existing:
             return jsonify({"success": False, "message": "BOQ already exists for this phase"}), 409
 
-        rows = _assign_global_item_codes(rows)
+        rows = _assign_global_item_codes(
+            rows,
+            create_missing=bool(data.get("createMissingItemCodes")),
+        )
         _save_suppliers(rows)
         doc_ref = boq_collection.document()
         created_at = datetime.now(timezone.utc)
@@ -720,7 +784,11 @@ def update_boq(model_id, phase_id, boq_id):
         if not existing_boq.exists:
             return jsonify({"success": False, "message": "BOQ not found"}), 404
 
-        rows = _assign_global_item_codes(rows, (existing_boq.to_dict() or {}).get("rows", []))
+        rows = _assign_global_item_codes(
+            rows,
+            (existing_boq.to_dict() or {}).get("rows", []),
+            create_missing=bool(data.get("createMissingItemCodes")),
+        )
         _save_suppliers(rows)
         boq_ref.update({"rows": rows})
         return jsonify({"success": True, "message": "BOQ updated"}), 200

@@ -75,6 +75,13 @@ export default function Model() {
   useEffect(() => {
     writeDrill(DRILL_KEY, activeModel);
   }, [activeModel]);
+
+  // Clicking "Models" in the sidebar returns to the model card grid.
+  useEffect(() => {
+    const resetDrill = () => setActiveModel(null);
+    window.addEventListener("vector:models-reset", resetDrill);
+    return () => window.removeEventListener("vector:models-reset", resetDrill);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 

@@ -204,7 +204,10 @@
 .invoices-form-totals { margin-top: 18px; }
 
 .invoices-form-grid, .invoices-form-grid * { box-sizing: border-box; }
-.invoices-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: start; width: 100%; }
+/* Same alignment as the BOQ form: stretch instead of `start`, so a label that
+   wraps to two lines never pushes its control out of line with the fields
+   beside it. */
+.invoices-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: stretch; width: 100%; }
 
 /* Invoice header: only Invoice No / Date / Phase, the items follow below. */
 .invoices-header-grid { grid-template-columns: repeat(3, 1fr); }
@@ -223,6 +226,14 @@
   display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); width: 100%; min-width: 0;
 }
+/* Keeps every control on the same baseline inside a row, whatever height the
+   label above it takes (as in Boq.css). */
+.invoices-field > span { min-height: 1.15em; }
+.invoices-field > input,
+.invoices-field > select,
+.invoices-field > .searchable-select,
+.invoices-field > .app-date-picker,
+.invoices-field > .invoices-status-dropdown { margin-top: auto; }
 .invoices-field input, .invoices-field select {
   box-sizing: border-box; width: 100%; height: 44px; font-family: inherit; font-size: 13.5px;
   font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-primary);

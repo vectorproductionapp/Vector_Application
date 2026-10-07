@@ -2,8 +2,11 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  Check,
   Download,
   Loader2,
+  Pencil,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -198,6 +201,46 @@ export function applyColumnFormulas(sheet, columns, rowCount = FORMULA_ROW_COUNT
   return sheet;
 }
 
+/** Excel writes dates as text unless the cell is a real date, and a text cell
+ *  has no date picker. This turns a column's values into date cells with a
+ *  DD-MM-YYYY number format. */
+const EXCEL_DATE_FORMAT = "DD-MM-YYYY";
+
+/** A real Date for a template cell, so Excel stores it as a date (and offers
+ *  its date picker) instead of text. */
+export const toDateCellDate = (value) => toExcelDate(value) || "";
+
+const toExcelDate = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value).trim();
+  // Midday UTC keeps the displayed day from shifting west of Greenwich.
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) return new Date(Date.UTC(+match[1], +match[2] - 1, +match[3], 12));
+  match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (match) return new Date(Date.UTC(+match[3], +match[1] - 1, +match[2], 12));
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+/** Re-types every filled cell of a date column as a real Excel date. */
+export function applyDateColumnFormats(sheet, columns, seedRow = null) {
+  if (!sheet || !sheet["!ref"]) return;
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  columns.forEach((column, index) => {
+    if (!column.isDate) return;
+    const letter = columnLetter(index);
+    for (let row = range.s.r + 1; row <= range.e.r; row += 1) {
+      const address = `${letter}${row + 1}`;
+      const cell = sheet[address];
+      if (!cell || cell.f) continue;
+      const date = toExcelDate(cell.v);
+      if (!date) continue;
+      sheet[address] = { t: "d", v: date, z: EXCEL_DATE_FORMAT };
+    }
+  });
+}
+
 /**
  * Downloads a template: a "Rows" sheet with the header row and, when the page
  * already has records, those records as-is - so the file can be edited and
@@ -216,6 +259,7 @@ export function downloadTemplate({ fileName, columns, notes = {}, dataRows = [],
   // Blank templates get a full block of ready-made formula rows; an export of
   // existing records keeps its rows and is topped up to the same minimum.
   applyColumnFormulas(sheet, columns, Math.max(dataRows.length, FORMULA_ROW_COUNT));
+  applyDateColumnFormats(sheet, columns);
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, "Rows");
 
@@ -224,7 +268,12 @@ export function downloadTemplate({ fileName, columns, notes = {}, dataRows = [],
     notes[column.key]?.[0] || "",
     notes[column.key]?.[1] || "",
   ]);
-  const helpSheet = XLSX.utils.aoa_to_sheet([["Column", "What to enter", "Example"], ...help]);
+  const helpSheet = XLSX.utils.aoa_to_sheet([
+    ["Column", "What to enter", "Example"],
+    ...help,
+    [],
+    ["Note", "Click a date cell for Excel's date picker, or type the date as 2026-08-20 - ISO is read the same way in every locale.", ""],
+  ]);
   helpSheet["!cols"] = [{ wch: 24 }, { wch: 52 }, { wch: 20 }];
   XLSX.utils.book_append_sheet(book, helpSheet, "Instructions");
 
@@ -296,6 +345,7 @@ export function parseBulkWorkbook({ workbook, columns, aliases, optionalKeys, no
 
   const rows = [];
   const issues = [];
+  const entries = [];
   for (let index = headerIndex + 1; index < matrix.length; index += 1) {
     const raw = matrix[index] || [];
     if (raw.every((cell) => cell === null || cell === undefined || String(cell).trim() === "")) continue;
@@ -308,6 +358,9 @@ export function parseBulkWorkbook({ workbook, columns, aliases, optionalKeys, no
     if (index === headerIndex + 1 && columns.every((column) => !draft[column.key])) continue;
 
     const { row, problems } = normalizeRow(draft);
+    // Every data row is kept, problems included: the preview can correct a bad
+    // row instead of dropping it.
+    entries.push({ line: index + 1, draft, row, problems });
     if (problems.length) issues.push({ row: index + 1, message: problems.join("; ") });
     else rows.push(row);
   }
@@ -319,7 +372,7 @@ export function parseBulkWorkbook({ workbook, columns, aliases, optionalKeys, no
         "then upload that saved file."
     );
   }
-  return { rows, issues };
+  return { rows, issues, entries };
 }
 
 const fmtCell = (value, field) => {
@@ -349,36 +402,66 @@ export default function BulkUploadModal({
   existingRowLabel = "record",
   onImport,
 }) {
-  const inputRef = useRef(null);
-  const [rows, setRows] = useState([]);
-  const [issues, setIssues] = useState([]);
+const inputRef = useRef(null);
+  // One entry per data row: the raw draft plus what `normalizeRow` made of it.
+  // Editing patches the draft and re-runs the same normalization, so corrected
+  // rows get the same checks and derived values as rows read from the file.
+  const [entries, setEntries] = useState([]);
+  const [editingLine, setEditingLine] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const readyRows = useMemo(
+    () => entries.filter((entry) => !entry.problems.length).map((entry) => entry.row),
+    [entries]
+  );
+  const issues = useMemo(
+    () =>
+      entries
+        .filter((entry) => entry.problems.length)
+        .map((entry) => ({ row: entry.line, message: entry.problems.join("; ") })),
+    [entries]
+  );
+
   const reset = useCallback(() => {
-    setRows([]);
-    setIssues([]);
+    setEntries([]);
+    setEditingLine(null);
     setError("");
     setBusy(false);
     if (inputRef.current) inputRef.current.value = "";
   }, []);
+
+  const updateEntry = (line, field, value) => {
+    setEntries((previous) =>
+      previous.map((entry) => {
+        if (entry.line !== line) return entry;
+        const draft = { ...entry.draft, [field]: value };
+        const { row, problems } = normalizeRow(draft);
+        return { ...entry, draft, row, problems };
+      })
+    );
+  };
+
+  const deleteEntry = (line) => {
+    setEntries((previous) => previous.filter((entry) => entry.line !== line));
+    setEditingLine((current) => (current === line ? null : current));
+  };
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setBusy(true);
     setError("");
-    setRows([]);
-    setIssues([]);
+    setEntries([]);
+    setEditingLine(null);
     try {
       const workbook = await readWorkbook(file);
       const parsed = parseBulkWorkbook({ workbook, columns, aliases, optionalKeys, normalizeRow });
-      setRows(parsed.rows);
-      setIssues(parsed.issues);
+      setEntries(parsed.entries);
     } catch (err) {
       setError(err?.message || "That file could not be read.");
-      // Clear the picker so the corrected file can be chosen again, even if
-      // it keeps the same name.
+      // Clear the picker so the corrected file can be chosen again, even if it
+      // keeps the same name.
       if (event.target) event.target.value = "";
     } finally {
       setBusy(false);
@@ -393,8 +476,8 @@ export default function BulkUploadModal({
   if (!open) return null;
 
   const handleImport = () => {
-    if (!rows.length) return;
-    onImport?.(rows);
+    if (!readyRows.length) return;
+    onImport?.(readyRows);
     reset();
     onClose?.();
   };
@@ -435,7 +518,7 @@ export default function BulkUploadModal({
             <input
               ref={inputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls"
               onChange={handleFile}
               disabled={busy}
             />
@@ -453,16 +536,19 @@ export default function BulkUploadModal({
             </div>
           )}
 
-          {rows.length > 0 && (
+          {entries.length > 0 && (
             <div className="bulk-summary">
               <span>
-                <strong>{rows.length}</strong> row{rows.length === 1 ? "" : "s"} ready to add
+                <strong>{readyRows.length}</strong> row{readyRows.length === 1 ? "" : "s"} ready to add
               </span>
               {issues.length > 0 && (
                 <span className="bulk-summary-issues">
                   {issues.length} row{issues.length === 1 ? "" : "s"} will be skipped
                 </span>
               )}
+              <span className="bulk-summary-hint">
+                Use Edit to correct a cell or Delete to drop a row - both re-check the row before it is added.
+              </span>
             </div>
           )}
 
@@ -477,34 +563,86 @@ export default function BulkUploadModal({
             </ul>
           )}
 
-          {rows.length > 0 && (
+          {entries.length > 0 && (
             <div className="bulk-preview">
               <table>
                 <thead>
                   <tr>
-                    <th>#</th>
+                    <th className="bulk-index-head">S.No.</th>
                     {fields.map((field) => (
                       <th key={field.key}>{field.label}</th>
                     ))}
+                    <th className="bulk-actions-head">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.slice(0, 50).map((row, index) => (
-                    <tr key={index}>
-                      <td className="bulk-index">{index + 1}</td>
-                      {fields.map((field) => (
-                        <td key={field.key}>{fmtCell(row[field.key], field)}</td>
-                      ))}
-                    </tr>
-                  ))}
+                  {entries.slice(0, 50).map((entry, index) => {
+                    const editing = editingLine === entry.line;
+                    return (
+                      <tr
+                        key={entry.line}
+                        className={entry.problems.length ? "bulk-row-invalid" : editing ? "bulk-row-editing" : ""}
+                      >
+                        <td className="bulk-index" data-label="S.No.">
+                          {index + 1}
+                          {entry.problems.length > 0 && (
+                            <AlertTriangle
+                              size={13}
+                              className="bulk-row-warning"
+                              aria-label={entry.problems.join("; ")}
+                            />
+                          )}
+                        </td>
+                        {fields.map((field) => (
+                          <td key={field.key} data-label={field.label}>
+                            {editing ? (
+                              <input
+                                className="bulk-cell-input"
+                                type={field.isNumber ? "number" : "text"}
+                                value={entry.draft[field.key] ?? ""}
+                                onChange={(event) =>
+                                  updateEntry(entry.line, field.key, event.target.value)
+                                }
+                                aria-label={`${field.label} for row ${index + 1}`}
+                              />
+                            ) : (
+                              fmtCell(entry.row[field.key], field)
+                            )}
+                          </td>
+                        ))}
+                        <td className="bulk-row-actions" data-label="Actions">
+                          <button
+                            type="button"
+                            className="bulk-row-btn"
+                            onClick={() => setEditingLine(editing ? null : entry.line)}
+                            aria-label={editing ? `Done editing row ${index + 1}` : `Edit row ${index + 1}`}
+                            title={editing ? "Done" : "Edit this row"}
+                          >
+                            {editing ? <Check size={14} /> : <Pencil size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            className="bulk-row-btn danger"
+                            onClick={() => deleteEntry(entry.line)}
+                            aria-label={`Delete row ${index + 1}`}
+                            title="Remove this row"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-              {rows.length > 50 && <p className="bulk-preview-hint">Showing the first 50 of {rows.length} rows.</p>}
+              {entries.length > 50 && (
+                <p className="bulk-preview-hint">Showing the first 50 of {entries.length} rows.</p>
+              )}
             </div>
           )}
 
           <p className="bulk-hint">
-            Accepts .xlsx, .xls or .csv. Column names are matched loosely, so
+            Accepts .xlsx or .xls. Column names are matched loosely, so
             &ldquo;Item Code&rdquo;, &ldquo;item_code&rdquo; and &ldquo;ItemCode&rdquo; all work.
             {existingRows.length > 0
               ? ` The downloaded file already contains the current ${existingRows.length} ${existingRowLabel}${existingRows.length === 1 ? "" : "s"} - edit them and upload the file back to update them.`
@@ -525,7 +663,7 @@ export default function BulkUploadModal({
             type="button"
             className="bulk-btn primary"
             onClick={handleImport}
-            disabled={!rows.length || busy}
+            disabled={!readyRows.length || busy}
           >
             <Upload size={16} /> {importLabel}
           </button>

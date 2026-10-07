@@ -1035,8 +1035,11 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
   background: var(--overlay) !important;
 }
 
+/* Read-only record dialogs are a narrow two-column list, so they are pinned to
+   720px.  `.po-details-container` is deliberately absent: its Edit view is a
+   form and is sized like Add PO Details / Edit BOQ (see PODetails.css). */
 :is(
-  .sale-details-container, .po-details-container, .invoices-details-container,
+  .sale-details-container, .invoices-details-container,
   .production-details-container, .details-modal-container, .stock-details-container
 ) {
   position: relative !important;

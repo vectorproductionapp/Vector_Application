@@ -113,3 +113,11 @@
   background: var(--accent-soft-bg);
   border-color: var(--accent);
 }
+
+/* Empty cells print a dash (DataTable.jsx) so a missing value reads as
+   "not entered" instead of an invisible blank space. */
+.data-table .cell-empty {
+  color: var(--text-secondary);
+  opacity: 0.75;
+  font-weight: 600;
+}

@@ -96,6 +96,15 @@
   border-color: var(--accent);
 }
 
+/* A long option or placeholder must never wrap inside the fixed-height
+   trigger: the second line used to push the control out of line with the
+   fields beside it (Supplier, Verified By, ...). */
+.searchable-select-trigger > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .searchable-select-trigger:focus,
 .searchable-select-trigger:focus-visible {
   outline: none;

@@ -5,7 +5,7 @@ import Swal from "sweetalert2";
 import { Plus, ArrowLeft, GitBranch, Pencil, Trash2, X, Check, MoreVertical, FileSpreadsheet } from "lucide-react";
 import CreateEntityModal from "../components/CreateEntityModal";
 import BulkUploadModal from "../components/BulkUploadModal";
-import BOQ from "./Boq";
+import BOQ, { withCalculatedFields } from "./Boq";
 import { fmtINR } from "../data/mockData";
 import "./Phase.css";
 
@@ -55,28 +55,36 @@ const PHASE_BULK_COLUMNS = [
   { key: "uom", label: "UOM" },
   { key: "reqQty", label: "Req. Qty / Unit" },
   { key: "minStock", label: "Min Stock (Buffer)" },
-  { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
+  // Buffer total = Req. Qty / Unit x Min Stock, calculated in Excel exactly as
+  // the editor does, so the sample rows are never blank.
+  {
+    key: "minStockQty",
+    label: "Min Stock Qty (Buffer)",
+    required: false,
+    formula: `IFERROR(IF(OR(${excelNum("{reqQty}")}="",${excelNum("{minStock}")}=""),"",ROUND(${excelNum("{reqQty}")}*${excelNum("{minStock}")},2)),"")`,
+  },
   { key: "vendor", label: "Supplier Name" },
   { key: "rate", label: "Unit Rate (INR)" },
   { key: "gstRate", label: "GST %" },
-  // Calculated in Excel from Unit Rate + GST % + Req. Qty; never imported.
+  // Basic Price / GST Price / Total incl. GST, calculated in Excel from
+  // Req. Qty + Unit Rate + GST %; never imported.
   {
-    key: "unitGst",
-    label: "GST per Unit (INR)",
+    key: "basicPrice",
+    label: "Basic Price (INR)",
     required: false,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2)),"")`,
+    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{reqQty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")},2)),"")`,
   },
   {
-    key: "materialCostUnit",
-    label: "Material Cost per Unit incl. GST (INR)",
+    key: "gstPrice",
+    label: "GST Price (INR)",
     required: false,
-    formula: `IFERROR(IF(${excelNum("{rate}")}="","",ROUND(${excelNum("{rate}")}+ROUND(${excelNum("{rate}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}*${excelGst("{gstRate}")},2)),"")`,
   },
   {
-    key: "lineTotalQty",
-    label: "Material Cost incl. GST (Total) (INR)",
+    key: "totalInclGst",
+    label: "Total incl. GST (INR)",
     required: false,
-    formula: `IFERROR(IF(OR(${excelNum("{rate}")}="",${excelNum("{reqQty}")}=""),"",ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}+ROUND(${excelNum("{rate}")}*${excelNum("{reqQty}")}*${excelGst("{gstRate}")},2),2)),"")`,
+    formula: `IFERROR(IF(${excelNum("{basicPrice}")}="","",ROUND(${excelNum("{basicPrice}")}+${excelNum("{gstPrice}")},2)),"")`,
   },
   { key: "remarks", label: "Remarks" },
 ];
@@ -130,6 +138,17 @@ const PHASE_BULK_ALIASES = {
   gstpercentage: "gstRate",
   gstslab: "gstRate",
   taxrate: "gstRate",
+  // Files exported before the Basic Price / GST Price / Total rename still
+  // carry the old calculated headers; they are ignored on import either way.
+  basicprice: "basicPrice",
+  gstprice: "gstPrice",
+  materialcost: "totalInclGst",
+  materialcostunit: "totalInclGst",
+  materialcostinr: "totalInclGst",
+  materialcostinclgst: "totalInclGst",
+  linecost: "totalInclGst",
+  totalinclg: "totalInclGst",
+  total: "totalInclGst",
   remarks: "remarks",
   remark: "remarks",
   notes: "remarks",
@@ -144,21 +163,24 @@ const PHASE_BULK_NOTES = {
   uom: ["Unit of measure.", "NOS"],
   reqQty: ["Quantity needed per finished unit.", "12"],
   minStock: ["Buffer stock in units, 0 for none.", "5"],
-  minStockQty: ["Total buffer = Req. Qty x Min Stock. Blank is calculated for you.", "60"],
+  minStockQty: [
+    "Calculated automatically = Req. Qty / Unit x Min Stock (Buffer). Do not type in this column.",
+    "60",
+  ],
   vendor: ["Preferred supplier / vendor.", "Steel Authority"],
   rate: ["Unit price, numbers only.", "145.50"],
   gstRate: ["GST percentage, 0-100. Blank means 18%.", "18"],
-  unitGst: [
-    "Calculated automatically = Unit Rate x GST % (blank GST uses 18%). Do not type in this column.",
-    "1.08",
+  basicPrice: [
+    "Calculated automatically = Req. Qty / Unit x Unit Rate (before GST). Do not type in this column.",
+    "30",
   ],
-  materialCostUnit: [
-    "Calculated automatically = Unit Rate + GST per Unit. Do not type in this column.",
-    "7.08",
+  gstPrice: [
+    "Calculated automatically = Basic Price x GST % (blank GST uses 18%). Do not type in this column.",
+    "5.4",
   ],
-  lineTotalQty: [
-    "Calculated automatically = Material Cost per Unit incl. GST x Req. Qty / Unit. Do not type here.",
-    "35.40",
+  totalInclGst: [
+    "Calculated automatically = Basic Price + GST Price. Do not type in this column.",
+    "35.4",
   ],
   remarks: ["Free text note.", "ISI marked"],
 };
@@ -424,15 +446,18 @@ export default function Phase({ model, onBack, readOnly = false }) {
           const at = indexByCode.get(code);
           if (at === undefined) {
             indexByCode.set(code, merged.length);
-            merged.push({ ...row, phase: group.name, itemCodeId: "" });
+            merged.push(withCalculatedFields({ ...row, phase: group.name, itemCodeId: "" }));
           } else {
-            merged[at] = { ...merged[at], ...row, phase: group.name };
+            merged[at] = withCalculatedFields({ ...merged[at], ...row, phase: group.name });
           }
         });
 
         const saved = await api.post(
           `${API_BASE_URL}/models/${model.id}/phases/${target.id}/boq`,
-          { rows: merged }
+          // Imported rows never pass through the BOQ editor, so their derived
+          // fields (buffer total, GST-inclusive material cost) are filled here
+          // or the phase totals read as zero.
+          { rows: merged, createMissingItemCodes: true }
         );
         if (!saved.data?.success) {
           problems.push(`${group.name}: ${saved.data?.message || "BOQ could not be saved"}`);
@@ -493,7 +518,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
       );
       if (res.data.success) {
         await loadPhases();
-        swalSuccess("Phase renamed", `"${p.name}" â†’ "${newName.trim()}"`);
+        swalSuccess("Phase renamed", `"${p.name}" → "${newName.trim()}"`);
       } else {
         swalError("Rename failed", res.data.message || "Failed to rename phase");
       }
@@ -780,12 +805,20 @@ export default function Phase({ model, onBack, readOnly = false }) {
                 })}
               </span>
             )}
-            <span className="model-card-total">
-              <span className="model-card-total-label">Material Cost</span>
-              <span className="model-card-total-value">
-                {fmtINR(Number(p.totalMaterialCost) || 0)}
+            <div className="model-card-totals">
+              <span className="model-card-total-row">
+                <span className="model-card-total-label">Basic Price</span>
+                <span className="model-card-total-amount">{fmtINR(Number(p.totalMaterialCostExclGst) || 0)}</span>
               </span>
-            </span>
+              <span className="model-card-total-row">
+                <span className="model-card-total-label">GST Price</span>
+                <span className="model-card-total-amount">{fmtINR(Number(p.totalGst) || 0)}</span>
+              </span>
+              <span className="model-card-total-row">
+                <span className="model-card-total-label">Total incl. GST</span>
+                <span className="model-card-total-value">{fmtINR(Number(p.totalMaterialCost) || 0)}</span>
+              </span>
+            </div>
           </button>
         ))}
       </div>
