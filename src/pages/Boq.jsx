@@ -1154,13 +1154,12 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     [boq, filterBoqRows]
   );
 
-  // Use exactly the same calculation as the three money columns.  Summing the
-  // stored `materialCost` value here let an old/stale saved value disagree with
-  // the line shown in the table, especially after a rate, quantity, or GST
-  // slab was changed.
+  // Use exactly the same rows that the table displays, so the header totals
+  // always match what the user sees on screen.  (The separate `exportRows`
+  // variable is kept for PDF export, which must include all pages.)
   const boqTotals = useMemo(
     () =>
-      exportRows.reduce(
+      filteredRows.reduce(
         (totals, row) => {
           const amounts = boqGstAmounts(row);
           return {
@@ -1171,7 +1170,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
         },
         { base: 0, gst: 0, total: 0 }
       ),
-    [exportRows]
+    [filteredRows]
   );
 
   const persistRows = useCallback(async (rows, { createMissingItemCodes = false } = {}) => {
