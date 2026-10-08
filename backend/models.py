@@ -819,7 +819,10 @@ def delete_boq(model_id, phase_id, boq_id):
         return jsonify({"success": False, "message": f"Failed to delete BOQ: {exc}"}), 500
     
 @models_bp.route("/boq/phases", methods=["GET"])
-@roles_required("admin", "coadmin")
+# The Invoices form renders this same dropdown and its page allows the
+# production in-charge, so that role must pass here too — otherwise the
+# dropdown shows a 403 "no permission" message instead of the phase list.
+@roles_required("admin", "coadmin", "production_incharge")
 @cached_read("boq-phases", ttl_seconds=300)
 def list_boq_phases():
     """
