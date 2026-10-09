@@ -1,6 +1,6 @@
 import bcrypt
 from flask import Blueprint, request, jsonify
-from firebase_config import user_document_for_email
+from firebase_config import user_document_for_email,users_collection
 from auth_utils import generate_token, token_required
 
 login_bp = Blueprint("login", __name__)
