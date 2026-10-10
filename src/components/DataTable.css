@@ -59,6 +59,39 @@
 .data-table thead th:first-child { border-top-left-radius: var(--r-md); }
 .data-table thead th:last-child { border-top-right-radius: var(--r-md); }
 
+/* The header cell carries the uppercase/letter-spacing/colour rules above, so
+   the button only has to hand those down and reset its own default chrome. */
+.data-table-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: color 150ms var(--ease);
+}
+.data-table-sort-btn:hover { color: var(--accent); -webkit-text-fill-color: var(--accent); }
+.data-table-sort-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
+}
+.data-table-sort-icon { flex: none; opacity: 0.45; transition: opacity 150ms var(--ease); }
+.data-table-sort-btn:hover .data-table-sort-icon { opacity: 0.85; }
+.data-table-th-sorted .data-table-sort-icon { opacity: 1; color: var(--accent); }
+/* The theme rules pin `-webkit-text-fill-color` on the header with `!important`,
+   and that beats `color`, so the accent has to be restated for the label. */
+.data-table-th-sorted .data-table-sort-btn { color: var(--accent); -webkit-text-fill-color: var(--accent); }
+
 .data-table tbody td {
   padding: 9px 14px;
   border-bottom: 1px solid var(--border);

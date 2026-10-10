@@ -19,7 +19,7 @@ function toIsoDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export default function DatePicker({ value, onChange, disabled = false, ariaLabel = "Select date" }) {
+export default function DatePicker({ value, onChange, disabled = false, ariaLabel = "Select date", popoverZIndex = 1200 }) {
   const [open, setOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
@@ -60,7 +60,9 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
   // The calendar is rendered in a portal with fixed coordinates, so a scrolling
   // form can keep clipping its own content.  Turning the modal's overflow off
   // instead (the old `:has(.app-date-picker-popover)` rule) let the item cards
-  // spill over the footer and outside the dialog.
+  // spill over the footer and outside the dialog.  Because the portal lands on
+  // <body>, `popoverZIndex` has to clear whatever dialog raised itself, or the
+  // calendar opens behind that dialog's backdrop.
   useLayoutEffect(() => {
     if (!open) {
       setPopStyle(null);
@@ -77,7 +79,7 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
       const top = up
         ? Math.max(VIEWPORT_GAP, anchor.top - height - 4)
         : Math.min(Math.max(VIEWPORT_GAP, anchor.bottom + 4), window.innerHeight - height - VIEWPORT_GAP);
-      setPopStyle({ position: "fixed", left, top, width, zIndex: 1200 });
+      setPopStyle({ position: "fixed", left, top, width, zIndex: popoverZIndex });
     };
     place();
     window.addEventListener("scroll", place, true);
@@ -86,7 +88,7 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
-  }, [open, monthOpen, yearOpen]);
+  }, [open, monthOpen, yearOpen, popoverZIndex]);
   const chooseDay = (date) => {
     onChange(toIsoDate(date));
     setOpen(false);
