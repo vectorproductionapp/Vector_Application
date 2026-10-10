@@ -26,6 +26,7 @@ import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEdito
 import ImageStrip from "../components/ImageStrip";
 import "../components/ImageAttachment.css";
 import { formatDate } from "../utils/date";
+import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
 import "./Model.css";
 import "./Invoices.css";
@@ -182,6 +183,68 @@ function validateInvoiceForm(values) {
   return null;
 }
  
+// Mirrors the server's comparison (backend/invoice.py `_normalize_key`): the
+// same number typed with different case or padding is one invoice, which is how
+// the card view already groups them.
+function normalizeInvoiceKey(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+ 
+// Quantities compare by value here too, so `5` and `5.0` are the same entry.
+function normalizeQty(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? String(parsed) : raw.toLowerCase();
+}
+ 
+// Every invoice number the loaded cards already know about, so a number that
+// is taken can be caught before anything is posted.
+function knownInvoiceNumbers(cards) {
+  const numbers = new Map();
+  (cards || []).forEach((card) => {
+    (card?.invoices || []).forEach((invoice) => {
+      const key = normalizeInvoiceKey(invoice?.invoice);
+      if (key) numbers.set(key, invoice.invoice);
+    });
+  });
+  return numbers;
+}
+ 
+// What makes two item blocks one entry rather than two: same item, same PO,
+// same quantities. Different quantities are two genuine deliveries.
+function lineIdentity(line) {
+  return [
+    normalizeInvoiceKey(line?.po),
+    normalizeInvoiceKey(line?.code),
+    normalizeQty(line?.qtyInv),
+    normalizeQty(line?.qtyRecv),
+  ].join("|");
+}
+ 
+// "Add item" can leave two blocks holding the same entry. Catching it before
+// the save keeps the user from having to undo half a saved invoice.
+function findDuplicateItemBlock(lines) {
+  const firstIndexByIdentity = new Map();
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const identity = lineIdentity(line);
+    const firstIndex = firstIndexByIdentity.get(identity);
+    if (firstIndex !== undefined) {
+      return `Items ${firstIndex + 1} and ${index + 1} are the same entry: ${line.code} for ${line.qtyInv} invoiced on ${line.po}. Change one of them or remove it.`;
+    }
+    firstIndexByIdentity.set(identity, index);
+  }
+  return null;
+}
+ 
+function newSubmissionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `sub-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+ 
 function formatDetailValue(field, row) {
   const raw = row?.[field.key];
   if (raw === null || raw === undefined || String(raw).trim() === "") {
@@ -257,6 +320,10 @@ export default function Invoices() {
   const [invoiceAttachments, setInvoiceAttachments] = useState([]);
   const lastItemRef = useRef(null);
   const initialFormValuesRef = useRef(emptyInvoiceForm);
+  // One id per form session, carried by every item block of a single save. The
+  // server uses it to tell "another line of the invoice I just created" apart
+  // from "a second invoice reusing that number".
+  const submissionIdRef = useRef("");
 // Item blocks count as unsaved work too, now that Edit uses them as well.
 const initialItemDraftsRef = useRef([]);
 const initialAttachmentsRef = useRef([]);
@@ -493,6 +560,15 @@ const initialAttachmentsRef = useRef([]);
       return matchesSearch && matchesPageFilter(row, pageFilter, INVOICE_FILTER_FIELDS);
     });
   }, [query, rows, pageFilter]);
+
+  // Which column header the user sorted by. DataTable owns the interaction and
+  // reports it back, so the export can be written in the order on screen.
+  const [tableSort, setTableSort] = useState(null);
+
+  const exportTableRows = useMemo(
+    () => sortRows(filteredRows, columns, tableSort),
+    [filteredRows, tableSort]
+  );
  
   // The PageFilter dropdown draws its options from the whole collection, so a
   // narrow page never makes the other values disappear.
@@ -509,6 +585,7 @@ const openAddModal = () => {
     initialFormValuesRef.current = emptyInvoiceForm;
     initialItemDraftsRef.current = [];
     initialAttachmentsRef.current = [];
+    submissionIdRef.current = newSubmissionId();
     setFormValues(emptyInvoiceForm);
     setItemDrafts([]);
     setInvoiceAttachments([]);
@@ -520,6 +597,7 @@ const openAddModal = () => {
  
   const openEditModal = (row) => {
     setIsEditMode(true);
+    submissionIdRef.current = newSubmissionId();
     const initialValues = {
       id: row.id,
       invoice: row.invoice || "",
@@ -797,9 +875,14 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       try {
         let added = 0;
         for (const line of lines) {
+          // A block added with "Add item" is another line of the invoice already
+          // on screen, so it is not the start of a new invoice number.
+          const payload = line.id
+            ? line
+            : { ...line, existingInvoice: true, submissionId: submissionIdRef.current };
           const res = line.id
-            ? await api.put(`${API_BASE_URL}/invoices/${line.id}`, line)
-            : await api.post(`${API_BASE_URL}/invoices`, line);
+            ? await api.put(`${API_BASE_URL}/invoices/${line.id}`, payload)
+            : await api.post(`${API_BASE_URL}/invoices`, payload);
           if (!res.data.success) throw new Error(res.data.message || "Failed to save Invoice");
           if (!line.id) added += 1;
         }
@@ -858,12 +941,35 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       }
     }
 
+    // An invoice number belongs to exactly one invoice. New items go inside an
+    // existing invoice by opening it and using "Add item", so a number that is
+    // already taken is refused here instead of being filed a second time. The
+    // server re-checks this, because the cards may predate another user's save.
+    const takenNumber = knownInvoiceNumbers(phaseCards).get(
+      normalizeInvoiceKey(formValues.invoice)
+    );
+    if (takenNumber) {
+      reportSaveBlocked(
+        `Invoice No ${takenNumber} already exists. Open it from the invoice card and add the new items there.`
+      );
+      return;
+    }
+
+    const duplicateItem = findDuplicateItemBlock(lines);
+    if (duplicateItem) {
+      reportSaveBlocked(duplicateItem);
+      return;
+    }
+
     setSaving(true);
     setFormError("");
 
     try {
       for (const line of lines) {
-        const res = await api.post(`${API_BASE_URL}/invoices`, line);
+        const res = await api.post(`${API_BASE_URL}/invoices`, {
+          ...line,
+          submissionId: submissionIdRef.current,
+        });
         if (!res.data.success) throw new Error(res.data.message || "Failed to save Invoice");
       }
 
@@ -1044,6 +1150,19 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       ) || null,
     [phaseCards, selectedPhase]
   );
+
+  // Flag an already-taken number while the user is still typing, so the clash
+  // surfaces before the rest of the form is filled in. Edit mode is exempt: it
+  // is deliberately working on a number that already exists.
+  const invoiceNumberHint = useMemo(() => {
+    if (isEditMode) return "";
+    const taken = knownInvoiceNumbers(phaseCards).get(
+      normalizeInvoiceKey(formValues.invoice)
+    );
+    return taken
+      ? `Invoice No ${taken} already exists. Open it from the invoice card to add more items.`
+      : "";
+  }, [isEditMode, formValues.invoice, phaseCards]);
  
   const viewTitle = !selectedPhase
     ? "Invoices"
@@ -1244,7 +1363,7 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
               mode="table"
               title="Invoices"
               columns={columns}
-              rows={filteredRows}
+              rows={exportTableRows}
             />
           </div>
         </div>
@@ -1274,9 +1393,10 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           </div>
         ) : (
           <DataTable
-            columns={tableColumns}
-            rows={filteredRows}
-            onViewDetails={selectMode ? undefined : openView}
+          columns={tableColumns}
+          rows={filteredRows}
+          onSortChange={setTableSort}
+          onViewDetails={selectMode ? undefined : openView}
             onEdit={selectMode ? undefined : openEditModal}
             onDelete={selectMode ? undefined : handleDeleteClick}
             deletingId={deletingId}
@@ -1341,16 +1461,20 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
 
               {/* ---- Invoice header: shared by every item below ---- */}
               <div className="invoices-form-grid invoices-header-grid">
-                <label className="invoices-field">
-                  <span>Invoice No <span className="invoices-required-asterisk">*</span></span>
-                  <input
-                    name="invoice"
-                    value={formValues.invoice}
-                    onChange={handleFormChange}
-                    placeholder="e.g. INV-2201"
-                    readOnly={isEditMode}
-                  />
-                </label>
+              <label className="invoices-field">
+                <span>Invoice No <span className="invoices-required-asterisk">*</span></span>
+                <input
+                  name="invoice"
+                  value={formValues.invoice}
+                  onChange={handleFormChange}
+                  placeholder="e.g. INV-2201"
+                  readOnly={isEditMode}
+                  aria-invalid={invoiceNumberHint ? "true" : undefined}
+                />
+                {invoiceNumberHint && (
+                  <small className="invoices-field-helper error">{invoiceNumberHint}</small>
+                )}
+              </label>
 
                 <label className="invoices-field">
                   <span>Invoice Date <span className="invoices-required-asterisk">*</span></span>

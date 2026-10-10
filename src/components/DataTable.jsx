@@ -1,17 +1,13 @@
-import React from "react";
-import { Eye } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye } from "lucide-react";
 import { formatDate } from "../utils/date";
+import { isBlankValue, isSortableColumn, nextSort, sortRows } from "../utils/tableSort";
 import "./DataTable.css";
 
 // An empty cell looks like a broken row, so every blank value renders as a
 // dash instead of nothing at all.  Numbers keep their 0, and React nodes from
 // a `render` function are never touched.
 const EMPTY_CELL = "-";
-
-const isEmptyCell = (value) =>
-  value === null ||
-  value === undefined ||
-  (typeof value !== "object" && String(value).trim() === "");
 
 const cellContent = (column, row) => {
   const value = column.render
@@ -21,10 +17,22 @@ const cellContent = (column, row) => {
       : column.isDate
         ? formatDate(row[column.key], "")
         : row[column.key];
-  return isEmptyCell(value) ? EMPTY_CELL : value;
+  return isBlankValue(value) ? EMPTY_CELL : value;
 };
 
-export default function DataTable({ columns, rows, onViewDetails }) {
+export default function DataTable({ columns, rows, onViewDetails, onSortChange }) {
+  const [sort, setSort] = useState({ key: null, direction: null });
+  const sortedRows = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
+
+  // Report the active sort so the page can export its file in this same order.
+  // The callback is held in a ref so an inline arrow function cannot retrigger
+  // the effect on every render.
+  const onSortChangeRef = useRef(onSortChange);
+  onSortChangeRef.current = onSortChange;
+  useEffect(() => {
+    onSortChangeRef.current?.(sort);
+  }, [sort]);
+
   if (!rows.length) {
     return <div className="data-table-empty">No matching rows.</div>;
   }
@@ -34,14 +42,41 @@ export default function DataTable({ columns, rows, onViewDetails }) {
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map((c) => (
-              <th key={c.key}>{c.label}</th>
-            ))}
+            {columns.map((c) => {
+              const sortable = isSortableColumn(c);
+              const active = sortable && sort.key === c.key && Boolean(sort.direction);
+              const Indicator = active
+                ? sort.direction === "asc" ? ArrowUp : ArrowDown
+                : ArrowUpDown;
+              return (
+                <th
+                  key={c.key}
+                  aria-sort={sortable ? (active ? (sort.direction === "asc" ? "ascending" : "descending") : "none") : undefined}
+                  className={active ? "data-table-th-sorted" : undefined}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      className="data-table-sort-btn"
+                      onClick={() => setSort((current) => nextSort(current, c.key))}
+                      title={active
+                        ? sort.direction === "asc"
+                          ? "Sorted ascending - click for descending"
+                          : "Sorted descending - click to clear"
+                        : "Click to sort"}
+                    >
+                      <span>{c.label}</span>
+                      <Indicator size={13} aria-hidden="true" className="data-table-sort-icon" />
+                    </button>
+                  ) : c.label}
+                </th>
+              );
+            })}
             {onViewDetails && <th className="data-table-actions-col">Details</th>}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
+          {sortedRows.map((r, i) => (
             <tr key={i}>
               {columns.map((c) => {
                 const value = cellContent(c, r);

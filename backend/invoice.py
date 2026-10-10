@@ -43,6 +43,61 @@ def _header_ref(data):
     return invoice_headers_collection.document(_header_doc_id(data.get("invoice", "")))
 
 
+def _normalize_key(value):
+    """Comparison form of an identifier.
+
+    An invoice number typed as `inv-2201`, `INV-2201` or ` INV-2201 ` is the same
+    invoice, which is how the card view already groups them. Collapsing runs of
+    whitespace keeps a pasted number from looking like a new one.
+    """
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _quantity(value):
+    """Quantities compare by value, so `5` and `"5.0"` are the same entry."""
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return _normalize_key(value)
+
+
+def _line_identity(data):
+    """What makes two lines of an invoice one entry rather than two.
+
+    The same item billed for the same quantities twice on one invoice is a
+    double entry; different quantities are two genuine deliveries.
+    """
+    return (
+        _normalize_key(data.get("po")),
+        _normalize_key(data.get("code")),
+        _quantity(data.get("qtyInv")),
+        _quantity(data.get("qtyRecv")),
+    )
+
+
+def _existing_invoice_lines(invoice_key):
+    """Every stored line of one invoice number, found in a single pass.
+
+    The number is compared in Python instead of with a Firestore `where`, so
+    lines saved before this normalisation existed are still matched. Returns
+    `(doc_id, data)` pairs so a caller can tell a line apart from itself.
+    """
+    lines = []
+    for doc in invoices_collection.stream():
+        data = doc.to_dict() or {}
+        if _normalize_key(data.get("invoice")) == invoice_key:
+            lines.append((doc.id, data))
+    return lines
+
+
+# One save posts one request per item block, all sharing a submission id, so the
+# later blocks of a brand new invoice are not mistaken for duplicates of the
+# first one. A number already stored under a different submission is a real
+# duplicate and is refused.
+SUBMISSION_FIELD = "submissionId"
+MAX_SUBMISSION_CHARS = 64
+
+
 def _header_files_map():
     """Every invoice's files, keyed by header document id."""
     files = {}
@@ -229,7 +284,44 @@ def create_invoice():
         attachments = _attachments_payload(data.get("attachments"), strict=True)
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
- 
+
+    invoice_number = _text(data.get("invoice"))
+    submission_id = _text(data.get(SUBMISSION_FIELD))[:MAX_SUBMISSION_CHARS]
+    # The edit form sets this when it adds an item to the invoice it already has
+    # open. That is not a duplicate - it is another line of the same invoice.
+    append_to_existing = bool(data.get("existingInvoice"))
+
+    try:
+        existing_lines = _existing_invoice_lines(_normalize_key(invoice_number))
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to verify Invoice No: {exc}"}), 500
+
+    # An invoice number belongs to exactly one invoice, so a line carrying a
+    # number that is already stored is refused rather than filed a second time.
+    # The exception is this same submission, which is still filling in the
+    # invoice number it created a moment ago.
+    continues_submission = bool(submission_id) and all(
+        line.get(SUBMISSION_FIELD) == submission_id for _, line in existing_lines
+    )
+    if existing_lines and not append_to_existing and not continues_submission:
+        return jsonify({
+            "success": False,
+            "message": (
+                f"Invoice No {invoice_number} already exists. "
+                "Open it from the invoice card and add the new items there."
+            ),
+        }), 409
+
+    identity = _line_identity(data)
+    if any(_line_identity(line) == identity for _, line in existing_lines):
+        return jsonify({
+            "success": False,
+            "message": (
+                f"Invoice No {invoice_number} already has item "
+                f"{_text(data.get('code'))} with the same quantities."
+            ),
+        }), 409
+
     try:
         doc_ref = invoices_collection.document()
         created_at = datetime.now(timezone.utc)
@@ -244,17 +336,21 @@ def create_invoice():
         record["qtyRecv"] = qty_recv
         record["createdAt"] = created_at
         record["updatedAt"] = created_at
+        # Kept so the remaining item blocks of this save are recognised as the
+        # same invoice rather than as duplicates of it.
+        record[SUBMISSION_FIELD] = submission_id
  
         doc_ref.set(record)
 
         invalidate_read_cache()
 
+        hidden = ("createdAt", "updatedAt", SUBMISSION_FIELD)
         return jsonify({
             "success": True,
             "message": "Invoice saved successfully",
             "invoice": {
                 "id": doc_ref.id,
-                **{k: record[k] for k in record if k not in ("createdAt", "updatedAt")},
+                **{k: record[k] for k in record if k not in hidden},
                 "createdAt": created_at.isoformat(),
                 "updatedAt": created_at.isoformat(),
             },
@@ -516,6 +612,27 @@ def update_invoice(invoice_id):
  
     existing = existing_doc.to_dict()
  
+    # Renaming a line moves its invoice number, which must not land on a number
+    # another invoice already owns.
+    if "invoice" in update_fields:
+        new_number = _text(update_fields.get("invoice"))
+        if not new_number:
+            return jsonify({"success": False, "message": "Invoice No cannot be blank"}), 400
+        if _normalize_key(new_number) != _normalize_key(existing.get("invoice")):
+            try:
+                taken = [
+                    doc_id
+                    for doc_id, _ in _existing_invoice_lines(_normalize_key(new_number))
+                    if doc_id != invoice_id
+                ]
+            except Exception as exc:
+                return jsonify({"success": False, "message": f"Failed to verify Invoice No: {exc}"}), 500
+            if taken:
+                return jsonify({
+                    "success": False,
+                    "message": f"Invoice No {new_number} already exists.",
+                }), 409
+
     if "qtyInv" in update_fields:
         try:
             update_fields["qtyInv"] = _coerce_qty(update_fields["qtyInv"], existing.get("qtyInv", 0))

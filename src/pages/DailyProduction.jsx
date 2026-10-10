@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import { formatDate } from "../utils/date";
+import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
 
 import Swal from "sweetalert2";
@@ -70,7 +71,7 @@ const QC_INSPECTION_ITEMS = [
   { key: "ledOutputOn", number: "5b", description: "LED indication — Output on", method: "Visual Inspection" },
   { key: "ledOutputLow", number: "5c", description: "LED indication — Output low", method: "Visual Inspection" },
   { key: "ledOutputHigh", number: "5d", description: "LED indication — Output high", method: "Visual Inspection" },
-  { key: "inputFuse10A", number: "6", description: "Input Fuse - 15 A", method: "Visual + Continuity test" },
+  { key: "inputFuse10A", number: "6", description: "Input Fuse - 16 A", method: "Visual + Continuity test" },
   { key: "frontPanelLcd", number: "7", description: "Front Panel LCD Display", method: "Visual Inspection" },
   { key: "parameterLeds", number: "8", description: "Ensure all parameter LEDs are glowing", method: "Visual Inspection" },
   { key: "loadRun", number: "9", description: "Run machine for 4 hrs without load and 1 hr with load", method: "Input Load Source" },
@@ -83,7 +84,11 @@ const QC_INSPECTION_ITEMS = [
 ];
 
 const createEmptyQcInspection = (checkedBy = "") => ({
-  inspectionDate: new Date().toISOString().slice(0, 10),
+  // Left blank on purpose. Units are inspected long after they are built, so the
+  // date has to be chosen rather than assumed - pre-filling today would silently
+  // date an old device's QC report to the day it was typed in. The field is
+  // required, so the report cannot be completed without a real date.
+  inspectionDate: "",
   checkedBy,
   verifiedBy: "",
   authorizedBy: "",
@@ -892,6 +897,15 @@ export default function DailyProduction() {
     });
 
   }, [query, rows, pageFilter]);
+
+  // Which column header the user sorted by. DataTable owns the interaction and
+  // reports it back, so the export can be written in the order on screen.
+  const [tableSort, setTableSort] = useState(null);
+
+  const exportTableRows = useMemo(
+    () => sortRows(filteredRows, columns, tableSort),
+    [filteredRows, tableSort]
+  );
 
   const openAddModal = () => {
 
@@ -1725,6 +1739,9 @@ export default function DailyProduction() {
 
       label: "",
 
+      // Checkbox column - there is no value behind it to sort by.
+      sortable: false,
+
       render: (row) => {
 
         const id = getRowId(row);
@@ -1961,7 +1978,7 @@ export default function DailyProduction() {
 
             columns={columns}
 
-            rows={filteredRows}
+            rows={exportTableRows}
 
           />
 </div>
@@ -2002,6 +2019,8 @@ export default function DailyProduction() {
             columns={tableColumns}
 
             rows={filteredRows}
+
+            onSortChange={setTableSort}
 
             onViewDetails={selectMode || isRegularUser ? undefined : openView}
 
@@ -2574,7 +2593,9 @@ export default function DailyProduction() {
                 <label><span>Serial No.</span><input value={(qcInspectionTarget.type === "form" ? (qcUnitSerial || formValues.serial) : qcInspectionTarget.row?.serial) || ""} readOnly /></label>
                   <label>
                     <span>QC Inspection Date <b>*</b></span>
-                    <DatePicker value={qcInspectionDraft.inspectionDate || ""} onChange={(inspectionDate) => setQcInspectionDraft((current) => ({ ...current, inspectionDate }))} disabled={qcReportReadOnly} ariaLabel="Select QC inspection date" />
+                    {/* The calendar portals to <body>, so it has to clear the QC
+                        dialog's own 120000 overlay or it opens behind it. */}
+                    <DatePicker value={qcInspectionDraft.inspectionDate || ""} onChange={(inspectionDate) => setQcInspectionDraft((current) => ({ ...current, inspectionDate }))} disabled={qcReportReadOnly} ariaLabel="Select QC inspection date" popoverZIndex={130000} />
                   </label>
                 </div>
 
