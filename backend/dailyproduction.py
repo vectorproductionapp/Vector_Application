@@ -23,7 +23,7 @@ ALLOWED_FIELDS = [
     "packagingStatus", "packagedBy", "packagedById", "qcInspection",
     "qcFailureHistory",
 ]
-
+ 
 QC_INSPECTION_REQUIRED_CHECKS = (
     "acVoltage230V", "outputLow170V", "outputHigh250V", "frequency50Hz",
     "ledInputOn", "ledOutputOn", "ledOutputLow", "ledOutputHigh",
@@ -31,9 +31,11 @@ QC_INSPECTION_REQUIRED_CHECKS = (
     "individualPort", "schedulingOutlets", "cutoffAlert", "temperatureAlert",
     "wattageLogs", "deviceDiscovery",
 )
-
+ 
 MANAGER_ROLES = ("admin", "coadmin", "production_incharge")
 ALL_PRODUCTION_ROLES = (*MANAGER_ROLES, "user")
+# Roles that can be assigned to assembly/QC/packaging fields on a unit.
+ASSIGNABLE_ROLES = ("user", "production_incharge")
 USER_STATUS_FIELDS = {
     "stage": ("assembledById", "assembledBy"),
     "qc": ("qcById", "qcBy"),
@@ -45,15 +47,15 @@ def _stock_status(data, sale_status_by_serial=None):
     """Mirror the Daily_Production Stock Status formula in the workbook."""
     if data.get("qc") != "Passed":
         return ""
-
+ 
     dispatch_status = str((sale_status_by_serial or {}).get(data.get("serial", ""), "")).strip().casefold()
     if dispatch_status in {"dispatched", "delivered"}:
         return "Dispatched"
     if dispatch_status == "demo":
         return "Demo"
     return "In Stock"
-
-
+ 
+ 
 def _qc_inspection_is_complete(report):
     """A QC pass is valid only after the report header and every check pass."""
     if not isinstance(report, dict):
@@ -65,8 +67,8 @@ def _qc_inspection_is_complete(report):
     if not isinstance(checks, dict):
         return False
     return all(checks.get(key) == "Passed" for key in QC_INSPECTION_REQUIRED_CHECKS)
-
-
+ 
+ 
 def _qc_inspection_is_filled(report):
     """A failed attempt is auditable only when its header and all checks are filled."""
     if not isinstance(report, dict):
@@ -78,8 +80,8 @@ def _qc_inspection_is_filled(report):
     if not isinstance(checks, dict):
         return False
     return all(checks.get(key) in ("Passed", "Failed") for key in QC_INSPECTION_REQUIRED_CHECKS)
-
-
+ 
+ 
 def _serialize_qc_failure_history(history):
     if not isinstance(history, list):
         return []
@@ -103,8 +105,8 @@ def _serialize_qc_failure_history(history):
         } if isinstance(checks, dict) else {}
         serialized.append(entry)
     return serialized
-
-
+ 
+ 
 def _sale_statuses_by_serial(docs):
     """Choose the most advanced sale state when legacy duplicate records exist."""
     priority = {"": 0, "cancelled": 0, "pending": 1, "processing": 2, "demo": 3,
@@ -121,11 +123,11 @@ def _sale_statuses_by_serial(docs):
             if priority.get(status.casefold(), 0) >= priority.get(str(current).casefold(), 0):
                 statuses[serial] = status
     return statuses
-
-
+ 
+ 
 def _sale_statuses_for_serials(serials):
     """Fetch sale status only for the assembly rows displayed on this page.
-
+ 
     Reading the whole sale register for every Production page was increasingly
     expensive as the register grew.  Firestore supports up to 30 values for
     these queries, so chunk the page's serials and merge legacy ``serial`` and
@@ -134,7 +136,7 @@ def _sale_statuses_for_serials(serials):
     serials = list({str(serial or "").strip() for serial in serials if str(serial or "").strip()})
     if not serials:
         return {}
-
+ 
     docs_by_id = {}
     for start in range(0, len(serials), 30):
         batch = serials[start:start + 30]
@@ -143,8 +145,8 @@ def _sale_statuses_for_serials(serials):
         for doc in sales_collection.where("serialNumbers", "array_contains_any", batch).stream():
             docs_by_id[doc.id] = doc
     return _sale_statuses_by_serial(docs_by_id.values())
-
-
+ 
+ 
 def _serialize(doc, sale_status_by_serial=None):
     d = doc.to_dict()
     return {
@@ -173,8 +175,8 @@ def _serialize(doc, sale_status_by_serial=None):
         "createdAt": d.get("createdAt").isoformat() if d.get("createdAt") else None,
         "updatedAt": d.get("updatedAt").isoformat() if d.get("updatedAt") else None,
     }
-
-
+ 
+ 
 def _assigned_to_current_user(data, id_field, name_field):
     """Use immutable account IDs when present; support legacy name-only rows."""
     assigned_id = str(data.get(id_field) or "").strip()
@@ -184,8 +186,8 @@ def _assigned_to_current_user(data, id_field, name_field):
     assigned_name = str(data.get(name_field) or "").strip().casefold()
     current_name = str(request.user.get("name") or "").strip().casefold()
     return bool(assigned_name and current_name and assigned_name == current_name)
-
-
+ 
+ 
 def _is_visible_to_current_user(data):
     return any(
         _assigned_to_current_user(data, id_field, name_field)
@@ -196,8 +198,8 @@ def _is_visible_to_current_user(data):
 def _coerce_qty(value, fallback=0):
     """Best-effort conversion of qty to a number; raises ValueError on bad input."""
     return float(value) if str(value).strip() != "" else fallback
-
-
+ 
+ 
 def _parse_pagination_params(args):
     try:
         page = int(args.get("page", 1))
@@ -208,8 +210,8 @@ def _parse_pagination_params(args):
     except (TypeError, ValueError):
         limit = DEFAULT_PAGE_SIZE
     return max(1, page), min(MAX_PAGE_SIZE, max(1, limit))
-
-
+ 
+ 
 @dailyproduction_bp.route("/production-users", methods=["GET"])
 @roles_required(*MANAGER_ROLES)
 @cached_read("production-users", ttl_seconds=300)
@@ -220,7 +222,8 @@ def list_production_users():
         for doc in users_collection.stream():
             data = doc.to_dict() or {}
             # Match Manage Users: legacy accounts without a role are users.
-            if str(data.get("role", "user") or "user").strip().lower() != "user":
+            role = str(data.get("role", "user") or "user").strip().lower()
+            if role not in ASSIGNABLE_ROLES:
                 continue
             name = str(data.get("name") or "").strip()
             if name:
@@ -250,7 +253,7 @@ def create_assembly_unit():
         return jsonify({"success": False, "message": "Quantity must be greater than zero"}), 400
     if not float(qty).is_integer():
         return jsonify({"success": False, "message": "Quantity must be a whole number"}), 400
-
+ 
     serial_numbers = data.get("serialNumbers")
     if not isinstance(serial_numbers, list):
         serial_numbers = [data.get("serial", "")]
@@ -259,7 +262,7 @@ def create_assembly_unit():
         return jsonify({"success": False, "message": f"Please provide {int(qty)} serial number(s)"}), 400
     if len({serial.lower() for serial in serial_numbers}) != len(serial_numbers):
         return jsonify({"success": False, "message": "Duplicate serial numbers are not allowed"}), 400
-
+ 
     if data.get("qc") and data.get("stage") != "Completed":
         return jsonify({
             "success": False,
@@ -345,7 +348,7 @@ def list_assembly_units():
             total_pages = max(1, math.ceil(total_count / limit))
             page = min(page, total_pages)
             docs = list(base_query.offset((page - 1) * limit).limit(limit).stream())
-
+ 
         sale_status_by_serial = _sale_statuses_for_serials(
             (doc.to_dict() or {}).get("serial", "") for doc in docs
         )
@@ -393,7 +396,7 @@ def update_assembly_unit(unit_id):
     existing_doc = doc_ref.get()
     if not existing_doc.exists:
         return jsonify({"success": False, "message": "Assembly Unit not found"}), 404
-
+ 
     existing_data = existing_doc.to_dict() or {}
     if request.user.get("role") == "user":
         requested_fields = set(data).intersection(ALLOWED_FIELDS)
@@ -416,7 +419,7 @@ def update_assembly_unit(unit_id):
             id_field, name_field = USER_STATUS_FIELDS[field]
             if not _assigned_to_current_user(existing_data, id_field, name_field):
                 return jsonify({"success": False, "message": "This task is not assigned to you"}), 403
-
+ 
     candidate = {**existing_data, **update_fields}
     if update_fields.get("qc") and candidate.get("stage") != "Completed":
         return jsonify({"success": False, "message": "Complete assembly before updating QC"}), 400
@@ -456,7 +459,7 @@ def update_assembly_unit(unit_id):
             "packagedBy": "",
             "packagedById": "",
         })
-
+ 
     merged_data = {**existing_data, **update_fields}
     missing = [field for field in REQUIRED_FIELDS if not str(merged_data.get(field, "")).strip()]
     if missing:
@@ -490,14 +493,14 @@ def append_qc_failure(unit_id):
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"success": False, "message": "Request body must be JSON"}), 400
-
+ 
     report = data.get("qcInspection")
     if not _qc_inspection_is_filled(report):
         return jsonify({
             "success": False,
             "message": "Fill every QC inspection field before saving the failure log",
         }), 400
-
+ 
     failed_checks = [
         key for key in QC_INSPECTION_REQUIRED_CHECKS
         if report.get("checks", {}).get(key) == "Failed"
@@ -507,12 +510,12 @@ def append_qc_failure(unit_id):
             "success": False,
             "message": "A failure log must contain at least one failed QC check",
         }), 400
-
+ 
     doc_ref = assembly_collection.document(unit_id)
     existing_doc = doc_ref.get()
     if not existing_doc.exists:
         return jsonify({"success": False, "message": "Assembly Unit not found"}), 404
-
+ 
     existing_data = existing_doc.to_dict() or {}
     if existing_data.get("stage") != "Completed":
         return jsonify({"success": False, "message": "Complete assembly before updating QC"}), 400
@@ -520,7 +523,7 @@ def append_qc_failure(unit_id):
         existing_data, "qcById", "qcBy"
     ):
         return jsonify({"success": False, "message": "This QC task is not assigned to you"}), 403
-
+ 
     failed_at = datetime.now(timezone.utc)
     failure_entry = {
         "id": failed_at.isoformat(),
@@ -539,7 +542,7 @@ def append_qc_failure(unit_id):
     if not isinstance(history, list):
         history = []
     history = [*history, failure_entry]
-
+ 
     try:
         doc_ref.update({
             "qc": "Failed",
@@ -558,8 +561,8 @@ def append_qc_failure(unit_id):
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to save QC failure: {exc}"}), 500
-
-
+ 
+ 
 @dailyproduction_bp.route("/assembly/<unit_id>", methods=["DELETE"])
 @roles_required(*MANAGER_ROLES)
 def delete_assembly_unit(unit_id):
@@ -627,4 +630,6 @@ def bulk_delete_assembly_units():
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to delete Assembly Units: {exc}"}), 500
+ 
+ 
  

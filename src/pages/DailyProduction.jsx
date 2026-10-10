@@ -70,7 +70,7 @@ const QC_INSPECTION_ITEMS = [
   { key: "ledOutputOn", number: "5b", description: "LED indication — Output on", method: "Visual Inspection" },
   { key: "ledOutputLow", number: "5c", description: "LED indication — Output low", method: "Visual Inspection" },
   { key: "ledOutputHigh", number: "5d", description: "LED indication — Output high", method: "Visual Inspection" },
-  { key: "inputFuse10A", number: "6", description: "Input Fuse - 10 A", method: "Visual + Continuity test" },
+  { key: "inputFuse10A", number: "6", description: "Input Fuse - 15 A", method: "Visual + Continuity test" },
   { key: "frontPanelLcd", number: "7", description: "Front Panel LCD Display", method: "Visual Inspection" },
   { key: "parameterLeds", number: "8", description: "Ensure all parameter LEDs are glowing", method: "Visual Inspection" },
   { key: "loadRun", number: "9", description: "Run machine for 4 hrs without load and 1 hr with load", method: "Input Load Source" },
