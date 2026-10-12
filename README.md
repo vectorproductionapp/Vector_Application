@@ -2,6 +2,31 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Deployment
+
+The React frontend runs on **Firebase Hosting** and the Flask backend runs on
+**Cloud Run**, both in the same Firebase/GCP project. Releases use a
+blue/green flow: a backend revision is deployed with `--no-traffic` and
+verified through `/health` before traffic moves, and a frontend release is
+built to a Hosting preview channel before it is cloned onto `live`.
+
+- **[Deployment guide (GCP + Firebase blue/green)](docs/gcp-firebase-blue-green.md)** —
+  required tools, one-time GCP setup, first deployment, releasing, validation
+  checklist, rollback, logging, CORS, WebSockets, data-compatibility rules.
+- `deployment/README.md` — the original single-service runbook.
+- Deployment scripts: [`scripts/gcp/`](scripts/gcp/) (backend) and
+  [`scripts/firebase/`](scripts/firebase/) (frontend). Nothing in
+  `.github/workflows/` deploys to production; promotion always requires a
+  human running `promote-green.ps1` or `promote-live.ps1`.
+- Pull requests run [`pr-checks.yml`](.github/workflows/pr-checks.yml):
+  frontend build, backend tests, and a backend container build — with no GCP or
+  Firebase credentials.
+
+Copy the placeholder templates before use (all real config files are
+git-ignored): `.env.example`, `backend/.env.example`,
+`scripts/gcp/config.example.ps1`, `scripts/gcp/cloudrun.env.yaml.example`,
+`scripts/firebase/config.example.ps1`, `.firebaserc.example`.
+
 ## Available Scripts
 
 In the project directory, you can run:

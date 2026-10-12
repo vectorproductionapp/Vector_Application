@@ -26,9 +26,23 @@ const RECONNECT_MS = 3000;
 const RECONNECT_MAX_MS = 30000;
 const DEFAULT_DEBOUNCE_MS = 500;
 
-// Where the socket lives when the app is served from the same origin (the CRA
-// dev server proxies /ws).  REACT_APP_API_BASE_URL wins when it is configured.
+// Where the socket lives.
+//
+//   1. REACT_APP_WS_BASE_URL, when set, wins: it lets one environment point the
+//      live-update socket at a host of its own (a dedicated API domain) while
+//      the REST calls stay on REACT_APP_API_BASE_URL.
+//   2. Otherwise the host is taken from REACT_APP_API_BASE_URL, which is how
+//      production works: the browser opens wss://<cloud-run-service-url>/ws.
+//   3. Otherwise the page's own origin - only correct behind the CRA dev
+//      server, which does NOT proxy /ws (see setupProxy.js).
 function socketUrl() {
+  const explicit = (process.env.REACT_APP_WS_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (explicit) {
+    if (/^wss?:\/\//i.test(explicit)) return explicit;
+    const host = explicit.replace(/^https?:\/\//i, "");
+    const secure = /^https:\/\//i.test(explicit) || window.location.protocol === "https:";
+    return `${secure ? "wss:" : "ws:"}//${host}`;
+  }
   const apiBase = (process.env.REACT_APP_API_BASE_URL || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const origin = apiBase || window.location.host;
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";

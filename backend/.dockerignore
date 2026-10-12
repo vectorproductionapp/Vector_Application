@@ -1,7 +1,43 @@
-.env*
+# Local configuration - Cloud Run provides these as environment variables /
+# Secret Manager references instead.  Nothing here may enter the image.
+.env
+.env.*
+*.env
+*.ini
+*.toml
+
+# Google / Firebase credentials.  `*.json` covers vector_prod.json and any
+# gcloud or service-account key dropped in the build context; the patterns
+# below repeat the risky names explicitly so a future rename still gets caught.
 *.json
+**/*.json
+!requirements.json
+*-firebase-adminsdk-*.json
+vector_prod.json
+service-account*.json
+*-credentials*.json
+gcloud-*.json
+application_default_credentials.json
+
+# Python caches and virtualenvs
 __pycache__/
+**/__pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
+env/
+
+# Logs and local dev artefacts
 *.log
+backend.log
+backend.err
+
+# Tests stub out Firebase on purpose; they are not part of the runtime image.
+tests/
+
+# Build plumbing
+.git/
+.gitignore
+Dockerfile
+.dockerignore
