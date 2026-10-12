@@ -572,13 +572,14 @@ const initialAttachmentsRef = useRef([]);
  
   // The PageFilter dropdown draws its options from the whole collection, so a
   // narrow page never makes the other values disappear.
-  const filterOptionRows = useMemo(() => {
-    const byField = {};
-    Object.entries(filterOptions).forEach(([field, values]) => {
-      byField[field] = (values || []).map((value) => ({ [field]: value }));
-    });
-    return byField;
-  }, [filterOptions]);
+  // Must be a flat array: PageFilter iterates `rows.forEach`.
+  const filterOptionRows = useMemo(
+    () =>
+      INVOICE_FILTER_FIELDS.flatMap((field) =>
+        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
+      ),
+    [filterOptions]
+  );
  
 const openAddModal = () => {
     setIsEditMode(false);

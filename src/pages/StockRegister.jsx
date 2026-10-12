@@ -146,13 +146,14 @@ export default function StockRegister() {
 
   // The PageFilter dropdown draws its options from the whole register (the API
   // sends them), so a narrow page never makes the other values disappear.
-  const filterOptionRows = useMemo(() => {
-    const byField = {};
-    Object.entries(filterOptions).forEach(([field, values]) => {
-      byField[field] = (values || []).map((value) => ({ [field]: value }));
-    });
-    return byField;
-  }, [filterOptions]);
+  // Must be a flat array: PageFilter iterates `rows.forEach`.
+  const filterOptionRows = useMemo(
+    () =>
+      STOCK_FILTER_FIELDS.flatMap((field) =>
+        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
+      ),
+    [filterOptions]
+  );
 
   const filtersActive = Boolean(query.trim()) || Boolean(pageFilter.value);
 
