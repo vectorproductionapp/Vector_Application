@@ -1,3 +1,4 @@
+
 import math
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -47,9 +48,60 @@ def _production_key(data):
     return (data.get("modelId", ""), data.get("phaseId", ""))
 
 
+def _consumed_by_phase(assembly_docs):
+    """Total production quantity per (modelId, phaseId).
+
+    Every recorded production unit consumes material the moment it is created -
+    regardless of stage, QC or packaging status.  This is the single source of
+    truth for that rule; the stock register and the dashboard both call it.
+
+    Accepts either Firestore document snapshots (``.to_dict()``) or plain
+    dictionaries, so the dashboard can pass already-serialised docs.
+    """
+    consumed = {}
+    for entry in assembly_docs:
+        data = entry.to_dict() if hasattr(entry, "to_dict") else (entry or {})
+        qty = _number(data.get("qty"))
+        if not qty:
+            continue
+        key = _production_key(data)
+        consumed[key] = consumed.get(key, 0) + qty
+    return consumed
+
+
 def _collection_docs(path):
     """Read a collection once and return its documents for stock calculation."""
     return list(db.collection(path).stream())
+
+
+# Columns scanned by the UI's free-text search box (mirrors `columns` in
+# StockRegister.jsx).  Values are stringified exactly like the client does.
+_SEARCH_KEYS = ("phase", "code", "desc", "make", "model", "reqQty", "opening",
+                "purchased", "consumed", "closing", "minLevel", "status",
+                "lastUpdated")
+
+# Fields the PageFilter dropdown offers (mirrors STOCK_FILTER_FIELDS).
+_FILTER_FIELDS = frozenset({"phase", "make", "model", "status"})
+
+
+def _text(value):
+    return "" if value is None else str(value).strip()
+
+
+def _row_matches_filters(row, search, filters):
+    """True when a serialized stock row passes the active search + field filters.
+
+    Values compare case-insensitively so `pending` / `Pending` behave the same
+    on both sides of the app.  Firestore cannot filter by substring, so this
+    runs in Python - but it runs over the *whole* register, before slicing, so
+    paging, the row count and the totals all describe the same rows.
+    """
+    if search and not any(search in _text(row.get(key)).lower() for key in _SEARCH_KEYS):
+        return False
+    for field, value in filters:
+        if _text(row.get(field)).lower() != value.lower():
+            return False
+    return True
 
 
 @stockregister_bp.route("/stock-register", methods=["GET"])
@@ -61,9 +113,15 @@ def list_stock_register():
     Only materials that appear on an invoice are listed: the invoice creates
     the row and its Qty Received adds to `purchased`.  The BOQ then enriches
     those rows (description, make, model, UOM, qty per unit, minimum level),
-    and completed + QC-passed assembly units drive `consumed`.  PO Details is
-    deliberately not a source - an item shows up here only once it is
-    available on an invoice.
+    and recorded assembly units drive `consumed` - every production unit
+    counts the moment it is recorded, whatever its stage or QC status.  PO
+    Details is deliberately not a source - an item shows up here only once it
+    is available on an invoice.
+
+    Supports `?page=&limit=` plus `?q=<text>&filterField=<key>&filterValue=<value>`
+    (the filter params may repeat).  Filters are applied to the whole register
+    before slicing, so `pagination.totalCount` always covers every matching
+    row, not just the requested page.
     """
     try:
         items = {}       # stock key -> row
@@ -110,14 +168,10 @@ def list_stock_register():
             for candidate in _phase_candidates(model_id, phase_id, phase_name, code):
                 aliases.setdefault(candidate, key)
 
-        # Workbook rule: only a Completed unit that has passed QC consumes
-        # material.  Each unit consumes the BOQ quantity-per-unit (reqQty).
-        for doc in assembly_docs:
-            data = doc.to_dict() or {}
-            if data.get("stage") != "Completed" or data.get("qc") != "Passed":
-                continue
-            key = _production_key(data)
-            completed_production[key] = completed_production.get(key, 0) + _number(data.get("qty"))
+        # Every production unit consumes material the moment it is recorded -
+        # regardless of stage, QC or packaging.  Each unit consumes the BOQ
+        # quantity-per-unit (reqQty).
+        completed_production = _consumed_by_phase(assembly_docs)
 
         # Invoices are the only source of rows: a material enters the register
         # when it appears on an invoice, and Qty Received is the stock in.
@@ -197,14 +251,38 @@ def list_stock_register():
             rows.append(item)
 
         rows.sort(key=lambda row: (row["phase"].lower(), row["code"].lower()))
+
+        # Toolbar filters run here rather than in the browser: the client used
+        # to slice to one page first and then filter those few rows, so a
+        # search or PageFilter silently matched only the visible page.
+        search = (request.args.get("q") or "").strip().lower()
+        raw_fields = request.args.getlist("filterField")
+        raw_values = request.args.getlist("filterValue")
+        filters = []
+        for raw_field, raw_value in zip(raw_fields, raw_values):
+            field = (raw_field or "").strip()
+            if field in _FILTER_FIELDS:
+                filters.append((field, str(raw_value or "")))
+
+        filtered_rows = [row for row in rows if _row_matches_filters(row, search, filters)]
+
+        # Distinct values per filterable field over the whole register so the
+        # PageFilter dropdown never loses options while a filter is active.
+        filter_options = {
+            key: sorted({_text(row.get(key)) for row in rows if _text(row.get(key))},
+                        key=lambda value: value.lower())
+            for key in sorted(_FILTER_FIELDS)
+        }
+
         page, limit = _parse_pagination_params(request.args)
-        total_count = len(rows)
+        total_count = len(filtered_rows)
         total_pages = max(1, math.ceil(total_count / limit))
         page = min(page, total_pages)
         start = (page - 1) * limit
         response = jsonify({
             "success": True,
-            "stockRows": rows[start:start + limit],
+            "stockRows": filtered_rows[start:start + limit],
+            "filterOptions": filter_options,
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,
                            "totalPages": total_pages, "hasNextPage": page < total_pages,
                            "hasPrevPage": page > 1},

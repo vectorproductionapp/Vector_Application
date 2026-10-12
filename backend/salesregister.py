@@ -30,8 +30,39 @@ ALLOWED_FIELDS = [
 # the frontend dropdown — not free text like the old "24 Months" default.
 VALID_WARRANTY_YEARS = {1, 2, 3, 4, 5}
 VALID_GST_RATES = {0, 5, 18, 28}
- 
- 
+
+# Columns scanned by the UI's free-text search box (mirrors `columns` in
+# SaleRegister.jsx).  Values are stringified exactly like the client does.
+_SEARCH_KEYS = ("clientPoDate", "poNo", "client", "clientContact", "location",
+                "model", "serial", "qty", "unitCost", "gstRate", "value",
+                "invoiceNumber", "invoiceDate", "warrantyPeriod",
+                "warrantyStartDate", "warrantyEndDate", "expectedDispatchDate",
+                "actualDispatchDate", "dispatch")
+
+# Fields the PageFilter dropdown offers (mirrors SALE_FILTER_FIELDS).
+_FILTER_FIELDS = frozenset({"client", "location", "model", "dispatch"})
+
+
+def _text(value):
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return "" if value is None else str(value).strip()
+
+
+def _row_matches_filters(row, search, filters):
+    """True when a sale row passes the active search + field filters.
+
+    Values compare case-insensitively so `pending` / `Pending` behave the same
+    on both sides of the app.
+    """
+    if search and not any(search in _text(row.get(key)).lower() for key in _SEARCH_KEYS):
+        return False
+    for field, value in filters:
+        if _text(row.get(field)).lower() != value.lower():
+            return False
+    return True
+
+
 def _serialize(doc):
     d = doc.to_dict()
     serial_numbers = d.get("serialNumbers")
@@ -346,52 +377,58 @@ def create_sale():
 @saleregister_bp.route("/sales", methods=["GET"])
 @cached_read("sales", ttl_seconds=120)
 def list_sales():
+    """Paged sales with server-side search + PageFilter.
+
+    Supports `?page=&limit=` plus `?q=<text>&filterField=<key>&filterValue=<value>`
+    (filter params may repeat).  Firestore pages by offset and cannot express
+    a substring search, so the filters are applied here over every sale the
+    caller may see *before* the page is cut - previously the browser filtered
+    only the rows the API had just returned, so a search matched one page at a
+    time.  `pagination.totalCount` always covers every matching sale.
+    """
     try:
         page, limit = _parse_pagination_params(request.args)
-        search = str(request.args.get("search", "")).strip().casefold()
+
+        search = (request.args.get("q") or "").strip().lower()
+        filters = []
+        for raw_field, raw_value in zip(request.args.getlist("filterField"),
+                                        request.args.getlist("filterValue")):
+            field = (raw_field or "").strip()
+            if field in _FILTER_FIELDS:
+                filters.append((field, str(raw_value or "")))
+
         base_query = sales_collection.order_by("createdAt", direction="DESCENDING")
-        all_docs = list(base_query.stream()) if search else None
-        if search:
-            matching_docs = []
-            for doc in all_docs:
-                serialized = _serialize(doc)
-                searchable = " ".join(str(serialized.get(key, "")) for key in ("poNo", "client", "location", "model", "serial", "dispatch"))
-                searchable += " " + " ".join(serialized.get("serialNumbers", []))
-                if search in searchable.casefold():
-                    matching_docs.append(doc)
-            total_count = len(matching_docs)
-            total_pages = max(1, math.ceil(total_count / limit))
-            page = min(page, total_pages)
-            docs = matching_docs[(page - 1) * limit: page * limit]
-        else:
-            docs = None
- 
-        if not search:
-            try:
-                count_result = base_query.count(alias="total").get()
-                total_count = count_result[0][0].value
-            except Exception:
-                total_count = len(list(base_query.stream()))
- 
+        all_docs = list(base_query.stream())
+
+        # Apply search and field filters to the full collection, then slice.
+        matching_docs = []
+        for doc in all_docs:
+            serialized = _serialize(doc)
+            if _row_matches_filters(serialized, search, filters):
+                matching_docs.append(doc)
+
+        # Distinct values per filterable field over every sale, so the
+        # PageFilter dropdown never loses options while a filter is active.
+        filter_options = {
+            key: sorted({_text(_serialize(doc).get(key)) for doc in all_docs
+                         if _text(_serialize(doc).get(key))},
+                        key=str.lower)
+            for key in sorted(_FILTER_FIELDS)
+        }
+
+        total_count = len(matching_docs)
         total_pages = max(1, math.ceil(total_count / limit))
-        if page > total_pages:
-            page = total_pages
- 
+        page = min(page, total_pages)
         offset = (page - 1) * limit
-        if docs is None:
-            docs = base_query.offset(offset).limit(limit).stream()
- 
+        page_docs = matching_docs[offset:offset + limit]
+
         return jsonify({
             "success": True,
-            "sales": _attach_customer_sales([_serialize(doc) for doc in docs]),
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "totalCount": total_count,
-                "totalPages": total_pages,
-                "hasNextPage": page < total_pages,
-                "hasPrevPage": page > 1,
-            },
+            "sales": _attach_customer_sales([_serialize(doc) for doc in page_docs]),
+            "filterOptions": filter_options,
+            "pagination": {"page": page, "limit": limit, "totalCount": total_count,
+                           "totalPages": total_pages, "hasNextPage": page < total_pages,
+                           "hasPrevPage": page > 1},
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch sales: {exc}"}), 500

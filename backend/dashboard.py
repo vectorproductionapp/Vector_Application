@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request
 from firebase_config import db
 from auth_utils import roles_required
 from read_cache import cached_read
+from stockregister import _consumed_by_phase
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -62,10 +63,9 @@ def _activity_docs(all_docs, activity, user_scoped):
 
 def _stock_reorder_count(assembly_docs, po_docs, invoice_docs, boq_docs):
     """Reproduce the stock register's calculated closing-stock rule."""
-    completed_by_phase = defaultdict(float)
-    for data in assembly_docs:
-        if data.get("stage") == "Completed" and data.get("qc") == "Passed":
-            completed_by_phase[(data.get("modelId", ""), data.get("phaseId", ""))] += _number(data.get("qty"))
+    # Same rule as the stock register: any recorded production unit counts as
+    # consumed, whatever its stage or QC status.
+    completed_by_phase = _consumed_by_phase(assembly_docs)
 
     items = {}
     po_keys = {}
@@ -96,7 +96,7 @@ def _stock_reorder_count(assembly_docs, po_docs, invoice_docs, boq_docs):
             item = items.setdefault(key, {"reqQty": 0, "minLevel": 0, "purchased": 0, "consumed": 0})
             item["reqQty"] = _number(row.get("reqQty"))
             item["minLevel"] = _number(row.get("minStockQty"))
-            item["consumed"] = completed_by_phase[(model_id, phase_id)] * item["reqQty"]
+            item["consumed"] = completed_by_phase.get((model_id, phase_id), 0) * item["reqQty"]
 
     for data in invoice_docs:
         code = data.get("code", "")
