@@ -13,6 +13,9 @@ pnpm-debug.log*
 .env.*
 backend/.env
 backend/.env.*
+# ...but the placeholder-only templates are meant to be committed.
+!.env.example
+!backend/.env.example
 
 # Firebase / GCP local credentials
 .firebaserc
@@ -22,6 +25,15 @@ backend/*.json
 !backend/requirements.json
 *-firebase-adminsdk-*.json
 gcloud-*.log
+
+# Deployment scripts: operator-specific config and local release state
+# (never committed, never a secret store). The *.example / *.yaml.example
+# templates ARE committed - they hold placeholders only.
+scripts/gcp/config.ps1
+scripts/gcp/cloudrun.env.yaml
+scripts/gcp/.state/
+scripts/firebase/config.ps1
+scripts/firebase/.state/
 
 # Python
 __pycache__/

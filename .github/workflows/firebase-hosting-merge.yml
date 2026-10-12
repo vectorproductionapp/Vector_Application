@@ -1,9 +1,22 @@
 name: Deploy to Firebase Hosting on merge
 
+# PAUSED 2026-10-12 - releases are now manual blue/green.
+#
+# This job used to build and push straight to Hosting `live` on every push to
+# main, with no preview and no way to back out except a rollback. It is replaced
+# by the preview-channel flow in docs/gcp-firebase-blue-green.md:
+#
+#   scripts/firebase/deploy-preview.ps1              -> preview channel URL
+#   scripts/firebase/promote-live.ps1  -ChannelId X  -> byte-exact to live
+#   scripts/firebase/rollback-live.ps1 -VersionId V  -> back one version
+#
+# To re-enable auto-deploy, restore:
+#   on:
+#     push:
+#       branches:
+#         - main
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build_and_deploy:

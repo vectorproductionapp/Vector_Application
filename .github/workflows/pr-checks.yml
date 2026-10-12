@@ -1,0 +1,135 @@
+name: PR checks
+
+# Build and validate only. This workflow deliberately has NO GCP/Firebase
+# credentials and NEVER deploys: no `gcloud`, no FIREBASE_SERVICE_ACCOUNT, no
+# FirebaseExtended/action-hosting-deploy. Releases are made by a human running
+# scripts/gcp/*.ps1 and scripts/firebase/*.ps1 (see
+# docs/gcp-firebase-blue-green.md).
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend build (npm ci + npm run build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A build without this variable compiles axios.post("" + "/login"),
+      # Firebase Hosting rewrites the relative URL to index.html, and login
+      # fails with HTML. Guard the PR against that regression.
+      #
+      # The variable is read from the repository setting of the same name, so
+      # the assertion below must NOT hard-code the fallback value: if the
+      # variable exists, the real URL is what gets inlined.
+      - name: Build
+        run: npm run build
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL || 'https://placeholder.invalid' }}
+
+      - name: Assert the API base URL was inlined
+        run: |
+          host=$(printf '%s' "$REACT_APP_API_BASE_URL" | sed -E 's#^https?://##')
+          echo "expecting '$host' in the bundle (from $REACT_APP_API_BASE_URL)"
+          if ! grep -Rqs -- "$host" build/static/js/ ; then
+            echo "::error::the bundle does not contain '$host'. API calls would fall back to relative paths and login would return HTML instead of a token."
+            exit 1
+          fi
+          echo "OK: absolute API base URL is inlined in the bundle."
+
+  backend:
+    name: Backend validation (syntax + unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      # Fast, credential-free syntax check of every backend module.
+      - name: Compile every backend module
+        run: python -m compileall -q .
+
+      # The tests stub firebase_admin before importing the app, so they can
+      # never read or write real Firestore/Storage data.
+      - name: Run backend unit tests
+        run: python -m unittest discover -s tests -t . -v
+
+  backend-image:
+    name: Backend container build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build only. The image is never pushed and no registry credentials exist
+      # in this job.
+      - name: Build the backend image
+        run: docker build -t vector-api:pr-check ./backend
+
+      - name: Assert no credentials leaked into the image
+        run: |
+          set -e
+          # A service-account key or a local .env must never reach the image.
+          count=$(docker run --rm --entrypoint sh vector-api:pr-check -c \
+            'find /app -maxdepth 3 \( -name ".env*" -o -name "*.json" -o -name "*firebase-adminsdk*" -o -name "vector_prod.json" \) | wc -l')
+          echo "credential-like files in image: $count"
+          if [ "$count" != "0" ]; then
+            echo "::error::The image contains .env / .json credential files. Fix backend/.dockerignore."
+            docker run --rm --entrypoint sh vector-api:pr-check -c \
+              'find /app -maxdepth 3 \( -name ".env*" -o -name "*.json" \) -print'
+            exit 1
+          fi
+          echo "OK: no .env or .json credential files in the image."
+
+      - name: Assert production runtime shape (non-root, gunicorn, $PORT)
+        run: |
+          set -e
+          uid=$(docker run --rm --entrypoint id vector-api:pr-check -u)
+          echo "uid=$uid"
+          if [ "$uid" = "0" ]; then
+            echo "::error::The container would run as root."
+            exit 1
+          fi
+          docker run --rm --entrypoint gunicorn vector-api:pr-check --version
+          # The image must bind the port Cloud Run injects, not a hard-coded one.
+          cmd=$(docker inspect -f '{{json .Config.Cmd}}' vector-api:pr-check)
+          echo "CMD=$cmd"
+          echo "$cmd" | grep -q 'gunicorn'      || { echo "::error::CMD does not start gunicorn"; exit 1; }
+          echo "$cmd" | grep -q ':${PORT}'      || { echo "::error::CMD does not bind \${PORT}"; exit 1; }
+          echo "$cmd" | grep -q 'app:app'       || { echo "::error::CMD does not serve app:app"; exit 1; }
+          entry=$(docker inspect -f '{{json .Config.Entrypoint}}' vector-api:pr-check)
+          echo "ENTRYPOINT=$entry"
+          # /health itself is covered by the unit tests above and by
+          # scripts/gcp/verify-green.ps1 against a real revision: booting the
+          # full app needs Google ADC (firestore.client() resolves credentials
+          # at import time), which a pull-request runner deliberately has none
+          # of.
+          echo "OK: runtime shape verified."

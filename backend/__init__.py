@@ -1,6 +1,7 @@
 
 import os
 import logging
+import re
 import time
 
 from flask import Flask, g, request
@@ -66,18 +67,48 @@ def create_app():
     def health_check():
         return {"status": "ok"}, 200
 
-    allowed_origins = os.getenv(
-        "CORS_ORIGINS",
-        "https://vector-application-531004235498.asia-south1.run.app,"
-        "https://vector-production-506505.web.app,"
-        "https://production.vector-power.com,"
-        "http://localhost:3001,"
-        "http://localhost:3002"
-    ).split(",")
+    # Exact origins only - never "*".  A value containing *, ^, $, [ or ( is
+    # treated as a regular expression by Flask-CORS, which is how the optional
+    # preview-channel entry below is expressed.
+    allowed_origins = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "https://vector-application-531004235498.asia-south1.run.app,"
+            "https://vector-production-506505.web.app,"
+            "https://production.vector-power.com,"
+            "http://localhost:3001,"
+            "http://localhost:3002"
+        ).split(",")
+        if origin.strip()
+    ]
+
+    # Optional, off by default: let THIS project's Firebase Hosting preview
+    # channels through so a green frontend can be validated before promotion.
+    #
+    # Preview URLs are https://<siteId>--<channelId>-<hash>.web.app, and
+    # <siteId> is the globally unique Firebase project id, so scoping the
+    # pattern to it can only ever match this project's own preview channels -
+    # it is deliberately not a *.web.app wildcard, which anyone could satisfy
+    # by creating their own Firebase project.
+    if os.getenv("CORS_ALLOW_PREVIEW_CHANNELS", "").strip().lower() in {"1", "true", "yes"}:
+        site_id = (
+            os.getenv("FIREBASE_SITE_ID", "").strip()
+            or os.getenv("FIREBASE_PROJECT_ID", "").strip()
+        )
+        if site_id:
+            allowed_origins.append(
+                rf"^https://{re.escape(site_id)}--[a-z0-9-]+\.web\.app$"
+            )
+        else:
+            logger.warning(
+                "CORS_ALLOW_PREVIEW_CHANNELS is set but FIREBASE_SITE_ID/FIREBASE_PROJECT_ID "
+                "is empty; preview origins were NOT added to CORS"
+            )
 
     CORS(
         app,
-        resources={r"/*": {"origins": [origin.strip() for origin in allowed_origins]}},
+        resources={r"/*": {"origins": allowed_origins}},
     )
 
     app.register_blueprint(login_bp)

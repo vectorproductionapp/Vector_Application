@@ -1,6 +1,7 @@
 # Local environment and credentials
 .env
 .env.*
+!/.env.example
 *.json
 !requirements.json
 *-firebase-adminsdk-*.json
