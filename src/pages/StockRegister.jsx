@@ -42,13 +42,6 @@ function errorMessage(error) {
 // Tries several common places a role might live. Once you've confirmed the
 // real shape (see console log below), this can be simplified to `user?.role`.
 export default function StockRegister() {
-  const isAdminView = true;
-
-  useEffect(() => {
-    // Temporary diagnostic — remove once role detection is confirmed working.
-    // eslint-disable-next-line no-console
-  }, []);
-
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
   const [rows, setRows] = useState([]);
