@@ -337,7 +337,11 @@ jobs:
         run: |
           umask 077
           printf '%s' "$FIREBASE_SA_JSON" > "$RUNNER_TEMP/firebase-sa.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-sa.json" >> "$GITHUB_ENV"
+          # $GITHUB_ENV only applies to LATER steps. The WIF step above already
+          # exported GOOGLE_APPLICATION_CREDENTIALS pointing at the deployer SA,
+          # which has no Firebase Hosting role -> 403. Export it HERE so the
+          # firebase CLI in THIS step reads the Firebase service account.
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
           npm install --global firebase-tools@15
           firebase hosting:clone "$FB_SITE:rc" "$FB_SITE:live" --project "$FB_SITE"
 
