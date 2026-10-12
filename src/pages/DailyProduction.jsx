@@ -948,13 +948,14 @@ export default function DailyProduction() {
 
   // The PageFilter dropdown draws its options from the whole result set (the API
   // sends them), so a narrow page never makes the other values disappear.
-  const filterOptionRows = useMemo(() => {
-    const byField = {};
-    Object.entries(filterOptions).forEach(([field, values]) => {
-      byField[field] = (values || []).map((value) => ({ [field]: value }));
-    });
-    return byField;
-  }, [filterOptions]);
+  // Must be a flat array: PageFilter iterates `rows.forEach`.
+  const filterOptionRows = useMemo(
+    () =>
+      PRODUCTION_FILTER_FIELDS.flatMap((field) =>
+        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
+      ),
+    [filterOptions]
+  );
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
