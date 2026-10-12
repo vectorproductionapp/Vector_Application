@@ -125,6 +125,10 @@ if ($SkipBuild) {
 
 # --- 3. deploy as a new revision with --no-traffic ---------------------------
 Write-VectorBanner "Deploying new revision (no traffic)"
+# Cloud Run retires an untagged 0%-traffic revision immediately: it loses its
+# hostname and cannot be health-checked. The tag keeps Green Active and gives
+# it a dedicated URL that routing never uses, so production is unaffected.
+$GreenTag = "green"
 $deployArgs = @(
     "run", "deploy", $config.Service,
     "--image", $fullImage,
@@ -133,6 +137,7 @@ $deployArgs = @(
     "--platform", "managed",
     "--port", "8080",
     "--no-traffic",
+    "--tag", $GreenTag,
     "--quiet"
 )
 if (-not $Private) { $deployArgs += "--allow-unauthenticated" }
@@ -171,7 +176,12 @@ $green = ($describe.Output -replace "`r`n", "" -replace "`n", "").Trim()
 if ([string]::IsNullOrWhiteSpace($green)) {
     throw "Could not determine the revision that was just created."
 }
-$greenUrl = Get-VectorRevisionUrl -Config $config -Revision $green
+# Read the hostname from the service's tagged traffic entry. status.url on the
+# revision itself is always empty on this service, so never use it.
+$greenUrl = Get-VectorRevisionUrl -Config $config -Tag $GreenTag
+if ([string]::IsNullOrWhiteSpace($greenUrl)) {
+    throw "Could not resolve the '$GreenTag' tag URL for $green. Check that gcloud accepted --tag, then re-run with a fresh tag."
+}
 
 Write-VectorBanner "Green revision"
 Write-Host ("  name : {0}" -f $green) -ForegroundColor Green

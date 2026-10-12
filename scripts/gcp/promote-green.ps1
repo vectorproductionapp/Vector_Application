@@ -97,6 +97,22 @@ Invoke-Gcloud -Arguments @(
     "--quiet"
 ) | Out-Null
 
+# Drop the temporary 'green' tag so the next release starts clean and no stale
+# revision hostname is left directly routable. Best effort - a missing tag is
+# not an error worth failing a promotion over.
+try {
+    Invoke-Gcloud -Arguments @(
+        "run", "services", "update-traffic", $config.Service,
+        "--remove-tags", "green",
+        "--region", $config.Region,
+        "--project", $config.ProjectId,
+        "--quiet"
+    ) | Out-Null
+    Write-Host "  removed the temporary 'green' tag" -ForegroundColor DarkGray
+} catch {
+    Write-Host "  no 'green' tag to remove (fine)" -ForegroundColor DarkGray
+}
+
 $statePath = Merge-VectorState -Service $config.Service -Values @{
     LiveRevision  = $green
     RollbackTarget = $blue
