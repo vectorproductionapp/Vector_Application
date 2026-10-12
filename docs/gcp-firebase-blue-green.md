@@ -958,21 +958,108 @@ Two other workflows already exist and are untouched:
 `firebase-hosting-merge.yml` and `firebase-hosting-pull-request.yml`
 — see §15.
 
+### 14.1 Automated release: `deploy-blue-green.yml` (optional)
+
+`.github/workflows/deploy-blue-green.yml` runs the whole sequence for you, so
+no commands have to be typed locally. It is a *convenience* layer over the same
+gcloud/firebase calls the scripts make — it does not change how blue/green
+works.
+
+```
+merge to main
+     |
+     +--> backend-green : build -> deploy --no-traffic -> assert JWT_SECRET
+     |                    is secret-backed -> probe /health on the Green URL
+     +--> frontend-rc   : npm ci -> build -> firebase hosting:channel:deploy rc
+                            |
+                     [ manual approval gate: GitHub environment "production" ]
+                            |
+     +--> promote       : traffic -> 100% green  ->  clone rc channel -> live
+```
+
+| Property | Value |
+| --- | --- |
+| Triggers | `push` to `main` (path-filtered) and `workflow_dispatch` |
+| Approval gate | the `production` environment — a human must click **Approve** |
+| Backend deploy | `gcloud run deploy … --no-traffic`, **`--image` only**, so env vars, secrets and the runtime service account carry over |
+| Frontend deploy | `hosting:channel:deploy rc` — `live` is only touched by the promote job |
+| On failed `/health` | the `promote` job never runs; production keeps the previous revision |
+| Path filtering | a docs-only merge deploys nothing |
+
+**Rollback is unchanged** — `scripts/gcp/rollback.ps1` and
+`scripts/firebase/rollback-live.ps1` still work, because the workflow leaves the
+previous revision and the previous Hosting version in place exactly as the
+manual flow does.
+
+#### One-time setup (Workload Identity Federation)
+
+The workflow authenticates with **WIF**, not a service-account key. A JSON key
+would be a permanent credential stored in a public repository; WIF instead lets
+GitHub mint a short-lived token that GCP checks against the repository name.
+
+```powershell
+# creates the pool, the provider (restricted to this repo), the deployer
+# service account and all IAM bindings. Idempotent - safe to re-run.
+.\scripts\gcp\setup-wif.ps1
+```
+
+Then set these two repository **variables** (not secrets — they are not
+sensitive) under *Settings → Secrets and variables → Actions → Variables*:
+
+| Variable | Value |
+| --- | --- |
+| `WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github-actions` |
+| `DEPLOYER_SA`  | `github-actions-deployer@<PROJECT_ID>.iam.gserviceaccount.com` |
+
+The script prints both exact values when it finishes.
+
+#### First run — create the approval gate
+
+The first time the `promote` job runs, GitHub asks you to configure the
+environment. Do this once, **before** relying on it:
+
+1. *Settings → Environments → **New environment** → name it exactly `production`*
+2. Tick **Required reviewers** and add your own account
+3. Save
+
+Until that exists, the `promote` job will fail to find the environment and the
+release will stop at "Green deployed, not promoted" — which is safe, because
+nothing has moved.
+
+#### What the gate does *not* catch
+
+`/health` only proves the process started and can answer. It cannot detect "the
+reports page returns wrong numbers". Treat the approval click as the real
+review: open the Green URL, click around, then Approve.
+
+#### Disabling it
+
+To go back to running the scripts by hand, just delete
+`.github/workflows/deploy-blue-green.yml` (or change its `on:` to
+`workflow_dispatch:` only). Nothing else depends on it.
+
 ---
 
 ## 15. Two pre-existing pipelines that bypass blue/green
 
-These are **not** changed by this work (they are the currently working release
-path); decide what to do with them before you rely on blue/green.
+Both of these used to redeploy production on every push to `main`, which
+defeated verification-before-promotion. **Both are now turned off**, and the
+release path is entirely blue/green.
 
-| Pipeline | Effect on push to `main` | If you want blue/green only |
+| Pipeline | What it did on push to `main` | Current state |
 | --- | --- | --- |
-| `cloudbuild.yaml` + its Cloud Build trigger | builds and pushes the image, then runs `gcloud run deploy … --allow-unauthenticated` **without `--no-traffic`** (line 8), so a push to `main` immediately moves 100 % of backend traffic to a new revision — bypassing `deploy-green.ps1` verification and `promote-green.ps1` | delete/disable the trigger in Cloud Build, or point it at a build-only step; deploy with `scripts/gcp/deploy-green.ps1` instead |
-| `.github/workflows/firebase-hosting-merge.yml` | deploys the frontend straight to the **live** Hosting channel | change its `channelId` from `live` to a preview channel, or disable the workflow and use `scripts/firebase/deploy-preview.ps1` → `promote-live.ps1` |
+| `cloudbuild.yaml` + its Cloud Build trigger | built and pushed the image, then ran `gcloud run deploy … --allow-unauthenticated` **without `--no-traffic`**, so a push to `main` immediately moved 100 % of backend traffic to a new revision | **trigger `60387e8b-3a1e-4a0d-87eb-cf48e9ffc899` is disabled.** Re-enable it from *Cloud Build → Triggers* if you ever want the old behaviour. The `cloudbuild.yaml` file itself is dead — it targets non-existent `_SERVICE: vector-app` / `_REPOSITORY: vector-prod` — and is a candidate for deletion. |
+| `.github/workflows/firebase-hosting-merge.yml` | deployed the frontend straight to the **live** Hosting channel | **paused** — its `on:` is now `workflow_dispatch:` only. The `channelId: live` line is retained so restoring the old behaviour is a two-line revert. |
 
-Keeping both means every `git push` still redeploys production, which defeats
-the point of verification-before-promotion. `scripts/gcp/deploy-green.ps1` does
-not delete either file and never disables a trigger for you.
+### If you also want to stop the automated blue/green release
+
+`.github/workflows/deploy-blue-green.yml` (§14.1) is opt-in and safe to remove:
+delete the file, or change its `on:` to `workflow_dispatch:` only. The manual
+scripts in §6 and §7 are unaffected either way.
+
+**Rule of thumb:** merge to `main` must never be the thing that moves
+production. Whether the mover is a script you run or the gated workflow, it has
+to be a deliberate act with a verification step in between.
 
 ---
 
