@@ -20,7 +20,7 @@ const cellContent = (column, row) => {
   return isBlankValue(value) ? EMPTY_CELL : value;
 };
 
-export default function DataTable({ columns, rows, onViewDetails, onSortChange }) {
+export default function DataTable({ columns, rows, onViewDetails, onSortChange, highlightCode }) {
   const [sort, setSort] = useState({ key: null, direction: null });
   const sortedRows = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
 
@@ -76,34 +76,42 @@ export default function DataTable({ columns, rows, onViewDetails, onSortChange }
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((r, i) => (
-            <tr key={i}>
-              {columns.map((c) => {
-                const value = cellContent(c, r);
-                return (
-                  <td key={c.key} className={c.mono ? "mono" : ""}>
-                    {value === EMPTY_CELL ? (
-                      <span className="cell-empty" title="No value">{EMPTY_CELL}</span>
-                    ) : (
-                      value
-                    )}
-                  </td>
-                );
-              })}
-              {onViewDetails && (
-                <td className="data-table-actions-col">
-                  <button
+          {sortedRows.map((r, i) => {
+            const isHighlighted = highlightCode && r.code === highlightCode;
+            const isLowStock = r.status && String(r.status).toUpperCase().includes("REORDER");
+            const rowClass = [
+              isHighlighted ? "data-table-row-highlight" : "",
+              isLowStock ? "data-table-row-low-stock" : "",
+            ].filter(Boolean).join(" ");
+            return (
+              <tr key={i} className={rowClass}>
+                {columns.map((c) => {
+                  const value = cellContent(c, r);
+                  return (
+                    <td key={c.key} className={c.mono ? "mono" : ""}>
+                      {value === EMPTY_CELL ? (
+                        <span className="cell-empty" title="No value">{EMPTY_CELL}</span>
+                      ) : (
+                        value
+                      )}
+                    </td>
+                  );
+                })}
+                {onViewDetails && (
+                  <td className="data-table-actions-col">
+                    <button
                       type="button"
                       className="data-table-view-btn"
                       onClick={() => onViewDetails(r)}
                       aria-label="View Details"
                     >
                       <Eye size={16} /> View
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

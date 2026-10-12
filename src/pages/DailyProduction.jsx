@@ -37,7 +37,7 @@ import {
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import PageFilter from "../components/PageFilter";
 
 import ExportPdfButton from "../components/ExportPdfButton";
 import { exportQcReportToPdf, prepareQcReportPdf } from "../utils/exportPdf";
@@ -56,6 +56,13 @@ const VECTOR_LOGO_URL = `${process.env.PUBLIC_URL || ""}/images/vector.png`;
 const VECTOR_PDF_LOGO_URL = `${process.env.PUBLIC_URL || ""}/images/vector-pdf.png`;
 const PAGE_SIZE = 10;
 
+// The QC report dialog is raised to z-index 120000 (.production-qc-overlay),
+// but a SearchableSelect panel portals to <body> at the default 5300 - so its
+// option list would open behind the dialog backdrop. Same reason DatePicker
+// takes a popoverZIndex prop. Matches the QC status-dropdown override at
+// .production-qc-status-list.
+const QC_OVERLAY_Z = 130000;
+
 const ASSEMBLY_STAGE_OPTIONS = ["In Production", "Semi Finished", "Completed"];
 
 const QC_STATUS_OPTIONS = ["Passed", "Under Inspection", "Pending", "Failed"];
@@ -71,7 +78,7 @@ const QC_INSPECTION_ITEMS = [
   { key: "ledOutputOn", number: "5b", description: "LED indication — Output on", method: "Visual Inspection" },
   { key: "ledOutputLow", number: "5c", description: "LED indication — Output low", method: "Visual Inspection" },
   { key: "ledOutputHigh", number: "5d", description: "LED indication — Output high", method: "Visual Inspection" },
-  { key: "inputFuse10A", number: "6", description: "Input Fuse - 16 A", method: "Visual + Continuity test" },
+  { key: "inputFuse10A", number: "6", description: "Input Fuse - 15 A", method: "Visual + Continuity test" },
   { key: "frontPanelLcd", number: "7", description: "Front Panel LCD Display", method: "Visual Inspection" },
   { key: "parameterLeds", number: "8", description: "Ensure all parameter LEDs are glowing", method: "Visual Inspection" },
   { key: "loadRun", number: "9", description: "Run machine for 4 hrs without load and 1 hr with load", method: "Input Load Source" },
@@ -553,6 +560,8 @@ export default function DailyProduction() {
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
 
+  const [filterOptions, setFilterOptions] = useState({});
+
   const [rows, setRows] = useState([]);
   const [productionStats, setProductionStats] = useState(null);
   const [expandedGraph, setExpandedGraph] = useState(null);
@@ -669,7 +678,21 @@ export default function DailyProduction() {
     try {
 
       const pageToFetch = targetPage ?? page;
-      const res = await api.get(`${API_BASE_URL}/assembly`, { params: { page: pageToFetch, limit: pageSize } });
+
+      // Search and PageFilter run on the server. Filtering here instead used to
+      // match only the rows the API had just paged back, so a search or a
+      // dropdown selection silently missed every other page.
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+      if (pageFilter.field && pageFilter.value !== "") {
+        params.append("filterField", pageFilter.field);
+        params.append("filterValue", String(pageFilter.value));
+      }
+
+      const res = await api.get(`${API_BASE_URL}/assembly?${params.toString()}`);
 
       if (!res.data.success) {
 
@@ -678,6 +701,7 @@ export default function DailyProduction() {
       }
 
       setRows(res.data.assemblyUnits || []);
+      setFilterOptions(res.data.filterOptions || {});
       const pagination = res.data.pagination;
       if (pagination) {
         setTotalPages(pagination.totalPages || 1);
@@ -695,13 +719,26 @@ export default function DailyProduction() {
 
     }
 
-  }, [page, pageSize]);
+  }, [page, pageSize, query, pageFilter]);
+
+  // Changing a filter has to restart at page 1, otherwise narrowing the result
+  // set leaves the user parked on a page that no longer exists.
+  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
 
-    fetchAssemblyUnits({ targetPage: page });
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    fetchAssemblyUnits({ targetPage: filtersChanged ? 1 : page });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [page, pageSize, filterKey]);
 
   // Assembly writes arrive as a WebSocket notice, so an open table refreshes
   // itself instead of polling.  Skipped while a form, QC inspection, or bulk
@@ -887,16 +924,37 @@ export default function DailyProduction() {
 
   };
 
+  // The API already applied the search and PageFilter to every visible unit, so
+  // this is only a cheap double-check. It mirrors the API's case-insensitive
+  // comparison (unlike the shared matchesPageFilter helper, which is
+  // case-sensitive) so it can never hide a row the server matched.
   const filteredRows = useMemo(() => {
 
     const q = query.trim().toLowerCase();
 
     return rows.filter((row) => {
       const matchesSearch = !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPageFilter(row, pageFilter, PRODUCTION_FILTER_FIELDS);
+      if (!matchesSearch) return false;
+      if (!pageFilter.field || pageFilter.value === "") return true;
+      const field = PRODUCTION_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
+      if (!field) return true;
+      return (
+        String(row[field.key] ?? "").trim().toLowerCase() ===
+        String(pageFilter.value).trim().toLowerCase()
+      );
     });
 
   }, [query, rows, pageFilter]);
+
+  // The PageFilter dropdown draws its options from the whole result set (the API
+  // sends them), so a narrow page never makes the other values disappear.
+  const filterOptionRows = useMemo(() => {
+    const byField = {};
+    Object.entries(filterOptions).forEach(([field, values]) => {
+      byField[field] = (values || []).map((value) => ({ [field]: value }));
+    });
+    return byField;
+  }, [filterOptions]);
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
@@ -1205,6 +1263,20 @@ export default function DailyProduction() {
   const handleQcInspectionFieldChange = (event) => {
     const { name, value } = event.target;
     setQcInspectionDraft((current) => ({ ...current, [name]: value }));
+    setQcInspectionError("");
+  };
+
+  // Sign-off fields that are chosen from the user list rather than typed. The
+  // draft stores the display *name* (that is what gets persisted and printed on
+  // the report), so the id coming out of the select is resolved back to a name.
+  // Reports saved before this field was a dropdown hold a plain typed name, so
+  // that name is carried through as an extra option instead of being dropped.
+  const handleQcInspectionUserSelect = (field) => (value) => {
+    const selectedUser = productionUsers.find((user) => user.id === value);
+    setQcInspectionDraft((current) => ({
+      ...current,
+      [field]: selectedUser?.name || value || "",
+    }));
     setQcInspectionError("");
   };
 
@@ -1790,6 +1862,20 @@ export default function DailyProduction() {
   const qcFailureOnlyView = qcReportReadOnly && !isQcInspectionComplete(qcInspectionTarget?.row?.qcInspection);
   const qcDraftFailureCount = getFailedQcItems(qcInspectionDraft).length;
 
+  // "Verified By" is picked from the user list. Its stored value is a name, so
+  // the trigger needs the matching user id, and a name typed before the field
+  // became a dropdown is kept selectable so existing reports still display it.
+  const qcVerifiedByName = String(qcInspectionDraft?.verifiedBy || "").trim();
+  const qcVerifiedByValue = qcVerifiedByName
+    ? productionUsers.find((user) => user.name === qcVerifiedByName)?.id || qcVerifiedByName
+    : "";
+  const qcVerifiedByOptions = useMemo(() => {
+    if (!qcVerifiedByName || userOptions.some((option) => option.label === qcVerifiedByName)) {
+      return userOptions;
+    }
+    return [...userOptions, { value: qcVerifiedByName, label: qcVerifiedByName }];
+  }, [userOptions, qcVerifiedByName]);
+
   const phaseEmptyMessage = phasesError
 
     ? phasesError
@@ -1968,7 +2054,7 @@ export default function DailyProduction() {
 <div className="table-controls-row">
 <div className="table-controls-primary">
 <SearchBar value={query} onChange={setQuery} placeholder="Search Assembly Units..." />
-<PageFilter rows={rows} fields={PRODUCTION_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+<PageFilter rows={filterOptionRows} fields={PRODUCTION_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
 </div>
 <ExportPdfButton
 
@@ -2340,6 +2426,13 @@ export default function DailyProduction() {
                   )}
 
                   {itemDrafts.map((draft, index) => {
+                    // Same stage-gating the Edit modal uses, but resolved per item
+                    // block: in Add mode the unit fields live on the draft, not on
+                    // the header, so the shared qcEnabled/packagingEnabled flags
+                    // above are always false here.
+                    const itemQcEnabled = draft.stage === "Completed";
+                    const itemPackagingEnabled =
+                      itemQcEnabled && draft.qc === "Passed" && isQcInspectionComplete(draft.qcInspection);
                     return (
                       <section
                         className="production-item-card"
@@ -2440,7 +2533,8 @@ export default function DailyProduction() {
                               value={draft.qc}
                               options={QC_STATUS_OPTIONS}
                               onChange={(event) => handleItemField(index, "qc", event.target.value)}
-                              placeholder="Select QC Status"
+                              placeholder={itemQcEnabled ? "Select QC Status" : "Complete assembly first"}
+                              disabled={!itemQcEnabled}
                             />
                             {(draft.qc === "Passed" ||
                               draft.qc === "Failed" ||
@@ -2480,7 +2574,8 @@ export default function DailyProduction() {
                               options={userOptions}
                               value={draft.qcById}
                               onChange={handleItemUser(index, "qcBy")}
-                              placeholder="Select User"
+                              placeholder={itemQcEnabled ? "Select User" : "Complete assembly first"}
+                              disabled={!itemQcEnabled}
 
                               loading={usersLoading}
                               emptyMessage={usersError || "No users found"}
@@ -2494,7 +2589,8 @@ export default function DailyProduction() {
                               value={draft.packagingStatus}
                               options={PACKAGING_STATUS_OPTIONS}
                               onChange={(event) => handleItemField(index, "packagingStatus", event.target.value)}
-                              placeholder="Select Packaging Status"
+                              placeholder={itemPackagingEnabled ? "Select Packaging Status" : "Complete QC inspection first"}
+                              disabled={!itemPackagingEnabled}
 
                             />
                           </label>
@@ -2505,7 +2601,8 @@ export default function DailyProduction() {
                               options={userOptions}
                               value={draft.packagedById}
                               onChange={handleItemUser(index, "packagedBy")}
-                              placeholder="Select User"
+                              placeholder={itemPackagingEnabled ? "Select User" : "Complete QC inspection first"}
+                              disabled={!itemPackagingEnabled}
 
                               loading={usersLoading}
                               emptyMessage={usersError || "No users found"}
@@ -2645,7 +2742,7 @@ export default function DailyProduction() {
 
                 <div className="production-qc-signoff-grid">
                   <label><span>Checked By <b>*</b></span><input name="checkedBy" value={qcInspectionDraft.checkedBy || ""} onChange={handleQcInspectionFieldChange} placeholder="Inspector name" readOnly={qcReportReadOnly} /></label>
-                  <label><span>Verified By <b>*</b></span><input name="verifiedBy" value={qcInspectionDraft.verifiedBy || ""} onChange={handleQcInspectionFieldChange} placeholder="Verifier name" readOnly={qcReportReadOnly} /></label>
+                  <label><span>Verified By <b>*</b></span><SearchableSelect options={qcVerifiedByOptions} value={qcVerifiedByValue} onChange={handleQcInspectionUserSelect("verifiedBy")} placeholder="Select User" loading={usersLoading} emptyMessage={usersError || "No users found"} disabled={qcReportReadOnly} panelZIndex={QC_OVERLAY_Z} /></label>
                   <label><span>Authorized By</span><input name="authorizedBy" value={qcInspectionDraft.authorizedBy || ""} onChange={handleQcInspectionFieldChange} placeholder="Optional" readOnly={qcReportReadOnly} /></label>
                 </div>
               </>}

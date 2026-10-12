@@ -1,20 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  LayoutDashboard,
-  Loader2,
-  RefreshCw,
-  Table2,
-  X,
-} from "lucide-react";
+import { Loader2, RefreshCw, Table2, X } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import PageFilter from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
-import StockDashboard from "../components/StockDashboard";
+import { sortRows } from "../utils/tableSort";
 import "./StockRegister.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
@@ -55,14 +49,10 @@ export default function StockRegister() {
     // eslint-disable-next-line no-console
   }, []);
 
-  // Admin/co-admin can switch between "table" and "dashboard".
-  // Regular users are always on "dashboard" and never see the switch.
-  const [view, setView] = useState("table");
-  const effectiveView = isAdminView ? view : "dashboard";
-
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
   const [rows, setRows] = useState([]);
+  const [filterOptions, setFilterOptions] = useState({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
@@ -70,17 +60,30 @@ export default function StockRegister() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [detailsRow, setDetailsRow] = useState(null);
+  const [highlightCode, setHighlightCode] = useState("");
 
   const fetchStock = useCallback(async ({ silent = false, targetPage } = {}) => {
     if (!silent) setLoading(false);
     setLoadError("");
     const pageToFetch = targetPage ?? page;
     try {
-      const response = await api.get(`${API_BASE_URL}/stock-register`, {
-        params: { page: pageToFetch, limit: pageSize },
-      });
+      // Search and PageFilter run on the server. Filtering here instead used to
+      // match only the ten rows the API had just paged back, so a search or a
+      // dropdown selection silently missed everything on the other pages.
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+      if (pageFilter.field && pageFilter.value !== "") {
+        params.append("filterField", pageFilter.field);
+        params.append("filterValue", String(pageFilter.value));
+      }
+
+      const response = await api.get(`${API_BASE_URL}/stock-register?${params.toString()}`);
       if (!response.data.success) throw new Error(response.data.message || "Failed to load stock register");
       setRows(response.data.stockRows || []);
+      setFilterOptions(response.data.filterOptions || {});
       const pagination = response.data.pagination || {};
       setTotalPages(pagination.totalPages || 1);
       setTotalCount(pagination.totalCount || 0);
@@ -90,13 +93,23 @@ export default function StockRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query, pageFilter]);
 
-  // Only fetch table data for admins while they're actually on the table view.
+  // Changing a filter has to restart at page 1, otherwise narrowing the result
+  // set can leave the user parked on a page that no longer exists.
+  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const prevFilterKeyRef = useRef(filterKey);
+
   useEffect(() => {
-    if (isAdminView && effectiveView === "table") fetchStock({ targetPage: page });
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+    fetchStock({ targetPage: filtersChanged ? 1 : page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, isAdminView, effectiveView]);
+  }, [page, pageSize, filterKey]);
 
   // Stock rows are derived from invoices, so invoice writes are what change
   // this page.  Read-only table: no guard, and the details modal keeps its
@@ -114,23 +127,55 @@ export default function StockRegister() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [closeDetails]);
 
+  // Clear highlight when user changes search or filter
+  useEffect(() => {
+    if (query || pageFilter.value) setHighlightCode("");
+  }, [query, pageFilter]);
+
+  // The API already applied the search and PageFilter to the whole register,
+  // so this is only a cheap double-check. It mirrors the API's
+  // case-insensitive comparison (unlike the shared matchesPageFilter helper,
+  // which is case-sensitive) so it can never hide a row the server matched.
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch = !q || columns.some((column) => String(row[column.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPageFilter(row, pageFilter, STOCK_FILTER_FIELDS);
+      if (!matchesSearch) return false;
+      if (!pageFilter.field || pageFilter.value === "") return true;
+      const field = STOCK_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
+      if (!field) return true;
+      return (
+        String(row[field.key] ?? "").trim().toLowerCase() ===
+        String(pageFilter.value).trim().toLowerCase()
+      );
     });
   }, [query, rows, pageFilter]);
+
+  // The PageFilter dropdown draws its options from the whole register (the API
+  // sends them), so a narrow page never makes the other values disappear.
+  const filterOptionRows = useMemo(() => {
+    const byField = {};
+    Object.entries(filterOptions).forEach(([field, values]) => {
+      byField[field] = (values || []).map((value) => ({ [field]: value }));
+    });
+    return byField;
+  }, [filterOptions]);
+
+  const filtersActive = Boolean(query.trim()) || Boolean(pageFilter.value);
+
+  // Which column header the user sorted by. DataTable owns the interaction and
+  // reports it back, so the export can be written in the order on screen.
+  const [tableSort, setTableSort] = useState(null);
+
+  const exportTableRows = useMemo(
+    () => sortRows(filteredRows, columns, tableSort),
+    [filteredRows, tableSort]
+  );
 
   const handlePageSizeChange = (nextPageSize) => {
     setPageSize(nextPageSize);
     setPage(1);
   };
-
-  // Regular users: dashboard only, no toggle, no table chrome.
-  if (!isAdminView) {
-    return <StockDashboard />;
-  }
 
   return (
     <div className="stock-page">
@@ -139,49 +184,39 @@ export default function StockRegister() {
           <button
             type="button"
             role="tab"
-            aria-selected={view === "table"}
-            className={`stock-view-btn${view === "table" ? " active" : ""}`}
-            onClick={() => setView("table")}
+            aria-selected="true"
+            className="stock-view-btn active"
           >
             <Table2 size={15} /> Table View
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "dashboard"}
-            className={`stock-view-btn${view === "dashboard" ? " active" : ""}`}
-            onClick={() => setView("dashboard")}
-          >
-            <LayoutDashboard size={15} /> Dashboard View
           </button>
         </div>
 
       </div>
 
-      {view === "dashboard" ? (
-        <StockDashboard />
-      ) : (
-        <>
-          <div className="panel">
-            <div className="table-controls-row">
-              <div className="table-controls-primary">
-                <SearchBar value={query} onChange={setQuery} placeholder="Search Material Stock Register..." />
-                <PageFilter rows={rows} fields={STOCK_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
-              </div>
-              <ExportPdfButton mode="table" title="Material Stock Register" columns={columns} rows={filteredRows} />
-            </div>
-            {loading ? (
-              <div className="stock-loading"><Loader2 size={28} className="spin" /><span>Loading stock register...</span></div>
-            ) : loadError ? (
-              <div className="stock-load-error"><div><span>{loadError}</span><button type="button" className="stock-retry" onClick={() => fetchStock({ targetPage: page })}><RefreshCw size={14} /> Retry</button></div></div>
-            ) : rows.length === 0 ? (
-              <div className="stock-empty-state">No material stock records found.</div>
-            ) : (
-              <DataTable columns={columns} rows={filteredRows} onViewDetails={openDetails} />
-            )}
+      <div className="panel">
+        <div className="table-controls-row">
+          <div className="table-controls-primary">
+            <SearchBar value={query} onChange={setQuery} placeholder="Search Material Stock Register..." />
+            <PageFilter rows={filterOptionRows} fields={STOCK_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
           </div>
+          <ExportPdfButton mode="table" title="Material Stock Register" columns={columns} rows={exportTableRows} />
+        </div>
+        {loading ? (
+          <div className="stock-loading"><Loader2 size={28} className="spin" /><span>Loading stock register...</span></div>
+        ) : loadError ? (
+          <div className="stock-load-error"><div><span>{loadError}</span><button type="button" className="stock-retry" onClick={() => fetchStock({ targetPage: page })}><RefreshCw size={14} /> Retry</button></div></div>
+        ) : rows.length === 0 ? (
+          <div className="stock-empty-state">
+            {filtersActive
+              ? "No material stock records match the current search or filter."
+              : "No material stock records found."}
+          </div>
+        ) : (
+          <DataTable columns={columns} rows={filteredRows} onSortChange={setTableSort} onViewDetails={openDetails} highlightCode={highlightCode} />
+        )}
+      </div>
 
-          {!loading && !loadError && rows.length > 0 && (
+      {!loading && !loadError && rows.length > 0 && (
             <ListPagination
               page={page}
               pageSize={pageSize}
@@ -230,8 +265,7 @@ export default function StockRegister() {
             </div>,
             document.body
           )}
-        </>
-      )}
+      {/* )} */}
     </div>
   );
 }

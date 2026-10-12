@@ -3,7 +3,7 @@ import Swal from "sweetalert2";
 import { createPortal } from "react-dom";
 import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import PageFilter from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
@@ -12,6 +12,7 @@ import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import { fmtINR } from "../data/mockData";
 import { formatDate } from "../utils/date";
+import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
 import "./SaleRegister.css";
 import "../components/StatusDropdown.css";
@@ -251,22 +252,34 @@ function toDateInputValue(value) {
 // ---- Warranty calculation helpers ----
 // Warranty Start Date is auto-set to equal the Invoice Date (the date the
 // sale was invoiced), since that's the date warranty coverage begins.
-// Warranty End Date = Invoice Date + Warranty Period (years).
-function addYearsToDate(dateStr, years) {
-  if (!dateStr || !years) return "";
+// Warranty End Date = Invoice Date + Warranty Period (years), minus one day,
+// so that coverage expires at 23:59 on the day *before* the anniversary.
+// Example: 08-10-2026 + 3 years -> expires 07-10-2029 23:59, not 08-10-2029.
+// All arithmetic is done in UTC because the date strings are "YYYY-MM-DD",
+// which `new Date()` parses as UTC midnight; using the local setters would
+// shift the result by a day in timezones behind UTC.
+function shiftDate(dateStr, { years = 0, days = 0 } = {}) {
+  if (!dateStr) return "";
   const parsed = new Date(dateStr);
   if (Number.isNaN(parsed.getTime())) return "";
   const result = new Date(parsed.getTime());
-  result.setFullYear(result.getFullYear() + Number(years));
+  if (years) result.setUTCFullYear(result.getUTCFullYear() + Number(years));
+  if (days) result.setUTCDate(result.getUTCDate() + Number(days));
   if (Number.isNaN(result.getTime())) return "";
   return result.toISOString().slice(0, 10);
+}
+
+function addYearsToDate(dateStr, years) {
+  if (!dateStr || !years) return "";
+  return shiftDate(dateStr, { years });
 }
 
 // Exported so an eventual "Edit Sale" flow can reuse the exact same logic.
 export function calculateWarrantyDates(invoiceDate, warrantyPeriod) {
   const warrantyStartDate = invoiceDate || "";
-  const warrantyEndDate =
+  const anniversary =
     invoiceDate && warrantyPeriod ? addYearsToDate(invoiceDate, warrantyPeriod) : "";
+  const warrantyEndDate = anniversary ? shiftDate(anniversary, { days: -1 }) : "";
   return { warrantyStartDate, warrantyEndDate };
 }
 
@@ -468,6 +481,7 @@ function renderDetailField(
 export default function SaleRegister() {
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  const [filterOptions, setFilterOptions] = useState({});
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -791,14 +805,26 @@ export default function SaleRegister() {
     const pageToFetch = targetPage ?? page;
 
     try {
-      const res = await api.get(SALES_API_URL, {
-        params: { page: pageToFetch, limit: pageSize, search: query.trim() },
-      });
+      // Search and PageFilter run on the server. Filtering here instead used to
+      // match only the rows the API had just paged back, so a search or a
+      // dropdown selection silently missed every other page.
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+      if (pageFilter.field && pageFilter.value !== "") {
+        params.append("filterField", pageFilter.field);
+        params.append("filterValue", String(pageFilter.value));
+      }
+
+      const res = await api.get(`${SALES_API_URL}?${params.toString()}`);
       const data = res.data;
       if (!data.success) {
         throw new Error(data.message || `Server responded with ${res.status}`);
       }
       setRows(data.sales || []);
+      setFilterOptions(data.filterOptions || {});
       const pagination = data.pagination;
       if (pagination) {
         setTotalPages(pagination.totalPages || 1);
@@ -813,11 +839,23 @@ export default function SaleRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, query]);
+  }, [page, pageSize, query, pageFilter]);
+
+  // Changing a filter has to restart at page 1, otherwise narrowing the result
+  // set leaves the user parked on a page that no longer exists.
+  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
-    fetchRows({ targetPage: page });
-  }, [fetchRows, page]);
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+    fetchRows({ targetPage: filtersChanged ? 1 : page });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, filterKey]);
 
   // Sale writes arrive as a WebSocket notice and refresh the table quietly.
   // Skipped while the add/edit form or the details editor is open.
@@ -825,6 +863,10 @@ export default function SaleRegister() {
     guard: () => !(modalOpen || saving || isEditingDetails || detailsSaving),
   });
 
+  // The API already applied the search and PageFilter to the whole register,
+  // so this is only a cheap double-check. It mirrors the API's case-insensitive
+  // comparison (unlike the shared matchesPageFilter helper, which is
+  // case-sensitive) so it can never hide a row the server matched.
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -833,9 +875,28 @@ export default function SaleRegister() {
         !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
 
       if (!matchesSearch) return false;
-      return matchesPageFilter(row, pageFilter, SALE_FILTER_FIELDS);
+      if (!pageFilter.field || pageFilter.value === "") return true;
+      const field = SALE_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
+      if (!field) return true;
+      return (
+        String(row[field.key] ?? "").trim().toLowerCase() ===
+        String(pageFilter.value).trim().toLowerCase()
+      );
     });
+
   }, [query, rows, pageFilter]);
+
+  // The PageFilter dropdown draws its options from the whole register (the API
+  // sends them), so a narrow page never makes the other values disappear.
+  const filterOptionRows = useMemo(() => {
+    const byField = {};
+    Object.entries(filterOptions).forEach(([field, values]) => {
+      byField[field] = (values || []).map((value) => ({ [field]: value }));
+    });
+    return byField;
+  }, [filterOptions]);
+
+  const filtersActive = Boolean(query.trim()) || Boolean(pageFilter.value);
 
   // New records are stored one document per serial. This expansion remains
   // for legacy combined records and supplies only the selected serial to the
@@ -854,6 +915,15 @@ export default function SaleRegister() {
       value: perUnitValue,
     }));
   }), [filteredRows]);
+
+  // Which column header the user sorted by. DataTable owns the interaction and
+  // reports it back, so the export can be written in the order on screen.
+  const [tableSort, setTableSort] = useState(null);
+
+  const exportTableRows = useMemo(
+    () => sortRows(serialDisplayRows, columns, tableSort),
+    [serialDisplayRows, tableSort]
+  );
 
   const openModal = () => {
     setFormValues(emptySaleForm);
@@ -1179,14 +1249,14 @@ export default function SaleRegister() {
         <div className="table-controls-row">
           <div className="table-controls-primary">
             <SearchBar value={query} onChange={setQuery} placeholder="Search Sale Register..." />
-            <PageFilter rows={rows} fields={SALE_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+            <PageFilter rows={filterOptionRows} fields={SALE_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
           </div>
           {!loading && !loadError && (
             <ExportPdfButton
               mode="table"
               title="Sale Register"
               columns={columns}
-              rows={serialDisplayRows}
+              rows={exportTableRows}
             />
           )}
         </div>
@@ -1200,10 +1270,12 @@ export default function SaleRegister() {
           <div className="sales-load-error">{loadError}</div>
         ) : rows.length === 0 ? (
           <div className="sales-date-empty">
-            No sales recorded yet. Click "Add Sale" to create the first one.
+            {filtersActive
+              ? "No sales match the current search or filter."
+              : "No sales recorded yet. Click \"Add Sale\" to create the first one."}
           </div>
         ) : (
-          <DataTable columns={tableColumns} rows={serialDisplayRows} onViewDetails={openDetails} />
+          <DataTable columns={tableColumns} rows={serialDisplayRows} onSortChange={setTableSort} onViewDetails={openDetails} />
         )}
       </div>
 
@@ -1416,7 +1488,7 @@ export default function SaleRegister() {
 
                 <label className="sale-field">
                   <span>Warranty End Date</span>
-                  <div title="Automatically calculated from Invoice Date + Warranty Period"><DatePicker value={formValues.warrantyEndDate} onChange={() => {}} disabled ariaLabel="Warranty end date" /></div>
+                  <div title="Automatically calculated as Invoice Date + Warranty Period, ending the day before the anniversary"><DatePicker value={formValues.warrantyEndDate} onChange={() => {}} disabled ariaLabel="Warranty end date" /></div>
                 </label>
               </div>
               <div className="sale-form-section-title">Dispatch Details</div>
@@ -1447,7 +1519,7 @@ export default function SaleRegister() {
               <button type="button" className="sale-btn-secondary" onClick={requestClose} disabled={saving}>
                 Cancel
               </button>
-              <button type="button" className="sale-btn-primary" onClick={handleSave} disabled={saving || Boolean(validateSaleForm(formValues))}>
+              <button type="button" className="sale-btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
                 {saving ? "Saving..." : "Save"}
               </button>

@@ -42,6 +42,7 @@ export function SearchableSelect({
   allowCustomValue = false,
   onEditOption,
   onDeleteOption,
+  panelZIndex,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -154,7 +155,11 @@ export function SearchableSelect({
       </button>
  
       {open && !disabled && menuPosition && createPortal(
-        <div className="searchable-select-panel" ref={panelRef} style={menuPosition}>
+        <div
+          className="searchable-select-panel"
+          ref={panelRef}
+          style={panelZIndex ? { ...menuPosition, zIndex: panelZIndex } : menuPosition}
+        >
           <div className="searchable-select-search">
             <Search size={14} />
             <input

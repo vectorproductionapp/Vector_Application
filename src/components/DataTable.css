@@ -98,10 +98,17 @@
   color: var(--text-primary);
   white-space: nowrap;
   text-align: center;
+  background: transparent; /* Allow row background to show through */
 }
 
-.data-table tbody tr:nth-child(even) { background: var(--bg-table-stripe); }
-.data-table tbody tr:hover { background: var(--bg-table-hover); }
+/* Alternating row colors (zebra striping) - enhanced contrast for better readability */
+/* Higher specificity to override global.css !important rules */
+.table-wrap .data-table tbody tr:nth-child(odd),
+.table-wrap .data-table tbody tr:nth-child(odd) td { background: var(--bg-surface) !important; }
+.table-wrap .data-table tbody tr:nth-child(even),
+.table-wrap .data-table tbody tr:nth-child(even) td { background: var(--bg-table-stripe) !important; }
+.table-wrap .data-table tbody tr:hover,
+.table-wrap .data-table tbody tr:hover td { background: var(--bg-table-hover) !important; }
 
 .mono {
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
@@ -153,4 +160,38 @@
   color: var(--text-secondary);
   opacity: 0.75;
   font-weight: 600;
+}
+
+.data-table tbody tr.data-table-row-highlight {
+  background: var(--accent-soft-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.data-table tbody tr.data-table-row-highlight:hover {
+  background: var(--accent-soft-bg);
+}
+
+/* Low stock / reorder rows - distinct highlighting for items below minimum */
+.data-table tbody tr.data-table-row-low-stock,
+.data-table tbody tr.data-table-row-low-stock td {
+  background: var(--color-danger-soft) !important;
+}
+.data-table tbody tr.data-table-row-low-stock:hover,
+.data-table tbody tr.data-table-row-low-stock:hover td {
+  background: var(--color-danger-bg) !important;
+}
+
+/* Ensure text is readable on low stock rows */
+.data-table tbody tr.data-table-row-low-stock td {
+  color: var(--color-danger-text) !important;
+}
+
+/* Combined: low stock + highlight (searched item that's also low stock) */
+.data-table tbody tr.data-table-row-low-stock.data-table-row-highlight,
+.data-table tbody tr.data-table-row-low-stock.data-table-row-highlight td {
+  background: var(--color-danger-soft) !important;
+  box-shadow: inset 3px 0 0 var(--color-danger) !important;
+}
+.data-table tbody tr.data-table-row-low-stock.data-table-row-highlight:hover,
+.data-table tbody tr.data-table-row-low-stock.data-table-row-highlight:hover td {
+  background: var(--color-danger-bg) !important;
 }
