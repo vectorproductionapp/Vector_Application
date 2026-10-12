@@ -188,17 +188,34 @@ function Get-VectorLiveRevision {
 }
 
 function Get-VectorRevisionUrl {
+    # Cloud Run does NOT populate status.url on revisions, so a revision's
+    # hostname can only be read out of the SERVICE's traffic array. Tagged
+    # entries always carry a url; untagged ones (retired, 0% traffic) do not.
+    #
+    # Pass -Tag "green" to target a tagged revision, otherwise the entry whose
+    # revisionName matches -Revision is used.
     param(
         [Parameter(Mandatory = $true)]$Config,
-        [Parameter(Mandatory = $true)][string]$Revision
+        [string]$Revision = "",
+        [string]$Tag = ""
     )
     $result = Invoke-Gcloud -Arguments @(
-        "run", "revisions", "describe", $Revision,
+        "run", "services", "describe", $Config.Service,
         "--region", $Config.Region,
         "--project", $Config.ProjectId,
-        "--format=value(status.url)"
+        "--format=json"
     )
-    return ($result.Output -replace "`r`n", "" -replace "`n", "").Trim()
+    $svc = $result.Output | ConvertFrom-Json
+    foreach ($entry in @($svc.status.traffic)) {
+        if ($null -eq $entry) { continue }
+        if (-not [string]::IsNullOrWhiteSpace($Tag)) {
+            if (($entry.tag -eq $Tag) -and $entry.url) { return $entry.url }
+        }
+        elseif ($Revision -and ($entry.revisionName -eq $Revision) -and $entry.url) {
+            return $entry.url
+        }
+    }
+    return ""
 }
 
 function Get-VectorGreenRevision {

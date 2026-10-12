@@ -137,7 +137,12 @@ jobs:
           echo "revision=$REV" >> "$GITHUB_OUTPUT"
           echo "Blue stays on: $REV"
 
-      - name: Deploy Green with --no-traffic
+      - name: Deploy Green with --no-traffic, tagged
+        # --no-traffic  : the existing revision keeps serving every request.
+        # --tag green   : ESSENTIAL. A revision deployed with 0% traffic and no
+        #                 tag is immediately retired by Cloud Run, loses its URL
+        #                 and cannot be probed. The tag keeps it Active and
+        #                 gives it a dedicated hostname we can health-check.
         # Only --image is passed, so env vars, secrets and the runtime service
         # account on the existing revision are all carried over untouched.
         run: |
@@ -146,13 +151,28 @@ jobs:
             --region "$REGION" \
             --platform managed \
             --no-traffic \
+            --tag green \
             --quiet
 
       - id: green
-        name: Resolve the Green revision
+        name: Resolve the Green revision and its tag URL
+        # Cloud Run does NOT populate status.url on revisions, so the only
+        # reliable place to read a revision's hostname is the tagged entry in
+        # the service's traffic array.
         run: |
           REV="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.latestCreatedRevisionName)')"
-          URL="$(gcloud run revisions describe "$REV" --region "$REGION" --format='value(status.url)')"
+          URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+                 | python3 -c "
+          import json, sys
+          for t in json.load(sys.stdin)['status'].get('traffic', []):
+              if t.get('tag') == 'green':
+                  print(t.get('url', ''))
+                  break
+          ")"
+          if [ -z "$REV" ] || [ -z "$URL" ]; then
+            echo "::error::Could not resolve the Green revision or its tag URL."
+            exit 1
+          fi
           echo "revision=$REV" >> "$GITHUB_OUTPUT"
           echo "url=$URL"     >> "$GITHUB_OUTPUT"
           echo "Green: $REV"
@@ -179,9 +199,16 @@ jobs:
       - name: Health-check Green (production untouched)
         run: |
           URL="${{ steps.green.outputs.url }}"
+          if [ -z "$URL" ]; then
+            echo "::error::Green URL is empty - refusing to probe."
+            exit 1
+          fi
           echo "Probing $URL/health"
           for i in $(seq 1 36); do
-            CODE="$(curl -sS -o /dev/null -w '%{http_code}' "$URL/health" 2>/dev/null || echo 000)"
+            # curl writes 000 AND exits non-zero on a connection failure, so
+            # don't append a fallback 'echo 000' or it concatenates to 000000.
+            CODE="$(curl -sS -o /dev/null -w '%{http_code}' "$URL/health" 2>/dev/null)"
+            [ -z "$CODE" ] && CODE=000
             echo "  attempt $i -> HTTP $CODE"
             if [ "$CODE" = "200" ]; then
               echo "GREEN HEALTHY"
@@ -279,11 +306,18 @@ jobs:
       - name: Shift backend traffic to Green
         if: needs.backend-green.result == 'success'
         run: |
-          echo "Moving 100% of traffic to ${{ needs.backend-green.outputs.revision }}"
+          REV="${{ needs.backend-green.outputs.revision }}"
+          echo "Moving 100% of traffic to $REV"
           gcloud run services update-traffic "$SERVICE" \
             --region "$REGION" \
-            --to-revisions "${{ needs.backend-green.outputs.revision }}=100" \
+            --to-revisions "$REV=100" \
             --quiet
+          # Drop the temporary 'green' tag so the next release starts clean
+          # and no stale revision hostname is left routable.
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" \
+            --remove-tags green \
+            --quiet || echo "No green tag to remove."
 
       - name: Confirm backend health after the switch
         if: needs.backend-green.result == 'success'
