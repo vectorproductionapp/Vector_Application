@@ -1,4 +1,4 @@
-"""Smoke tests for the endpoints the blue/green release flow depends on.
+"""Smoke tests for the endpoints the deployment flow depends on.
 
 These build the real Flask app with a stubbed ``firebase_admin`` (see
 ``tests.fakes``) so they can run on a pull request without Google credentials
@@ -48,7 +48,7 @@ def _build_app():
 
 
 class HealthEndpointTests(unittest.TestCase):
-    """`gcloud run ... --startup-probe` and verify-green.ps1 both rely on this."""
+    """`gcloud run ... --startup-probe` relies on this."""
 
     @classmethod
     def setUpClass(cls):

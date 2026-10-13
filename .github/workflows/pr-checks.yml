@@ -2,9 +2,8 @@ name: PR checks
 
 # Build and validate only. This workflow deliberately has NO GCP/Firebase
 # credentials and NEVER deploys: no `gcloud`, no FIREBASE_SERVICE_ACCOUNT, no
-# FirebaseExtended/action-hosting-deploy. Releases are made by a human running
-# scripts/gcp/*.ps1 and scripts/firebase/*.ps1 (see
-# docs/gcp-firebase-blue-green.md).
+# FirebaseExtended/action-hosting-deploy. Production releases are made by
+# firebase-hosting-merge.yml (frontend) and the Cloud Build trigger (backend).
 
 on:
   pull_request:
@@ -127,8 +126,7 @@ jobs:
           echo "$cmd" | grep -q 'app:app'       || { echo "::error::CMD does not serve app:app"; exit 1; }
           entry=$(docker inspect -f '{{json .Config.Entrypoint}}' vector-api:pr-check)
           echo "ENTRYPOINT=$entry"
-          # /health itself is covered by the unit tests above and by
-          # scripts/gcp/verify-green.ps1 against a real revision: booting the
+          # /health itself is covered by the unit tests above; booting the
           # full app needs Google ADC (firestore.client() resolves credentials
           # at import time), which a pull-request runner deliberately has none
           # of.
