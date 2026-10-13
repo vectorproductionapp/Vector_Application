@@ -122,8 +122,8 @@ class ScopeRoutingTests(unittest.TestCase):
         self.assertEqual(scope_for_path("/models/m1/phases"), "phases")
         # POST /models/<id>/phases/<pid>/boq (create a BOQ row) -> "boq".
         self.assertEqual(scope_for_path("/models/m1/phases/p1/boq"), "boq")
-        # NOTE: pre-existing behaviour, deliberately not changed by the
-        # blue/green work - an id-suffixed BOQ row URL (PUT/DELETE
+        # NOTE: pre-existing behaviour, deliberately left unchanged -
+        # an id-suffixed BOQ row URL (PUT/DELETE
         # .../boq/<id>) maps to "phases" rather than "boq", because the
         # `startswith("/models/")` branch matches before the "/boq" suffix
         # check.  Asserted so that any future fix is a deliberate one.
