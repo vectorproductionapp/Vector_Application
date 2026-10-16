@@ -1,12 +1,18 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
 import { Plus, ArrowLeft, GitBranch, Pencil, Trash2, X, Check, MoreVertical, FileSpreadsheet } from "lucide-react";
 import CreateEntityModal from "../components/CreateEntityModal";
+import CardPagination, { useCardPagination } from "../components/CardPagination";
 import BulkUploadModal from "../components/BulkUploadModal";
+import { useHeaderSearch } from "../context/HeaderSearch";
 import BOQ, { withCalculatedFields } from "./Boq";
 import { fmtINR } from "../data/mockData";
+// Phase reuses the shared card + toolbar classes (.model-grid, .model-card,
+// .model-toolbar-search), so it needs Model.css loaded explicitly rather than
+// relying on the Models page having already pulled it in.
+import "./Model.css";
 import "./Phase.css";
 
 // An empty base URL uses the development proxy. This keeps the Item Code
@@ -590,11 +596,25 @@ export default function Phase({ model, onBack, readOnly = false }) {
     });
   };
 
+  // Phases arrive in one unpaginated call, so filtering the full list here is
+  // complete - the search never misses a phase that is off-screen. The text
+  // itself lives in the top header, next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("phases", "Search phases...", !activePhase);
+
+  const visiblePhases = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return phases;
+    return phases.filter((p) => String(p.name || "").toLowerCase().includes(q));
+  }, [phases, query]);
+  const { pageItems: pagedPhases, pagerProps: phasePager } = useCardPagination(visiblePhases, query.trim());
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === phases.length) {
+    // Only the cards the user can actually see, so "Select All" never picks up
+    // phases hidden behind the search text.
+    if (visiblePhases.length > 0 && visiblePhases.every((p) => selectedIds.has(p.id))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(phases.map((p) => p.id)));
+      setSelectedIds(new Set(visiblePhases.map((p) => p.id)));
     }
   };
 
@@ -658,7 +678,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
     );
   }
 
-  const allSelected = phases.length > 0 && selectedIds.size === phases.length;
+  const allSelected = visiblePhases.length > 0 && visiblePhases.every((p) => selectedIds.has(p.id));
 
   return (
     <div className={`phase-page${readOnly ? " model-readonly" : ""}`}>
@@ -761,8 +781,14 @@ export default function Phase({ model, onBack, readOnly = false }) {
       {error && <p className="model-error">{error}</p>}
       {loading && <p className="page-loading">Loading phases...</p>}
 
+      {phases.length === 0 && !loading ? (
+        <p className="model-empty">No phases yet. Use "Create Phase" to add the first one.</p>
+      ) : visiblePhases.length === 0 ? (
+        <p className="model-empty">No phases match "{query.trim()}".</p>
+      ) : null}
+
       <div className="model-grid">
-        {phases.map((p) => (
+        {pagedPhases.map((p) => (
           <button
             key={p.id}
             type="button"
@@ -822,6 +848,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
           </button>
         ))}
       </div>
+      <CardPagination {...phasePager} />
 
       {showModal && (
       <CreateEntityModal

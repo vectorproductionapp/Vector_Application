@@ -17,17 +17,20 @@ import {
   FileText,
   GitBranch,
 } from "lucide-react";
-import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import { SearchableSelect } from "../components/SearchBar";
+import { useHeaderSearch } from "../context/HeaderSearch";
+import FilterModal, { countActiveFilters } from "../components/FilterModal";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
+import CardPagination, { useCardPagination } from "../components/CardPagination";
 import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
 import ImageStrip from "../components/ImageStrip";
 import "../components/ImageAttachment.css";
 import { formatDate } from "../utils/date";
 import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
+import DateRangeFilter from "../components/DateRangeFilter";
 import "./Model.css";
 import "./Invoices.css";
  
@@ -270,13 +273,25 @@ function getRowId(row) {
 }
  
 export default function Invoices() {
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
   const [rows, setRows] = useState([]);
+  // Every invoice matching the active search/filters/date range, not just the
+  // page on screen. Used only by the export so a filtered export is complete.
+  const [exportRows, setExportRows] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // ---------- Invoice date range filter ----------
+  // The pickers hold a draft; only the Apply button promotes it to the applied
+  // values the request is built from, so half-typed dates never refetch.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [dateRangeError, setDateRangeError] = useState("");
  
   // ---------- Invoice list loading/error state ----------
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -290,6 +305,17 @@ export default function Invoices() {
   // -> table. sessionStorage is per tab, so a second tab keeps its own place.
   const [selectedPhase, setSelectedPhase] = useState(() => readDrill(DRILL_KEY)?.phase ?? null);
   const [selectedInvoice, setSelectedInvoice] = useState(() => readDrill(DRILL_KEY)?.invoice ?? null);
+
+  // One search box in the header serves every level of the drill-down: the
+  // phase grid, the invoice grid inside a phase, and the line-item table inside
+  // an invoice. Declared here because the placeholder depends on the two
+  // selections above, and before every consumer further down the component.
+  const searchPlaceholder = selectedInvoice
+    ? "Search Invoices..."
+    : selectedPhase
+      ? "Search invoices in this phase..."
+      : "Search phases, invoices or PO numbers...";
+  const [query, setQuery] = useHeaderSearch("invoices", searchPlaceholder, true);
 
   useEffect(() => {
     writeDrill(
@@ -319,6 +345,7 @@ export default function Invoices() {
   // One set of files for the whole invoice number, shared by every item line.
   const [invoiceAttachments, setInvoiceAttachments] = useState([]);
   const lastItemRef = useRef(null);
+  const formRef = useRef(null);
   const initialFormValuesRef = useRef(emptyInvoiceForm);
   // One id per form session, carried by every item block of a single save. The
   // server uses it to tell "another line of the invoice I just created" apart
@@ -383,6 +410,17 @@ const initialAttachmentsRef = useRef([]);
   }, [fetchPhaseCards]);
 
   // ---------- Fetch Invoices from the backend (initial load + post-save refresh) ----------
+  // An inverted range would silently return nothing, so it is rejected outright.
+  useEffect(() => {
+    setDateRangeError(
+      fromDate && toDate && toDate < fromDate ? "End Date cannot be earlier than Start Date." : ""
+    );
+  }, [fromDate, toDate]);
+
+  const isDateRangeActive = Boolean(
+    appliedFromDate || appliedToDate
+  );
+
   const fetchInvoices = useCallback(async ({ silent = false, targetPage } = {}) => {
     // Line items only exist once a phase card and an invoice card were opened.
     if (!selectedPhase || !selectedInvoice) return;
@@ -390,7 +428,7 @@ const initialAttachmentsRef = useRef([]);
     setRowsError("");
     const pageToFetch = targetPage ?? page;
     try {
-      // Card scope first, then the toolbar's PageFilter.  The API accepts
+      // Card scope first, then the toolbar's filters.  The API accepts
       // repeated filterField/filterValue pairs and matches them ignoring case.
       const params = new URLSearchParams();
       params.set("page", String(pageToFetch));
@@ -401,19 +439,36 @@ const initialAttachmentsRef = useRef([]);
         ["phase", selectedPhase],
         ["invoice", selectedInvoice],
       ];
-      if (pageFilter.field && pageFilter.value !== "") {
-        pairs.push([pageFilter.field, String(pageFilter.value)]);
-      }
+      INVOICE_FILTER_FIELDS.forEach((field) => {
+        const selected = rowFilters[field.key];
+        if (String(selected ?? "") !== "") pairs.push([field.key, String(selected)]);
+      });
       pairs.forEach(([field, value]) => {
         params.append("filterField", field);
         params.append("filterValue", value);
       });
+
+      // Invoice Date range. `dateField` names the column because the endpoint
+      // supports a range over any of the invoice line's dates.
+      if (isDateRangeActive) {
+        params.set("dateField", "date");
+        if (appliedFromDate) {
+          params.append("filterField", "dateFrom");
+          params.append("filterValue", appliedFromDate);
+        }
+        if (appliedToDate) {
+          params.append("filterField", "dateTo");
+          params.append("filterValue", appliedToDate);
+        }
+      }
 
       const res = await api.get(`${API_BASE_URL}/invoices?${params.toString()}`);
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load Invoices");
       }
       setRows(res.data.invoices || []);
+      // Falls back to the page when an older backend omits the full set.
+      setExportRows(res.data.allRows || res.data.invoices || []);
       setFilterOptions(res.data.filterOptions || {});
       const pagination = res.data.pagination;
       if (pagination) {
@@ -426,10 +481,10 @@ const initialAttachmentsRef = useRef([]);
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page, pageSize, query, pageFilter, selectedPhase, selectedInvoice]);
+  }, [page, pageSize, query, rowFilters, selectedPhase, selectedInvoice, isDateRangeActive, appliedFromDate, appliedToDate]);
 
   const scopeKey = `${selectedPhase || ""}::${selectedInvoice || ""}`;
-  const filterKey = `${query.trim()}::${pageFilter.field}::${pageFilter.value}`;
+  const filterKey = `${query.trim()}::${JSON.stringify(rowFilters)}::${appliedFromDate}:${appliedToDate}`;
 
   // Scope / filter / page-size changes all refetch; a changed scope or filter
   // also jumps back to page 1 so the user never lands on an empty page.
@@ -448,7 +503,11 @@ const initialAttachmentsRef = useRef([]);
 
   const resetFilters = () => {
     setQuery("");
-    setPageFilter({ field: "", value: "" });
+    setRowFilters({});
+    setFromDate("");
+    setToDate("");
+    setAppliedFromDate("");
+    setAppliedToDate("");
     setPage(1);
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -550,38 +609,20 @@ const initialAttachmentsRef = useRef([]);
     return () => { cancelled = true; };
   }, [modalOpen, formValues.modelId, formValues.phaseId]);
  
-  // Search and PageFilter now run on the server (so paging and counts describe
-  // the same rows), but keep this local pass as a cheap double-check: it also
-  // makes the case-insensitive comparison identical to the API's.
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      const matchesSearch = !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPageFilter(row, pageFilter, INVOICE_FILTER_FIELDS);
-    });
-  }, [query, rows, pageFilter]);
+// Search and PageFilter run on the server over every invoice before the page is
+  // cut, so its response is authoritative and is shown verbatim.
+  const filteredRows = useMemo(() => rows, [rows]);
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
   const [tableSort, setTableSort] = useState(null);
 
   const exportTableRows = useMemo(
-    () => sortRows(filteredRows, columns, tableSort),
-    [filteredRows, tableSort]
+    () => sortRows(exportRows, columns, tableSort),
+    [exportRows, tableSort]
   );
- 
-  // The PageFilter dropdown draws its options from the whole collection, so a
-  // narrow page never makes the other values disappear.
-  // Must be a flat array: PageFilter iterates `rows.forEach`.
-  const filterOptionRows = useMemo(
-    () =>
-      INVOICE_FILTER_FIELDS.flatMap((field) =>
-        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
-      ),
-    [filterOptions]
-  );
- 
-const openAddModal = () => {
+
+  const openAddModal = () => {
     setIsEditMode(false);
     initialFormValuesRef.current = emptyInvoiceForm;
     initialItemDraftsRef.current = [];
@@ -789,9 +830,20 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
 
   const addItemDraft = () => {
     setItemDrafts((previous) => [...previous, nextInvoiceLineForm(formValues)]);
-    window.requestAnimationFrame(() => {
-      lastItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
+    // Use setTimeout to ensure DOM has updated after state change
+    setTimeout(() => {
+      // Prefer scrolling the form container directly for reliability
+      const form = formRef.current;
+      const item = lastItemRef.current;
+      if (form && item) {
+        const formRect = form.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const scrollTop = itemRect.top - formRect.top + form.scrollTop - 20; // 20px offset
+        form.scrollTo({ top: scrollTop, behavior: "smooth" });
+      } else if (item) {
+        item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }, 50);
   };
 
   const removeItemDraft = (index) => {
@@ -1152,6 +1204,36 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
     [phaseCards, selectedPhase]
   );
 
+  // The card grids come from /invoices/groups, which returns every phase and
+  // invoice unpaginated, so filtering client-side is complete - no search can
+  // miss a card that lives off-screen. Both card levels read the same `query`
+  // the table uses, because the header box is claimed once for the whole
+  // drill-down.
+  const visiblePhaseCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return phaseCards;
+    return phaseCards.filter((card) => {
+      if (String(card.phase || "").toLowerCase().includes(q)) return true;
+      return (card.invoices || []).some(
+        (inv) =>
+          String(inv.invoice || "").toLowerCase().includes(q) ||
+          String(inv.po || "").toLowerCase().includes(q)
+      );
+    });
+  }, [phaseCards, query]);
+  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, query.trim());
+
+  const visibleInvoiceCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !selectedPhaseCard) return selectedPhaseCard?.invoices || [];
+    return (selectedPhaseCard.invoices || []).filter(
+      (inv) =>
+        String(inv.invoice || "").toLowerCase().includes(q) ||
+        String(inv.po || "").toLowerCase().includes(q)
+    );
+  }, [selectedPhaseCard, query]);
+  const { pageItems: pagedInvoiceCards, pagerProps: invoiceCardPager } = useCardPagination(visibleInvoiceCards, `${selectedPhase}|${query.trim()}`);
+
   // Flag an already-taken number while the user is still typing, so the clash
   // surfaces before the rest of the form is filled in. Edit mode is exempt: it
   // is deliberately working on a number that already exists.
@@ -1288,9 +1370,14 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           <div className="invoices-empty-state">
             <span>No Invoices yet. Click "Add Invoice" to create the first record.</span>
           </div>
+        ) : visiblePhaseCards.length === 0 ? (
+          <div className="invoices-empty-state">
+            <span>No phases, invoices or PO numbers match "{query.trim()}".</span>
+          </div>
         ) : (
+          <>
           <div className="model-grid">
-            {phaseCards.map((card) => (
+            {pagedPhaseCards.map((card) => (
               <button
                 key={card.phase}
                 type="button"
@@ -1311,11 +1398,19 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
               </button>
             ))}
           </div>
+          <CardPagination {...phaseCardPager} />
+          </>
         )
       ) : !selectedInvoice ? (
         selectedPhaseCard && selectedPhaseCard.invoices.length > 0 ? (
-          <div className="model-grid">
-            {selectedPhaseCard.invoices.map((invoice) => (
+          visibleInvoiceCards.length === 0 ? (
+            <div className="invoices-empty-state">
+              <span>No invoices in {selectedPhase} match "{query.trim()}".</span>
+            </div>
+          ) : (
+            <>
+            <div className="model-grid">
+              {pagedInvoiceCards.map((invoice) => (
               <button
                 key={invoice.invoice}
                 type="button"
@@ -1329,13 +1424,17 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                   <span className="model-card-name">{invoice.invoice}</span>
                 </div>
                 {invoice.date && <span className="model-card-time">{formatDate(invoice.date)}</span>}
+                {invoice.supplier && <span className="invoices-card-supplier">{invoice.supplier}</span>}
                 <span className="invoices-card-meta">
                   {invoice.rowCount} line{invoice.rowCount === 1 ? "" : "s"}
                   {invoice.po ? ` · PO ${invoice.po}` : ""}
                 </span>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+            <CardPagination {...invoiceCardPager} />
+            </>
+          )
         ) : (
           <div className="invoices-empty-state">
             <span>No invoices found for phase {selectedPhase}.</span>
@@ -1346,8 +1445,26 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search Invoices..." />
-            <PageFilter rows={filterOptionRows} fields={INVOICE_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+            <FilterModal rows={rows} options={filterOptions} fields={INVOICE_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <DateRangeFilter
+              fromDate={fromDate}
+              toDate={toDate}
+              onChangeFrom={setFromDate}
+              onChangeTo={setToDate}
+              onApply={(nextFrom, nextTo) => {
+                setAppliedFromDate(nextFrom);
+                setAppliedToDate(nextTo);
+              }}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+                setAppliedFromDate("");
+                setAppliedToDate("");
+              }}
+              error={dateRangeError}
+              startLabel="From Invoice Date"
+              endLabel="To Invoice Date"
+            />
           </div>
           <div className="table-controls-right">
             <ImageStrip
@@ -1390,7 +1507,11 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           </div>
         ) : rows.length === 0 ? (
           <div className="invoices-empty-state">
-            <span>No Invoices yet. Click "Add Invoice" to create the first record.</span>
+            <span>
+              {isDateRangeActive || query.trim() || countActiveFilters(rowFilters) > 0
+                ? "No invoices match the current search, filters or invoice date range."
+                : 'No Invoices yet. Click "Add Invoice" to create the first record.'}
+            </span>
           </div>
         ) : (
           <DataTable
@@ -1452,6 +1573,7 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
             </div>
  
             <form
+              ref={formRef}
               className="invoices-form"
               onSubmit={(e) => {
                 e.preventDefault();

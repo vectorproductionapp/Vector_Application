@@ -81,11 +81,15 @@
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 0;  /* Removed margin to connect with table */
   flex-wrap: wrap;
 }
 
-.po-page .panel { padding: 8px; }
+.po-page .panel { 
+  padding: 8px; 
+  margin-top: 0;  /* Remove gap between toolbar and panel */
+  border-top: 1px solid var(--border);  /* Connect visually with toolbar */
+}
 .po-hint { font-size: 12px; color: var(--text-secondary); margin: 10px 2px 0; }
 
 .po-page .data-table-actions-col { min-width: 108px; }
@@ -421,16 +425,7 @@
 
 /* VIEW PO DETAILS POPUP */
 .po-details-section { width: 100%; }
-.po-details-section h3 {
-  margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--accent);
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
+/* Section headings are styled once, for every detail popup, in global.css. */
 
 .po-details-grid {
   display: grid;
@@ -988,12 +983,89 @@
   text-align: left;
   font-family: inherit;
   color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 14px 12px;
+  min-height: 112px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease;
 }
 
 .po-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
 .po-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
 .po-card .model-card-name { flex: 1 1 auto; }
 .po-card-meta { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+.po-card-supplier {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* PO Card Details Section - Matches totals layout: label left, value right */
+.po-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;  /* Reduced from 8px 0 to 4px 0 */
+  padding: 4px 0;  /* Reduced from 8px 0 4px to 4px 0 */
+  border-top: 1px dashed var(--border);
+  width: 100%;
+}
+
+.po-card-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.po-card-detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.po-card-detail-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Responsive: smaller gap on small screens */
+@media (max-width: 400px) {
+  .po-card-details {
+    gap: 4px;
+  }
+  .po-card-detail-row {
+    gap: 8px;
+  }
+  .po-card-detail-value {
+    max-width: 100%;
+  }
+}
 
 /* GST breakdown on the phase / PO cards: incl. GST total, then the
    without-GST figure and the GST portion on their own rows. */
@@ -1002,8 +1074,8 @@
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: 4px;  /* Reduced from 10px to 4px */
+  padding-top: 4px;  /* Reduced from 8px to 4px */
   border-top: 1px dashed var(--border);
   font-size: 11px;
 }
@@ -1124,6 +1196,9 @@
   text-align: center;
 }
 
+/* The card-level search moved to the app top header (`.app-topbar-search` in
+   App.css), so no toolbar-level rules are needed here. */
+
 /* The PO's own attachments: one section for the whole PO, not one per item. */
 .po-level-attachments {
   margin: 0 0 16px;
@@ -1184,3 +1259,4 @@
   .po-heading { font-size: 17px; }
   .po-form-totals { justify-content: flex-start; }
 }
+

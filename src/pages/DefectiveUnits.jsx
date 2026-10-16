@@ -5,10 +5,14 @@ import React, {
   useRef,
   useState,
 } from "react";
+import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import ActiveFilterChips from "../components/ActiveFilterChips";
+import BackToDashboard from "../components/BackToDashboard";
 import { createPortal } from "react-dom";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
+import { useHeaderSearch } from "../context/HeaderSearch";
 import {
   Plus,
   X,
@@ -22,15 +26,17 @@ import {
   Pencil,
   ArrowLeft,
   ExternalLink,
+  FileText,
+  Undo2,
 } from "lucide-react";
-import SearchBar from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import FilterModal from "../components/FilterModal";
 import StatusDropdown from "../components/StatusDropdown";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
 import { formatDate } from "../utils/date";
 import DatePicker from "../components/DatePicker";
+import DateRangeFilter from "../components/DateRangeFilter";
 import "./DefectiveUnits.css";
 
 const PAGE_SIZE = 10;
@@ -43,7 +49,7 @@ const SWAL_THEME = {
   hideClass: { popup: "swal-pop-out" },
 };
 
-const swalConfirm = ({ title, text, confirmText = "Yes, delete it" }) =>
+const swalConfirm = ({ title, text, confirmText = "Yes, delete it", danger = false }) =>
   Swal.fire({
     title,
     text,
@@ -51,7 +57,9 @@ const swalConfirm = ({ title, text, confirmText = "Yes, delete it" }) =>
     showCancelButton: true,
     confirmButtonText: confirmText,
     cancelButtonText: "Cancel",
-    confirmButtonColor: "var(--accent)",
+    // Irreversible actions get a red confirm; Cancel stays focused so a stray
+    // Enter or Esc cannot destroy a file.
+    confirmButtonColor: danger ? "var(--color-danger-text)" : "var(--accent)",
     cancelButtonColor: "var(--bg-surface-alt)",
     reverseButtons: true,
     focusCancel: true,
@@ -157,6 +165,24 @@ function formatDetailValue(value) {
   return str ? str : "Not Provided";
 }
 
+// The stored value is either a full download URL or a bare Storage object
+// path, so the label is derived from the URL's path with any query string,
+// `%2F` escape and UUID dropped - otherwise every file reads as "9d9c1d42e...".
+function attachmentLabel(url, fallback = "Attachment") {
+  const path = String(url || "").split(/[?#]/)[0];
+  const tail = path.split("/").filter(Boolean).pop() || "";
+  let name = tail;
+  try {
+    name = decodeURIComponent(tail);
+  } catch {
+    /* keep the raw segment when it is not valid percent-encoding */
+  }
+  // Storage blobs are named "<uuid>.<ext>", so drop the uuid stem and keep the
+  // extension; otherwise fall back to the whole segment.
+  const withoutStem = name.replace(/^[0-9a-f]{16,}\./i, "");
+  return withoutStem || name || fallback;
+}
+
 function normalizeImages(raw) {
   if (!raw) return [];
   const list = Array.isArray(raw) ? raw : [raw];
@@ -164,19 +190,89 @@ function normalizeImages(raw) {
     .map((item) => {
       if (!item) return null;
       if (typeof item === "string") {
-        return { url: item, name: item.split("/").pop() || "Attachment" };
+        return { url: item, name: attachmentLabel(item) };
       }
       if (typeof File !== "undefined" && item instanceof File) {
-        return { url: URL.createObjectURL(item), name: item.name };
+        return { url: URL.createObjectURL(item), name: item.name, objectUrl: true };
       }
       if (typeof item === "object") {
         const url = item.url || item.path || item.src || "";
         if (!url) return null;
-        return { url, name: item.name || item.filename || "Attachment" };
+        return {
+          url,
+          name: item.name || item.filename || attachmentLabel(url),
+          inlineData: typeof item.data === "string" ? item.data : "",
+        };
       }
       return null;
     })
     .filter(Boolean);
+}
+
+// One attachment tile. Images render as a thumbnail; if the browser cannot
+// load them (a legacy Storage URL without a download token returns 403) the
+// tile degrades to a labelled file card instead of a broken-image glyph.
+function AttachmentThumb({ file, onOpen }) {
+  const [failed, setFailed] = useState(false);
+  const looksLikeImage = /\.(png|jpe?g|gif|webp|bmp|avif|svg)(\?|$)/i.test(file.url || "") || (file.inlineData || "").startsWith("data:image/");
+  const showImage = looksLikeImage && !failed;
+
+  return (
+    <button
+      type="button"
+      className={`details-modal-image-thumb${showImage ? "" : " is-file"}`}
+      onClick={onOpen}
+      aria-label={`Preview ${file.name}`}
+      title={file.name}
+    >
+      {showImage ? (
+        <img src={file.url || file.inlineData} alt={file.name} onError={() => setFailed(true)} />
+      ) : (
+        <span className="details-modal-image-fallback">
+          <FileText size={18} aria-hidden="true" />
+          <span className="details-modal-image-fallback-name">{file.name}</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+// Full-screen preview body. Renders the image when the browser can load it and
+// otherwise explains why it cannot and offers the raw file, so a Storage object
+// that needs a download token is still reachable.
+function LightboxBody({ file }) {
+  const [failed, setFailed] = useState(false);
+  const looksLikeImage = /\.(png|jpe?g|gif|webp|bmp|avif|svg)(\?|$)/i.test(file.url || "") || (file.inlineData || "").startsWith("data:image/");
+
+  if (!looksLikeImage || failed) {
+    return (
+      <div className="details-modal-lightbox-fallback">
+        <FileText size={44} aria-hidden="true" />
+        <p className="details-modal-lightbox-fallback-name">{file.name}</p>
+        <p className="details-modal-lightbox-fallback-hint">
+          This file cannot be shown inline. Use &ldquo;Open in new tab&rdquo; to view or
+          download it.
+        </p>
+      </div>
+    );
+  }
+
+  return <img src={file.url || file.inlineData} alt={file.name} onError={() => setFailed(true)} />;
+}
+
+// `URL.createObjectURL` must not run on every render - each call mints a new
+// blob URL that the browser then has to reclaim. Caching per File keeps the
+// same URL for the lifetime of that selection.
+const stagedObjectUrls = new WeakMap();
+
+function stagedObjectUrl(file) {
+  if (!file || typeof URL?.createObjectURL !== "function") return "";
+  let url = stagedObjectUrls.get(file);
+  if (!url) {
+    url = URL.createObjectURL(file);
+    stagedObjectUrls.set(file, url);
+  }
+  return url;
 }
 
 // ---- Helpers for the Date Range filter ----
@@ -212,9 +308,20 @@ function getRowId(row) {
 }
 
 export default function DefectiveUnits() {
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One search box, rendered in the global header next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("defective-units", "Search Defective Units...");
+
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
+
+  // A dashboard KPI card can deep-link here with `?field=<key>&value=<v>` to
+  // open the list already narrowed.
+  const arrivedFromDashboard = useDashboardDeepLink(
+    DEFECT_FILTER_FIELDS,
+    (patch) => setRowFilters((prev) => ({ ...prev, ...patch }))
+  );
   const [rows, setRows] = useState([]);
+  const [filterOptions, setFilterOptions] = useState({});
 
   // ---------- Defect list loading/error state ----------
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -231,6 +338,11 @@ export default function DefectiveUnits() {
   const [closing, setClosing] = useState(false);
   const [formValues, setFormValues] = useState(emptyDefectForm);
   const initialFormValuesRef = useRef(emptyDefectForm);
+  // Attachments already stored on the record, and the subset the user has
+  // marked for removal. The API is told which URLs survive the save, so a
+  // removal also drops the Storage object rather than just the list entry.
+  const [existingAttachments, setExistingAttachments] = useState([]);
+  const [removedAttachments, setRemovedAttachments] = useState([]);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -243,9 +355,13 @@ export default function DefectiveUnits() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // ---------- Date range filter state ----------
-  const [fromDate] = useState("");
-  const [toDate] = useState("");
+  // ---------- Date range filter ----------
+  // The pickers hold a draft; Apply promotes it to the applied values the
+  // request is built from, so a half-typed date never refetches the table.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
   const [dateRangeError, setDateRangeError] = useState("");
 
   // ---------- View Details popup state ----------
@@ -300,8 +416,20 @@ export default function DefectiveUnits() {
 
   const detailImages = useMemo(() => {
     if (!viewRow) return [];
-    return normalizeImages(viewRow.attachment ?? viewRow.attachments);
+    // `attachments` is what the API returns; `attachment` is the form's staging
+    // field and can be an empty array, which `??` would not fall through on.
+    return normalizeImages(viewRow.attachments ?? viewRow.attachment);
   }, [viewRow]);
+
+  // ---------- Date range validation ----------
+  // Declared before the fetch below, which depends on `isDateRangeActive`.
+  useEffect(() => {
+    setDateRangeError(
+      fromDate && toDate && toDate < fromDate ? "End Date cannot be earlier than Start Date." : ""
+    );
+  }, [fromDate, toDate]);
+
+  const isDateRangeActive = Boolean(appliedFromDate || appliedToDate);
 
   // ---------- Fetch defects from the backend (paginated, same pattern as
   // Sale Register's fetchRows) ----------
@@ -311,13 +439,38 @@ export default function DefectiveUnits() {
     const pageToFetch = targetPage ?? page;
 
     try {
-      const res = await api.get("/defects", {
-        params: { page: pageToFetch, limit: pageSize },
+      // Search, PageFilter and the date range all go to the server so they
+      // cover every defect, not just the page the API last returned.
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+      // Date Reported range.
+      if (isDateRangeActive) {
+        params.set("dateField", "date");
+        if (appliedFromDate) {
+          params.append("filterField", "dateFrom");
+          params.append("filterValue", appliedFromDate);
+        }
+        if (appliedToDate) {
+          params.append("filterField", "dateTo");
+          params.append("filterValue", appliedToDate);
+        }
+      }
+      DEFECT_FILTER_FIELDS.forEach((field) => {
+        const selected = rowFilters[field.key];
+        if (String(selected ?? "") !== "") {
+          params.append("filterField", field.key);
+          params.append("filterValue", String(selected));
+        }
       });
+      const res = await api.get(`/defects?${params.toString()}`);
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load Defective Units");
       }
       setRows(res.data.defects || []);
+      setFilterOptions(res.data.filterOptions || {});
       const pagination = res.data.pagination;
       if (pagination) {
         setTotalPages(pagination.totalPages || 1);
@@ -332,7 +485,19 @@ export default function DefectiveUnits() {
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query, rowFilters, isDateRangeActive, appliedFromDate, appliedToDate]);
+
+  // Changing the search text, a PageFilter selection or the date range has to
+  // restart at page 1, otherwise narrowing the result set leaves the user
+  // parked on a page that no longer exists.
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}|${appliedFromDate}:${appliedToDate}`;
+  const prevFilterKeyRef = useRef(filterKey);
+
+  useEffect(() => {
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+    if (filtersChanged && page !== 1) setPage(1);
+  }, [filterKey, page]);
 
   useEffect(() => {
     fetchDefects({ targetPage: page });
@@ -349,36 +514,11 @@ export default function DefectiveUnits() {
     setPage(1);
   };
 
-  // ---------- Date range validation ----------
-  useEffect(() => {
-    if (fromDate && toDate && toDate < fromDate) {
-      setDateRangeError("End Date cannot be earlier than From Date.");
-    } else {
-      setDateRangeError("");
-    }
-  }, [fromDate, toDate]);
-
-  const isDateRangeActive = Boolean(fromDate && toDate && !dateRangeError);
-
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    return rows.filter((row) => {
-      const matchesSearch =
-        !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-
-      if (!matchesSearch) return false;
-      if (!matchesPageFilter(row, pageFilter, DEFECT_FILTER_FIELDS)) return false;
-
-      if (isDateRangeActive) {
-        const rowDate = toComparableDate(row.date);
-        if (!rowDate) return false;
-        if (rowDate < fromDate || rowDate > toDate) return false;
-      }
-
-      return true;
-    });
-  }, [query, rows, pageFilter, isDateRangeActive, fromDate, toDate]);
+  // The API already applied the search, PageFilter and date range to every
+  // defect before it cut the page, so re-filtering here would only hide rows
+  // the server matched (e.g. a hit that lives in Observations, which is not one
+  // of the displayed columns).  The server response is authoritative.
+  const filteredRows = useMemo(() => rows, [rows]);
 
   const showDateEmptyMessage =
     !rowsLoading && !rowsError && isDateRangeActive && filteredRows.length === 0;
@@ -387,6 +527,8 @@ export default function DefectiveUnits() {
     setIsEditMode(false);
     initialFormValuesRef.current = emptyDefectForm;
     setFormValues(emptyDefectForm);
+    setExistingAttachments([]);
+    setRemovedAttachments([]);
     setFormError("");
     setClosing(false);
     setModalOpen(true);
@@ -398,14 +540,35 @@ export default function DefectiveUnits() {
     const initialValues = { ...emptyDefectForm, ...row, attachment: [] };
     initialFormValuesRef.current = initialValues;
     setFormValues(initialValues);
+    // Seed the edit form with what is already stored so each file can be kept
+    // or removed; nothing is dropped until the user removes it and saves.
+    setExistingAttachments(normalizeImages(row.attachments ?? row.attachment));
+    setRemovedAttachments([]);
     setFormError("");
     setClosing(false);
     setModalOpen(true);
   };
 
+  const toggleExistingAttachment = (url) => {
+    setRemovedAttachments((prev) => (
+      prev.includes(url) ? prev.filter((item) => item !== url) : [...prev, url]
+    ));
+  };
+
+  const removeStagedFile = (index) => {
+    setFormValues((prev) => ({
+      ...prev,
+      attachment: prev.attachment.filter((_, i) => i !== index),
+    }));
+  };
+
   const requestClose = async (skipConfirmation = false) => {
     if (closing) return;
-    if (skipConfirmation !== true && JSON.stringify(formValues) !== JSON.stringify(initialFormValuesRef.current)) {
+    // A pending attachment removal counts as an unsaved change on its own.
+    const dirty =
+      JSON.stringify(formValues) !== JSON.stringify(initialFormValuesRef.current)
+      || removedAttachments.length > 0;
+    if (skipConfirmation !== true && dirty) {
       const result = await swalConfirm({
         title: "Discard unsaved changes?",
         text: "Your defective-unit changes will be lost unless you save them.",
@@ -420,6 +583,8 @@ export default function DefectiveUnits() {
       setFormValues(emptyDefectForm);
       setFormError("");
       setIsEditMode(false);
+      setExistingAttachments([]);
+      setRemovedAttachments([]);
     }, 220);
   };
 
@@ -431,6 +596,37 @@ export default function DefectiveUnits() {
   const handleFileChange = (event) => {
     const files = Array.from(event.target.files);
     setFormValues((prev) => ({ ...prev, attachment: files }));
+  };
+
+  // ---------- Delete a single stored attachment from the View popup ----------
+  const [deletingAttachment, setDeletingAttachment] = useState(false);
+
+  const deleteAttachment = async (file) => {
+    const id = getRowId(viewRow);
+    if (!id || !file?.url) return;
+
+    const result = await swalConfirm({
+      title: "Delete this attachment?",
+      text: `"${file.name}" will be permanently removed from this Defective Unit. This cannot be undone.`,
+      confirmText: "Yes, delete it",
+      danger: true,
+    });
+    if (!result.isConfirmed) return;
+
+    setDeletingAttachment(true);
+    try {
+      const res = await api.delete(`/defects/${id}/attachments`, { data: { urls: [file.url] } });
+      if (!res.data?.success) throw new Error(res.data?.message || "Failed to delete attachment");
+      const kept = normalizeImages(res.data.attachments);
+      setViewRow((prev) => (prev ? { ...prev, attachments: kept } : prev));
+      setLightboxImage(null);
+      await fetchDefects({ targetPage: page, silent: true });
+      await swalSuccess("Attachment deleted", `"${file.name}" has been removed.`);
+    } catch (err) {
+      await swalError("Delete failed", extractErrorMessage(err, "Failed to delete attachment."));
+    } finally {
+      setDeletingAttachment(false);
+    }
   };
 
   // Edit-from-view hands off to the existing, fully-featured Add/Edit
@@ -472,12 +668,35 @@ export default function DefectiveUnits() {
           body.append(key, value);
         }
       });
+      // The API keeps every listed URL and removes the rest, so an attachment
+      // dropped in this form is deleted from Storage as well as from the row.
+      if (isEditMode) {
+        const kept = existingAttachments
+          .map((file) => file.url)
+          .filter((url) => !removedAttachments.includes(url));
+        body.append("keepAttachments", JSON.stringify(kept));
+      }
 
       let res;
       if (isEditMode) {
         res = await api.put(`/defects/${formValues.id}`, body);
       } else {
         res = await api.post("/defects", body);
+      }
+
+      // Storage can refuse an upload for reasons outside the app (expired or
+      // disabled cloud billing, bad credentials). The record itself still saves
+      // in that case, so report it as a partial success rather than a failure
+      // that suggests nothing was kept.
+      if (res.data?.partial) {
+        setSaving(false);
+        requestClose(true);
+        await swalError(
+          "Saved, but upload failed",
+          `${res.data.message}\n\nThe record details were saved; only the new file was not stored.`
+        );
+        await fetchDefects({ targetPage: isEditMode ? page : 1, silent: true });
+        return;
       }
 
       if (!res.data.success) {
@@ -624,6 +843,7 @@ export default function DefectiveUnits() {
 
   return (
     <div className="defects-page">
+      <BackToDashboard visible={arrivedFromDashboard} />
       <div className="defects-toolbar">
         <div className="defects-toolbar-actions">
           {selectMode ? (
@@ -704,9 +924,28 @@ export default function DefectiveUnits() {
 
       <div className="panel">
         <div className="table-controls-row">
-          <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search Defective Units..." />
-            <PageFilter rows={rows} fields={DEFECT_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+<div className="table-controls-primary">
+            <FilterModal rows={rows} options={filterOptions} fields={DEFECT_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <ActiveFilterChips fields={DEFECT_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <DateRangeFilter
+              fromDate={fromDate}
+              toDate={toDate}
+              onChangeFrom={setFromDate}
+              onChangeTo={setToDate}
+              onApply={(nextFrom, nextTo) => {
+                setAppliedFromDate(nextFrom);
+                setAppliedToDate(nextTo);
+              }}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+                setAppliedFromDate("");
+                setAppliedToDate("");
+              }}
+              error={dateRangeError}
+              startLabel="From Date Reported"
+              endLabel="To Date Reported"
+            />
           
           </div>
           {!rowsLoading && !rowsError && (
@@ -738,13 +977,13 @@ export default function DefectiveUnits() {
               </button>
             </div>
           </div>
-        ) : showDateEmptyMessage ? (
-          <div className="defects-date-empty">
-            No records found for the selected date range.
-          </div>
         ) : rows.length === 0 ? (
           <div className="defects-empty-state">
-            <span>No Defective Units yet. Click "Add Unit" to create the first record.</span>
+            <span>
+              {isDateRangeActive || query.trim() || Object.values(rowFilters).some(Boolean)
+                ? "No Defective Units match the current search, filters or Date Reported range."
+                : 'No Defective Units yet. Click "Add Unit" to create the first record.'}
+            </span>
           </div>
         ) : (
           <DataTable
@@ -960,14 +1199,58 @@ export default function DefectiveUnits() {
                     className="attachment-hidden-input"
                   />
 
+                  {existingAttachments.length > 0 && (
+                    <div className="attachment-existing">
+                      <p className="attachment-existing-title">
+                        Already attached ({existingAttachments.length})
+                      </p>
+                      <ul className="attachment-existing-list">
+                        {existingAttachments.map((file) => {
+                          const marked = removedAttachments.includes(file.url);
+                          return (
+                            <li
+                              key={file.url}
+                              className={`attachment-existing-item${marked ? " is-removed" : ""}`}
+                            >
+                              <FileText size={15} aria-hidden="true" />
+                              <span className="attachment-existing-name" title={file.name}>
+                                {file.name}
+                              </span>
+                              <button
+                                type="button"
+                                className="attachment-remove-btn"
+                                onClick={() => toggleExistingAttachment(file.url)}
+                                aria-label={marked ? `Keep ${file.name}` : `Remove ${file.name}`}
+                                title={marked ? "Keep this file" : "Remove this file"}
+                              >
+                                {marked ? <Undo2 size={14} /> : <Trash2 size={14} />}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {removedAttachments.length > 0 && (
+                        <p className="attachment-existing-note">
+                          {removedAttachments.length} file(s) will be deleted when you save.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {formValues.attachment.length > 0 && (
                     <div className="image-preview">
                       {formValues.attachment.map((file, index) => (
-                        <img
-                          key={index}
-                          src={URL.createObjectURL(file)}
-                          alt={`Preview ${index + 1}`}
-                        />
+                        <span className="image-preview-item" key={`${file.name}-${index}`}>
+                          <img src={stagedObjectUrl(file)} alt={`Preview ${index + 1}`} />
+                          <button
+                            type="button"
+                            className="image-preview-remove"
+                            onClick={() => removeStagedFile(index)}
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </span>
                       ))}
                     </div>
                   )}
@@ -1061,15 +1344,19 @@ export default function DefectiveUnits() {
                 {detailImages.length ? (
                   <div className="details-modal-images">
                     {detailImages.map((img, idx) => (
-                      <button
-                        type="button"
-                        key={idx}
-                        className="details-modal-image-thumb"
-                        onClick={() => setLightboxImage(img)}
-                        aria-label={`Preview ${img.name}`}
-                      >
-                        <img src={img.url} alt={img.name} />
-                      </button>
+                      <span className="details-modal-image-wrap" key={img.url || idx}>
+                        <AttachmentThumb file={img} onOpen={() => setLightboxImage(img)} />
+                        <button
+                          type="button"
+                          className="details-modal-image-delete"
+                          onClick={() => deleteAttachment(img)}
+                          disabled={deletingAttachment}
+                          aria-label={`Delete ${img.name}`}
+                          title="Delete this attachment"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </span>
                     ))}
                   </div>
                 ) : (
@@ -1094,7 +1381,8 @@ export default function DefectiveUnits() {
               className="details-modal-lightbox"
               role="dialog"
               aria-modal="true"
-              aria-label={`Image preview: ${lightboxImage.name}`}
+              aria-label={`Preview: ${lightboxImage.name}`}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="details-modal-lightbox-header">
                 <button
@@ -1119,13 +1407,13 @@ export default function DefectiveUnits() {
                     type="button"
                     className="details-modal-lightbox-close"
                     onClick={requestCloseView}
-                    aria-label="Close image preview"
+                    aria-label="Close file preview"
                   >
                     <X size={21} />
                   </button>
                 </div>
               </div>
-              <img src={lightboxImage.url} alt={lightboxImage.name} />
+              <LightboxBody file={lightboxImage} />
             </div>
           )}
         </div>,

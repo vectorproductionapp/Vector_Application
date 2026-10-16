@@ -325,7 +325,7 @@
 //   { key: "reqQty", label: "Req. Qty / Unit" },
 //   { key: "minStock", label: "Min Stock (Buffer)" },
 //   { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
-//   { key: "vendor", label: "Vendor" },
+//   { key: "vendor", label: "Supplier Name" },
 //   { key: "rate", label: "Unit Rate (INR)", format: fmtINR },
 //   { key: "gstRate", label: "GST %", format: (value) => (value === null || value === undefined || String(value).trim() === "" ? "18%" : `${value}%`) },
 //   // Money trio: Basic = Req. Qty x Unit Rate, GST is that base times the line's
@@ -1569,7 +1569,7 @@ import { createPortal } from "react-dom";
 import Swal from "sweetalert2";
 import { Plus, Pencil, Trash2, ArrowLeft, ClipboardList, X, Save, Loader2, MoreVertical, Check, FileSpreadsheet } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import FilterModal, { matchesFilters } from "../components/FilterModal";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
 import ExportPdfButton from "../components/ExportPdfButton";
@@ -1890,7 +1890,7 @@ const BOQ_COLUMNS = [
   { key: "reqQty", label: "Req. Qty / Unit" },
   { key: "minStock", label: "Min Stock (Buffer)" },
   { key: "minStockQty", label: "Min Stock Qty (Buffer)" },
-  { key: "vendor", label: "Vendor" },
+  { key: "vendor", label: "Supplier Name" },
   { key: "rate", label: "Unit Rate (INR)", format: fmtINR },
   { key: "gstRate", label: "GST %", format: (value) => (value === null || value === undefined || String(value).trim() === "" ? "18%" : `${value}%`) },
   // Money trio: Basic = Req. Qty x Unit Rate, GST is that base times the line's
@@ -1919,6 +1919,15 @@ function boqGstRate(row) {
   const parsed =
     raw === null || raw === undefined || String(raw).trim() === "" ? BOQ_DEFAULT_GST_RATE : Number(raw);
   return Number.isFinite(parsed) ? parsed : BOQ_DEFAULT_GST_RATE;
+}
+
+// A blank row (just added with "Add item") always matches, so it never
+// disappears behind an active search before the user can fill it in.
+function boqRowMatchesSearch(row, search) {
+  const term = String(search || "").trim().toLowerCase();
+  if (!term || (!row.code && !row.desc)) return true;
+  return [row.code, row.desc, row.make, row.model, row.phase]
+    .some((value) => String(value ?? "").toLowerCase().includes(term));
 }
 
 // Unit rate, GST and the GST-inclusive cost, split into per-unit and whole-line
@@ -1984,10 +1993,13 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRowIndex, setSavingRowIndex] = useState(null);
+  // Narrows the item cards on screen only; every row is still saved.
+  const [itemSearch, setItemSearch] = useState("");
   const [error, setError] = useState("");
   const [itemCodes, setItemCodes] = useState([]);
   const [itemCodesLoading, setItemCodesLoading] = useState(true);
   const [suppliers, setSuppliers] = useState([]);
+  const formRef = useRef(null);
 
   useEffect(() => {
     setDraftRows(initialDraftRows);
@@ -2172,18 +2184,34 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
     // must be chosen independently so an existing/new code is never applied
     // accidentally to every row.
     setDraftRows((prev) => [...prev, emptyRow(phaseName)]);
+    // Scroll to the newly added row
+    setTimeout(() => {
+      const form = formRef.current;
+      if (form) {
+        form.scrollTo({ top: form.scrollHeight, behavior: "smooth" });
+      }
+    }, 50);
   };
 
   const handleItemCodeSelect = async (rowIndex, value) => {
     setError("");
     if (value !== CREATE_NEW_ITEM_CODE) {
       const selected = itemCodes.find((item) => item.code === value);
-      if (selected) {
-        setDraftRows((prev) => prev.map((row, index) => index === rowIndex
-          ? withCalculatedFields({ ...row, code: selected.code, itemCodeId: selected.id, desc: selected.desc || row.desc })
-          : row
-        ));
-      }
+      setDraftRows((prev) => prev.map((row, index) => {
+        if (index !== rowIndex) return row;
+        if (selected) {
+          return withCalculatedFields({
+            ...row,
+            code: selected.code,
+            itemCodeId: selected.id,
+            desc: selected.desc || row.desc,
+          });
+        }
+        // Typed rather than picked: a brand new code, or one that was deleted
+        // and pruned from the catalogue. It has to start blank - carrying a
+        // description over is exactly the "old values are still here" bug.
+        return withCalculatedFields({ ...row, code: value, itemCodeId: "", desc: "" });
+      }));
       return;
     }
 
@@ -2207,9 +2235,23 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
   const itemCodeOptions = itemCodes.map((item) => ({ value: item.code, label: item.code }));
   const supplierOptions = suppliers.map((supplier) => ({ value: supplier, label: supplier }));
 
-  const removeRow = (rowIndex) => {
-    setDraftRows((prev) => (prev.length === 1 ? prev : prev.filter((_, index) => index !== rowIndex)));
-  };
+const removeRow = async (rowIndex) => {
+      const row = draftRows[rowIndex];
+      const code = row?.code;
+      // Removing a row and saving also purges its item code everywhere, so this
+      // needs confirming rather than silently dropping the row on click.
+      const result = await swalConfirm({
+        title: "Remove this item?",
+        text: code
+          ? `${code} will be removed from this BOQ. Saving then deletes it from the Item Code `
+            + "catalogue, from every other phase, and from any invoice line carrying it, so it "
+            + "stops appearing in the Stock Register. This cannot be undone."
+          : "This item will be removed from this BOQ. This cannot be undone.",
+        confirmText: "Remove item",
+      });
+      if (!result.isConfirmed) return;
+      setDraftRows((prev) => (prev.length === 1 ? prev : prev.filter((_, index) => index !== rowIndex)));
+    };
 
   const handleSubmit = async () => {
     setError("");
@@ -2297,8 +2339,11 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
       ? savedRows.map((savedRow, index) => index === rowIndex ? row : savedRow)
       : [...savedRows, row];
 
-    setSavingRowIndex(rowIndex);
-    const ok = await onSave(nextSavedRows, { keepEditorOpen: true });
+setSavingRowIndex(rowIndex);
+      // The code can be typed rather than picked, which is how a number deleted
+      // earlier gets used again. Allow the save to (re)register it, otherwise
+      // the endpoint rejects the code as unknown.
+      const ok = await onSave(nextSavedRows, { keepEditorOpen: true, createMissingItemCodes: true });
     setSavingRowIndex(null);
     if (ok) setSavedRows(nextSavedRows);
     else setError(`Failed to save item ${rowIndex + 1}.`);
@@ -2322,6 +2367,11 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
             <p className="boq-form-subtitle">{phaseName}</p>
           </div>
           <div className="modal-header-actions">
+            {draftRows.length > 1 && (
+              <div className="boq-item-search">
+                <SearchBar value={itemSearch} onChange={setItemSearch} placeholder="Search items..." />
+              </div>
+            )}
             <button
               type="button"
               className="boq-add-item-btn"
@@ -2346,6 +2396,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
         </div>
 
         <form
+          ref={formRef}
           className="boq-form-scroll"
           onSubmit={(e) => {
             e.preventDefault();
@@ -2354,7 +2405,14 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
         >
           {error && <div className="boq-form-error">{error}</div>}
 
+          {itemSearch.trim() && !draftRows.some((row) => boqRowMatchesSearch(row, itemSearch)) && (
+            <div className="boq-item-search-empty">No items match "{itemSearch.trim()}".</div>
+          )}
+
           {draftRows.map((row, rowIndex) => {
+            // Skip rather than filter the array, so rowIndex stays the row's
+            // real position for updateField/save/remove.
+            if (!boqRowMatchesSearch(row, itemSearch)) return null;
             const totals = boqGstAmounts(row);
             return (
             <div className="boq-item-card" key={rowIndex}>
@@ -2401,6 +2459,7 @@ function BoqEditorModal({ phaseName, phaseItemCode = "", phaseItemCodeId = "", r
                     placeholder="Select Item Code"
                     loading={itemCodesLoading}
                     emptyMessage="No existing Item Codes"
+                    allowCustomValue
                     actionOption={{
                       value: CREATE_NEW_ITEM_CODE,
                       label: "+ Create New Item Code",
@@ -2597,7 +2656,8 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
   const [editorOpen, setEditorOpen] = useState(false);
   // Bulk upload lives on this page (like PO Details) and inside the editor.
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -2615,6 +2675,9 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   const [selectMode, setSelectMode] = useState(false);
   const [selectedCodes, setSelectedCodes] = useState(new Set());
   const [deletingRows, setDeletingRows] = useState(false);
+  // Item codes no BOQ row defines any more. Decides whether the cleanup action
+  // is offered at all, so it stays hidden while there is nothing to clean.
+  const [orphanCodes, setOrphanCodes] = useState([]);
 
   const resolvedModelId = modelId || model?.id;
   const resolvedPhaseId = phaseId || phase?.id;
@@ -2635,9 +2698,23 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     const pageToFetch = targetPage ?? page;
 
     try {
+      // Search and PageFilter go to the server so they cover every BOQ row,
+      // not just the page the API last returned.  The filter fields repeat as
+      // filterField/filterValue pairs, which is how the endpoint reads them.
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(pageSize));
+      const search = query.trim();
+      if (search) params.set("q", search);
+      BOQ_FILTER_FIELDS.forEach((field) => {
+        const selected = rowFilters[field.key];
+        if (String(selected ?? "") !== "") {
+          params.append("filterField", field.key);
+          params.append("filterValue", String(selected));
+        }
+      });
       const response = await api.get(
-        `${API_BASE_URL}/models/${resolvedModelId}/phases/${resolvedPhaseId}/boq`,
-        { params: { page: pageToFetch, limit: pageSize } }
+        `${API_BASE_URL}/models/${resolvedModelId}/phases/${resolvedPhaseId}/boq?${params.toString()}`
       );
       if (response.data.success) {
         const nextBoq = response.data.boq || null;
@@ -2659,21 +2736,33 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, resolvedModelId, resolvedPhaseId]);
+  }, [page, pageSize, query, rowFilters, resolvedModelId, resolvedPhaseId]);
+
+  // Changing the search text or a PageFilter selection has to restart at page 1,
+  // otherwise narrowing the result set leaves the user parked on a page that no
+  // longer exists (and a hit sitting on page 2 stays hidden).
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}`;
+  const prevFilterKeyRef = useRef(filterKey);
+
+  useEffect(() => {
+    const filtersChanged = prevFilterKeyRef.current !== filterKey;
+    prevFilterKeyRef.current = filterKey;
+    if (filtersChanged && page !== 1) setPage(1);
+  }, [filterKey, page]);
 
   useEffect(() => {
     const resourceKey = `${resolvedModelId || ""}:${resolvedPhaseId || ""}`;
     const resourceChanged = !lastLoadKeyRef.current
       || !lastLoadKeyRef.current.startsWith(`${resourceKey}:`);
     const targetPage = resourceChanged ? 1 : page;
-    const loadKey = `${resourceKey}:${targetPage}:${pageSize}`;
+    const loadKey = `${resourceKey}:${targetPage}:${pageSize}:${filterKey}`;
 
     if (resourceChanged && page !== 1) setPage(1);
     if (lastLoadKeyRef.current === loadKey) return;
 
     lastLoadKeyRef.current = loadKey;
     loadBoq({ targetPage });
-  }, [loadBoq, page, pageSize, resolvedModelId, resolvedPhaseId]);
+  }, [loadBoq, page, pageSize, filterKey, resolvedModelId, resolvedPhaseId]);
 
   // A BOQ write on this phase arrives as a WebSocket notice and reloads the
   // items quietly.  Skipped while the row editor or the bulk-upload modal is
@@ -2693,20 +2782,20 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Still needed for the PDF/Excel export, which must cover every BOQ row
+  // rather than just the page the API returned.
   const filterBoqRows = useCallback((rows) => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch = !q || BOQ_COLUMNS.some((column) => String(row[column.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPageFilter(row, pageFilter, BOQ_FILTER_FIELDS);
+      return matchesSearch && matchesFilters(row, rowFilters, BOQ_FILTER_FIELDS);
     });
-  }, [query, pageFilter]);
+  }, [query, rowFilters]);
 
-  // The table stays paginated, but exports must include every BOQ row that
-  // matches the active search/filter across all pages.
-  const filteredRows = useMemo(
-    () => filterBoqRows(boq?.rows || []),
-    [boq, filterBoqRows]
-  );
+  // The API already applied the search and PageFilter to every BOQ row before it
+  // cut the page, so the table shows its response verbatim. Re-filtering here
+  // would only risk hiding a row the server matched if the two key lists drift.
+  const filteredRows = useMemo(() => boq?.rows || [], [boq]);
 
   // A BOQ document can survive with no rows in it (every line was deleted, or
   // the upload preview never saved).  That is the same situation as never
@@ -2729,24 +2818,14 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     [exportRows, tableSort]
   );
 
-  // Use exactly the same rows that the table displays, so the header totals
-  // always match what the user sees on screen.  (The separate `exportRows`
-  // variable is kept for PDF export, which must include all pages.)
-  const boqTotals = useMemo(
-    () =>
-      filteredRows.reduce(
-        (totals, row) => {
-          const amounts = boqGstAmounts(row);
-          return {
-            base: totals.base + (amounts?.base || 0),
-            gst: totals.gst + (amounts?.gst || 0),
-            total: totals.total + (amounts?.total || 0),
-          };
-        },
-        { base: 0, gst: 0, total: 0 }
-      ),
-    [filteredRows]
-  );
+  // Server-computed over every row that matches the active search/PageFilter, so
+  // the header totals describe the whole result set rather than just the ten
+  // rows currently on screen.
+  const boqTotals = useMemo(() => ({
+    base: Number(boq?.totals?.base) || 0,
+    gst: Number(boq?.totals?.gst) || 0,
+    total: Number(boq?.totals?.total) || 0,
+  }), [boq?.totals]);
 
   const persistRows = useCallback(async (rows, { createMissingItemCodes = false } = {}) => {
     // A spreadsheet is how new Item Codes arrive, so an upload may register the
@@ -2844,7 +2923,11 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
 
     const result = await swalConfirm({
       title: "Delete selected items?",
-      text: `This removes ${selectedCodes.size} item(s) from the ${phaseName} BOQ. This cannot be undone.`,
+      text: `This removes ${selectedCodes.size} item(s) from the ${phaseName} BOQ. `
+        + "Each item code is also deleted everywhere else it is stored - the Item Code "
+        + "catalogue, any other phase, and any invoice line that carries it (so it stops "
+        + "appearing in the Stock Register). This cannot be undone.",
+      confirmText: "Delete everywhere",
     });
     if (!result.isConfirmed) return;
 
@@ -2853,13 +2936,25 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
 
     try {
       const remainingRows = (boq.allRows || boq.rows || []).filter((row) => !selectedCodes.has(row.code));
-      await persistRows(remainingRows);
+      const response = await persistRows(remainingRows);
       await loadBoq({ targetPage: page, silent: true });
       setSelectMode(false);
       const deletedCount = selectedCodes.size;
       setSelectedCodes(new Set());
       setMenuOpen(false); // close menu only after delete actually completes
-      swalSuccess("Items deleted", `${deletedCount} item(s) removed from the BOQ.`);
+
+      // Say what was removed elsewhere, not just from this table.
+      const purged = response?.data?.purgedItemCodes || {};
+      const purgedCodes = Object.keys(purged);
+      const invoiceLines = purgedCodes.reduce((sum, code) => sum + (purged[code]?.invoices || 0), 0);
+      swalSuccess(
+        "Items deleted",
+        purgedCodes.length
+          ? `${deletedCount} item(s) removed from the BOQ. `
+            + `${purgedCodes.length} item code(s) deleted from all other records`
+            + (invoiceLines ? `, including ${invoiceLines} invoice line(s).` : ".")
+          : `${deletedCount} item(s) removed from the BOQ.`
+      );
     } catch (err) {
       const message = err.response?.data?.message || "Failed to delete selected items";
       setError(message);
@@ -2870,6 +2965,57 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   };
 
   const allSelected = visibleCodes.length > 0 && selectedCodes.size === visibleCodes.length;
+
+  // Reconciles item codes deleted before the per-save cleanup existed. Those are
+  // invisible to a BOQ save (the code is already gone from the rows) yet their
+  // invoice lines still hold them in the Stock Register. The button is only
+  // rendered while such codes exist, so there is nothing to act on otherwise.
+  const refreshOrphans = useCallback(async () => {
+    try {
+      const preview = await api.post(`${API_BASE_URL}/item-codes/purge-orphans`, {});
+      setOrphanCodes(preview.data?.orphans || []);
+    } catch {
+      // Not permitted for this role, or the check failed: nothing to offer.
+      setOrphanCodes([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshOrphans();
+  }, [refreshOrphans, boq]);
+
+  const handlePurgeOrphans = async () => {
+    setError("");
+    try {
+      const orphans = orphanCodes;
+      if (!orphans.length) return;
+
+      const result = await swalConfirm({
+        title: "Delete these item codes everywhere?",
+        text: `No BOQ row defines ${orphans.length} item code(s) any more: ${orphans.join(", ")}. `
+          + "They will be deleted from the Item Code catalogue, from every other phase, "
+          + "and from any invoice line carrying them, so they stop appearing in the Stock "
+          + "Register. This cannot be undone.",
+        confirmText: "Delete everywhere",
+      });
+      if (!result.isConfirmed) return;
+
+      const response = await api.post(`${API_BASE_URL}/item-codes/purge-orphans`, { confirm: true });
+      await loadBoq({ targetPage: page, silent: true });
+      await refreshOrphans();
+      const purged = response.data?.purged || {};
+      const invoices = Object.values(purged).reduce((sum, entry) => sum + (entry?.invoices || 0), 0);
+      swalSuccess(
+        "Clean up complete",
+        `${Object.keys(purged).length} item code(s) deleted from all records`
+        + (invoices ? `, including ${invoices} invoice line(s).` : ".")
+      );
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || "Failed to clean up removed items";
+      setError(message);
+      swalError("Clean up failed", message);
+    }
+  };
 
   const handlePageSizeChange = (nextPageSize) => {
     setPageSize(nextPageSize);
@@ -2954,6 +3100,16 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
                   <Trash2 size={16} /> Delete Rows
                 </button>
               )}
+              {orphanCodes.length > 0 && (
+                <button
+                  type="button"
+                  className="boq-upload-btn"
+                  onClick={handlePurgeOrphans}
+                  title="Delete item codes that no BOQ row defines any more, everywhere they are still stored"
+                >
+                  <Trash2 size={15} /> Clean up removed items ({orphanCodes.length})
+                </button>
+              )}
             </>
           )}
         </div>
@@ -3024,7 +3180,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
             <div className="table-controls-row">
               <div className="table-controls-primary">
                 <SearchBar value={query} onChange={setQuery} placeholder="Search BOQ rows..." />
-                <PageFilter rows={boq.rows || []} fields={BOQ_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+                <FilterModal rows={boq.rows || []} options={boq?.filterOptions || {}} fields={BOQ_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
                 {/* <span className="boq-count">Showing {filteredRows.length} of {totalCount} rows</span> */}
               </div>
               <div className="table-controls-right">

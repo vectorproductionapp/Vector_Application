@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import BackToDashboard from "../components/BackToDashboard";
 import Swal from "sweetalert2";
 import { createPortal } from "react-dom";
-import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check } from "lucide-react";
+import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check, Eye, FileText, ArrowLeft } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter from "../components/PageFilter";
+import DateRangeFilter from "../components/DateRangeFilter";
+import { useHeaderSearch } from "../context/HeaderSearch";
+import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
+import CardPagination, { useCardPagination } from "../components/CardPagination";
 import StatusDropdown from "../components/StatusDropdown";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
@@ -88,11 +93,47 @@ const columns = [
   { key: "warrantyEndDate", label: "Warranty End Date", format: (value) => value ? formatDateDisplay(value) : "—" },
   { key: "expectedDispatchDate", label: "Expected Dispatch Date", format: (value) => value ? formatDateDisplay(value) : "—" },
   { key: "actualDispatchDate", label: "Actual Dispatch Date", format: (value) => value ? formatDateDisplay(value) : "—" },
+  { key: "endUserClient", label: "End Customer Name", format: (value) => value || "—" },
+  { key: "endUserLocation", label: "End Customer Location", format: (value) => value || "—" },
+  { key: "endUserPoNo", label: "End Customer PO No", format: (value) => value || "—" },
+  { key: "endUserPoDate", label: "End Customer PO Date", format: (value) => value ? formatDateDisplay(value) : "—" },
+  { key: "dispatch", label: "Dispatch Status", format: (value) => value || "—" },
+];
+// The Filter modal offers the fields a user picks a single value from. End User
+// fields sit alongside the client ones because a sale carries both, and users
+// narrow by either without having to read the row first.
+//
+// `dispatch` is listed explicitly rather than filtered out of `columns`: it is a
+// row field the table shows inside the detail popup, not a visible column, so
+// deriving the list from `columns` dropped it. That made the dashboard's "Sold
+// Units" card deep-link (?field=dispatch&value=Delivered) fail validation and
+// open the register unfiltered.
+const SALE_FILTER_FIELDS = [
+  ...columns.filter((column) =>
+    ["client", "location", "model", "endUserClient", "endUserLocation"].includes(column.key)
+  ),
   { key: "dispatch", label: "Dispatch Status" },
 ];
-const SALE_FILTER_FIELDS = columns.filter((column) => ["client", "location", "model", "dispatch"].includes(column.key));
 
-const DISPATCH_OPTIONS = ["Pending", "Processing", "Dispatched", "Delivered", "Cancelled"];
+// Date columns the toolbar range can narrow. The endpoint takes the column name
+// as `dateField`, so switching this select retargets the same two pickers.
+//
+// Only the dates a user actually fills in are offered. The table has no `date`
+// column - the backend derives it from Client PO Date, so listing it here would
+// just be a second name for the same value - and the warranty dates are
+// computed from the invoice date, so they cannot be filtered independently.
+const SALE_DATE_COLUMNS = [
+  { key: "clientPoDate", label: "Client PO Date" },
+  { key: "endUserPoDate", label: "End Customer PO Date" },
+  { key: "expectedDispatchDate", label: "Expected Dispatch Date" },
+  { key: "actualDispatchDate", label: "Actual Dispatch Date" },
+  { key: "invoiceDate", label: "Invoice Date" },
+];
+
+// A sale leaves the warehouse once it is delivered, so that is the final state
+// this register offers.  Sales saved before the rename still carry "Dispatched";
+// the dropdown keeps showing that stored value so old rows stay readable.
+const DISPATCH_OPTIONS = ["Pending", "Processing", "Delivered"];
 // Current Indian GST rate structure: Nil, 5%, 18%, and the 40% special rate
 // for specified luxury/demerit goods and services.
 const GST_RATE_OPTIONS = [0, 5, 18, 28];
@@ -136,6 +177,25 @@ const FINANCIAL_DETAIL_FIELDS = [
   { key: "gstRate", label: "GST Rate", editable: true, type: "select" },
 ];
 
+const END_USER_DETAIL_FIELDS = [
+  { key: "endUserClient", label: "End Customer Name", editable: true },
+  { key: "endUserLocation", label: "End Customer Location", editable: true },
+  { key: "endUserPoNo", label: "End Customer PO No", editable: true },
+  { key: "endUserPoDate", label: "End Customer PO Date", isDate: true, editable: true, type: "date" },
+  
+];
+
+// Fields shared by every line of one Client PO. Editing them from the PO card
+// writes the new value to each of that PO's sale lines, so the card and the
+// table inside it stay in agreement.
+const PO_CARD_EDIT_FIELDS = [
+  { key: "clientPoDate", label: "Client PO Date", type: "date" },
+  { key: "poNo", label: "Client PO No" },
+  { key: "client", label: "Client Name" },
+  { key: "location", label: "Location" },
+  ...END_USER_DETAIL_FIELDS.map(({ key, label, type }) => ({ key, label, type })),
+];
+
 const emptySaleForm = {
   poNo: "",
   client: "",
@@ -159,6 +219,10 @@ const emptySaleForm = {
   warrantyPeriod: "",
   warrantyStartDate: "",
   warrantyEndDate: "",
+  endUserClient: "",
+  endUserLocation: "",
+  endUserPoDate: "",
+  endUserPoNo: "",
 };
 
 const REQUIRED_FIELDS = [
@@ -308,7 +372,7 @@ function formatDetailValue(field, row) {
 
 // Builds the edit-mode form state from a row, converting dates into the
 // "YYYY-MM-DD" shape <input type="date"> expects.
-function buildEditValues(row) {
+function buildEditValues(row, isCustomerSale = false) {
   if (!row) return {};
   return {
     date: toDateInputValue(row.date || row.clientPoDate),
@@ -335,6 +399,10 @@ function buildEditValues(row) {
     warrantyPeriod: row.warrantyPeriod ?? "",
     warrantyStartDate: toDateInputValue(row.warrantyStartDate),
     warrantyEndDate: toDateInputValue(row.warrantyEndDate),
+    endUserClient: row.endUserClient || "",
+    endUserLocation: row.endUserLocation || "",
+    endUserPoDate: toDateInputValue(row.endUserPoDate),
+    endUserPoNo: row.endUserPoNo || "",
   };
 }
 
@@ -387,7 +455,7 @@ function renderDetailField(
   const value = editValues[field.key] ?? "";
 
   if (field.isDate) {
-    return <DatePicker value={value} onChange={(date) => onChange({ target: { name: field.key, value: date } })} ariaLabel={`Select ${field.label}`} />;
+    return <DatePicker value={value} onChange={(date) => onChange({ target: { name: field.key, value: date } })} ariaLabel={`Select ${field.label}`} popoverZIndex={130000} />;
   }
 
   if (field.key === "model") {
@@ -479,16 +547,59 @@ function renderDetailField(
 }
 
 export default function SaleRegister() {
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  const [query, setQuery] = useHeaderSearch("sale-register", "Search Sale Register...");
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
+
+  // A dashboard KPI card can deep-links here with `?field=<key>&value=<v>` to
+  // open the register already narrowed (e.g. Sold Units -> dispatch=Delivered).
+  const arrivedFromDashboard = useDashboardDeepLink(
+    SALE_FILTER_FIELDS,
+    (patch) => setRowFilters((prev) => ({ ...prev, ...patch }))
+  );
   const [filterOptions, setFilterOptions] = useState({});
   const [rows, setRows] = useState([]);
+  // Every sale matching the active search/filters/date range, not just the page
+  // on screen. Used only by the export so a filtered export is complete.
+  const [exportRows, setExportRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+const [totalCount, setTotalCount] = useState(0);
+  // Money/qty totals for the whole filtered result set, not just this page.
+  const [salesTotals, setSalesTotals] = useState(null);
+  // ---------- Selected PO No filter (card click to show PO details) ----------
+  const [selectedPoNo, setSelectedPoNo] = useState("");
+  // PO card edit: { poNo, original, values } while the dialog is open.
+  const [poEdit, setPoEdit] = useState(null);
+  const [poEditSaving, setPoEditSaving] = useState(false);
+  const [poEditError, setPoEditError] = useState("");
+  // ---------- Client PO Date range filter ----------
+  // Draft values live in the pickers; Apply promotes them to the applied values
+  // the request is built from.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [dateRangeError, setDateRangeError] = useState("");
+  // Which date column the two pickers narrow. Kept separate from the applied
+  // values so switching columns mid-edit does not refetch.
+  const [dateColumn, setDateColumn] = useState("clientPoDate");
+
+  useEffect(() => {
+    setDateRangeError(
+      fromDate && toDate && toDate < fromDate ? "End Date cannot be earlier than Start Date." : ""
+    );
+  }, [fromDate, toDate]);
+
+  const isDateRangeActive = Boolean(appliedFromDate || appliedToDate);
+
+  // The pickers are labelled with whichever column the select is pointing at, so
+  // it is always obvious which date the range is about to narrow.
+  const activeDateColumnLabel =
+    SALE_DATE_COLUMNS.find((option) => option.key === dateColumn)?.label || "Client PO Date";
 
   const [modalOpen, setModalOpen] = useState(false);
   const [customerSaleParent, setCustomerSaleParent] = useState(null);
@@ -628,6 +739,17 @@ export default function SaleRegister() {
     setCustomerSaleParent(row);
     setFormValues(emptySaleForm);
     initialFormValuesRef.current = emptySaleForm;
+    setFormError("");
+    setClosing(false);
+    setModalOpen(true);
+  };
+
+  const openCustomerSaleForEdit = (row) => {
+    if (!row.customerSale) return;
+    const customerSale = { ...row.customerSale, id: getRowId(row) };
+    setCustomerSaleParent(row);
+    setFormValues(buildEditValues(customerSale, true));
+    initialFormValuesRef.current = buildEditValues(customerSale, true);
     setFormError("");
     setClosing(false);
     setModalOpen(true);
@@ -813,9 +935,20 @@ export default function SaleRegister() {
       params.set("limit", String(pageSize));
       const search = query.trim();
       if (search) params.set("q", search);
-      if (pageFilter.field && pageFilter.value !== "") {
-        params.append("filterField", pageFilter.field);
-        params.append("filterValue", String(pageFilter.value));
+      toFilterParams(rowFilters, SALE_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
+
+      // Date range over the selected column. This page carries many dates per sale,
+      // so the column being narrowed is named explicitly rather than guessed.
+      if (isDateRangeActive) {
+        params.set("dateField", dateColumn);
+        if (appliedFromDate) {
+          params.append("filterField", "dateFrom");
+          params.append("filterValue", appliedFromDate);
+        }
+        if (appliedToDate) {
+          params.append("filterField", "dateTo");
+          params.append("filterValue", appliedToDate);
+        }
       }
 
       const res = await api.get(`${SALES_API_URL}?${params.toString()}`);
@@ -824,7 +957,12 @@ export default function SaleRegister() {
         throw new Error(data.message || `Server responded with ${res.status}`);
       }
       setRows(data.sales || []);
+      // Falls back to the page when an older backend omits the full set.
+      setExportRows(data.allRows || data.sales || []);
       setFilterOptions(data.filterOptions || {});
+      // Totals cover every matching sale, so they still read correctly while the
+      // user sits on page 2+.
+      setSalesTotals(data.totals || null);
       const pagination = data.pagination;
       if (pagination) {
         setTotalPages(pagination.totalPages || 1);
@@ -839,11 +977,11 @@ export default function SaleRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, query, pageFilter]);
+  }, [page, pageSize, query, rowFilters, isDateRangeActive, appliedFromDate, appliedToDate, dateColumn]);
 
   // Changing a filter has to restart at page 1, otherwise narrowing the result
   // set leaves the user parked on a page that no longer exists.
-  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}|${dateColumn}:${appliedFromDate}:${appliedToDate}`;
   const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -860,71 +998,204 @@ export default function SaleRegister() {
   // Sale writes arrive as a WebSocket notice and refresh the table quietly.
   // Skipped while the add/edit form or the details editor is open.
   useRealtime(["sales"], () => fetchRows({ silent: true }), {
-    guard: () => !(modalOpen || saving || isEditingDetails || detailsSaving),
+    guard: () => !(modalOpen || saving || isEditingDetails || detailsSaving || poEdit || poEditSaving),
   });
 
-  // The API already applied the search and PageFilter to the whole register,
-  // so this is only a cheap double-check. It mirrors the API's case-insensitive
-  // comparison (unlike the shared matchesPageFilter helper, which is
-  // case-sensitive) so it can never hide a row the server matched.
+  // The API already applied the search and PageFilter to the whole register, so
+  // the server response is authoritative. Re-filtering here would only risk
+  // hiding a row the server matched whenever the two key lists drift apart.
+  // Every sale line matching the search/filters (the server sends the whole
+  // set as `allRows`), not just the table's current page. The PO cards are
+  // built from it so a PO whose lines sit on page 2+ still gets a card, and an
+  // opened PO lists all of its lines.
+  const allMatchingRows = exportRows.length ? exportRows : rows;
   const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    if (!selectedPoNo) return rows;
+    return allMatchingRows.filter((row) => row.poNo && row.poNo.toString() === selectedPoNo);
+  }, [rows, allMatchingRows, selectedPoNo]);
 
-    return rows.filter((row) => {
-      const matchesSearch =
-        !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
+  // One card per Client PO No, the way PO Details lists its POs. Rows are built
+  // from the server page the table shows, so each card totals exactly the lines
+  // that table can list for that PO - clicking the card never promises more.
+  //
+  // The money split mirrors the backend (`_calculate_po_value` plus the totals
+  // loop in salesregister.py): base = unitCost * qty, gst is the tax slice of
+  // that base, and the inclusive figure is the stored `value`.
+  const poCards = useMemo(() => {
+    const cards = [];
+    const byPoNo = new Map();
 
-      if (!matchesSearch) return false;
-      if (!pageFilter.field || pageFilter.value === "") return true;
-      const field = SALE_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
-      if (!field) return true;
-      return (
-        String(row[field.key] ?? "").trim().toLowerCase() ===
-        String(pageFilter.value).trim().toLowerCase()
-      );
+    allMatchingRows.forEach((row) => {
+      const raw = row.poNo === null || row.poNo === undefined ? "" : String(row.poNo).trim();
+      const poNo = raw || "—";
+      let card = byPoNo.get(poNo);
+      if (!card) {
+        card = { poNo, clientPoDate: "", client: "", endUserClient: "", endUserPoNo: "", qty: 0, base: 0, gst: 0, total: 0, rowCount: 0 };
+        byPoNo.set(poNo, card);
+        cards.push(card);
+      }
+      const unitCost = Number(row.unitCost) || 0;
+      const qty = Number(row.qty) || 0;
+      const base = unitCost * qty;
+      card.qty += qty;
+      card.base += base;
+      card.gst += (base * (Number(row.gstRate) || 0)) / 100;
+      card.total += Number(row.value) || 0;
+      card.rowCount += 1;
+      if (!card.clientPoDate && row.clientPoDate) card.clientPoDate = row.clientPoDate;
+      if (!card.client && row.client) card.client = row.client;
+      if (!card.endUserClient && row.endUserClient) card.endUserClient = row.endUserClient;
+      if (!card.endUserPoNo && row.endUserPoNo) card.endUserPoNo = row.endUserPoNo;
     });
 
-  }, [query, rows, pageFilter]);
+    return cards;
+  }, [allMatchingRows]);
+  const { pageItems: pagedPoCards, pagerProps: poCardPager } = useCardPagination(poCards, filterKey);
 
-  // The PageFilter dropdown draws its options from the whole register (the API
-  // sends them), so a narrow page never makes the other values disappear.
-  // Must be a flat array: PageFilter iterates `rows.forEach`.
-  const filterOptionRows = useMemo(
-    () =>
-      SALE_FILTER_FIELDS.flatMap((field) =>
-        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
-      ),
-    [filterOptions]
-  );
+  const samePoNo = (row, poNo) => String(row?.poNo ?? "").trim() === String(poNo ?? "").trim();
 
-  const filtersActive = Boolean(query.trim()) || Boolean(pageFilter.value);
+  const openPoEdit = (card) => {
+    const source = allMatchingRows.find((row) => samePoNo(row, card.poNo === "—" ? "" : card.poNo)) || {};
+    const values = Object.fromEntries(
+      PO_CARD_EDIT_FIELDS.map(({ key }) => [key, source[key] ?? ""])
+    );
+    setPoEditError("");
+    setPoEdit({ poNo: card.poNo === "—" ? "" : card.poNo, original: values, values });
+  };
+
+  const closePoEdit = () => {
+    if (poEditSaving) return;
+    setPoEdit(null);
+    setPoEditError("");
+  };
+
+  // Writes the changed PO fields to every sale line of that PO. The card only
+  // totals the current page, so all of the PO's lines are fetched first; a PO
+  // whose lines span pages is still updated in full.
+  const savePoEdit = async () => {
+    if (!poEdit || poEditSaving) return;
+    const changes = Object.fromEntries(
+      PO_CARD_EDIT_FIELDS
+        .map(({ key }) => key)
+        .filter((key) => String(poEdit.values[key] ?? "").trim() !== String(poEdit.original[key] ?? "").trim())
+        .map((key) => [key, String(poEdit.values[key] ?? "").trim()])
+    );
+    if (!Object.keys(changes).length) {
+      setPoEditError("No changes to update.");
+      return;
+    }
+    if ("poNo" in changes && !changes.poNo) {
+      setPoEditError("Client PO No cannot be empty.");
+      return;
+    }
+
+    setPoEditSaving(true);
+    setPoEditError("");
+    try {
+      const lookup = await api.get(SALES_API_URL, {
+        params: { q: poEdit.poNo, page: 1, limit: 100, _fresh: Date.now() },
+      });
+      const found = [...(lookup.data?.allRows || []), ...(lookup.data?.sales || [])];
+      const byId = new Map();
+      found.filter((row) => samePoNo(row, poEdit.poNo)).forEach((row) => {
+        const id = getRowId(row);
+        if (id) byId.set(id, row);
+      });
+      if (!byId.size) throw new Error(`No sale lines found for Client PO ${poEdit.poNo}.`);
+
+      for (const id of byId.keys()) {
+        const res = await api.put(`${SALES_API_URL}/${id}`, changes);
+        if (!res.data?.success) throw new Error(res.data?.message || "Failed to update the sale line.");
+      }
+
+      // Keep an opened PO open under its new number.
+      if ("poNo" in changes && selectedPoNo === poEdit.poNo) setSelectedPoNo(changes.poNo);
+      setPoEditSaving(false);
+      setPoEdit(null);
+      await fetchRows({ silent: true });
+      await swalSuccess(
+        "PO Updated",
+        `${byId.size} sale line${byId.size === 1 ? "" : "s"} of this PO ${byId.size === 1 ? "was" : "were"} updated.`
+      );
+    } catch (err) {
+      setPoEditSaving(false);
+      setPoEditError(err?.response?.data?.message || err?.message || "Could not update this PO.");
+      // Lines saved before a failure are already changed, so refresh to show them.
+      fetchRows({ silent: true });
+    }
+  };
+
+  const filtersActive = Boolean(query.trim()) || countActiveFilters(rowFilters) > 0 || isDateRangeActive;
 
   // New records are stored one document per serial. This expansion remains
   // for legacy combined records and supplies only the selected serial to the
   // edit form so saving it can split the old document safely.
-  const serialDisplayRows = useMemo(() => filteredRows.flatMap((row) => {
-    const serialNumbers = Array.isArray(row.serialNumbers) && row.serialNumbers.length
-      ? row.serialNumbers
-      : String(row.serial || "").split(",").map((value) => value.trim()).filter(Boolean);
-    if (serialNumbers.length <= 1) return [{ ...row, serial: serialNumbers[0] || row.serial || "" }];
-    const perUnitValue = Number(row.value || 0) / serialNumbers.length;
-    return serialNumbers.map((serial) => ({
-      ...row,
-      serial,
-      serialNumbers: [serial],
-      qty: 1,
-      value: perUnitValue,
-    }));
-  }), [filteredRows]);
+  const expandSerials = useMemo(
+    () => (list) => list.flatMap((row) => {
+      const serialNumbers = Array.isArray(row.serialNumbers) && row.serialNumbers.length
+        ? row.serialNumbers
+        : String(row.serial || "").split(",").map((value) => value.trim()).filter(Boolean);
+      if (serialNumbers.length <= 1) return [{ ...row, serial: serialNumbers[0] || row.serial || "" }];
+      const perUnitValue = Number(row.value || 0) / serialNumbers.length;
+      return serialNumbers.map((serial) => ({
+        ...row,
+        serial,
+        serialNumbers: [serial],
+        qty: 1,
+        value: perUnitValue,
+      }));
+    }),
+    []
+  );
+
+  const serialDisplayRows = useMemo(() => expandSerials(filteredRows), [expandSerials, filteredRows]);
+  // Export covers the whole result set by default, but once a PO card is open the
+  // user is looking at one PO, so the file follows the table instead of silently
+  // dumping every other PO as well.
+  const exportDisplayRows = useMemo(
+    () => expandSerials(selectedPoNo ? filteredRows : exportRows),
+    [expandSerials, filteredRows, exportRows, selectedPoNo]
+  );
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
   const [tableSort, setTableSort] = useState(null);
 
   const exportTableRows = useMemo(
-    () => sortRows(serialDisplayRows, columns, tableSort),
-    [serialDisplayRows, tableSort]
+    () => sortRows(exportDisplayRows, columns, tableSort),
+    [exportDisplayRows, tableSort]
   );
+
+  // Server-computed over every sale that matches the active search/PageFilter, so
+  // the Total box describes the whole result set rather than just the ten rows
+  // currently on screen.  Null means "nothing to report", which hides that part.
+  //
+  // Once a PO card is open the server figure would cover the whole register while
+  // the table lists one PO, so the card's own totals take over and the box keeps
+  // describing exactly what is on screen.
+  const tableTotals = useMemo(() => {
+    if (selectedPoNo) {
+      const card = poCards.find((entry) => entry.poNo === selectedPoNo);
+      if (!card) return { totalQty: null, totalBasic: null, totalGst: null, totalInclGst: null };
+      return {
+        totalQty: card.qty > 0 ? card.qty : null,
+        totalBasic: card.base > 0 ? card.base : null,
+        totalGst: card.gst > 0 ? card.gst : null,
+        totalInclGst: card.total > 0 ? card.total : null,
+      };
+    }
+    const totals = salesTotals;
+    const qty = Number(totals?.qty) || 0;
+    const base = Number(totals?.base) || 0;
+    const gst = Number(totals?.gst) || 0;
+    const total = Number(totals?.total) || 0;
+    return {
+      totalQty: qty > 0 ? qty : null,
+      totalBasic: base > 0 ? base : null,
+      totalGst: gst > 0 ? gst : null,
+      totalInclGst: total > 0 ? total : null,
+    };
+  }, [salesTotals, selectedPoNo, poCards]);
 
   const openModal = () => {
     setFormValues(emptySaleForm);
@@ -935,6 +1206,7 @@ export default function SaleRegister() {
     setAvailableSerials([]);
     setSerialsError("");
     setMenuOpen(false);
+    setCustomerSaleParent(null);
   };
 
   const requestClose = async (skipConfirmation = false) => {
@@ -1130,20 +1402,7 @@ export default function SaleRegister() {
   // Table columns with a checkbox column prepended only while selectMode
   // is active  mirrors the PO Details / BOQ pattern.
   const tableColumns = useMemo(() => {
-    const customerSalesColumn = {
-      key: "customerSalesAction",
-      label: "O2K Sales",
-      render: (row) => row.customerSale ? (
-        <button type="button" className="data-table-view-btn" onClick={() => openCustomerSaleDetails(row)}>
-          <Pencil size={16} /> View
-        </button>
-      ) : (
-        <button type="button" className="data-table-view-btn" onClick={() => openCustomerSale(row)}>
-          <Plus size={16} /> Add Sales
-        </button>
-      ),
-    };
-    if (!selectMode) return [...columns, customerSalesColumn];
+    if (!selectMode) return columns;
 
     const selectColumn = {
       key: "__select",
@@ -1163,11 +1422,12 @@ export default function SaleRegister() {
       },
     };
 
-    return [selectColumn, ...columns, customerSalesColumn];
+    return [selectColumn, ...columns];
   }, [selectMode, selectedIds]);
 
   return (
     <div className="sales-page">
+      <BackToDashboard visible={arrivedFromDashboard} />
       <div className="sales-toolbar">
         <div className="sales-toolbar-actions">
           {selectMode ? (
@@ -1190,6 +1450,13 @@ export default function SaleRegister() {
             </>
           ) : (
             <>
+              <ExportPdfButton
+                mode="table"
+                title="Sale Register"
+                columns={columns}
+                rows={exportTableRows}
+                fileName="sale-register"
+              />
               <button type="button" className="sale-add-btn" onClick={openModal}>
                 <Plus size={18} />
                 Add Sale
@@ -1233,6 +1500,16 @@ export default function SaleRegister() {
                 </>
               ) : (
                 <>
+                  {/* `.sales-toolbar-actions` is hidden below 640px, so the
+                      export lives here too or mobile would lose it entirely. */}
+                  <div className="sales-menu-export" onClick={() => setMenuOpen(false)}>
+                    <ExportPdfButton
+                      title="Sale Register"
+                      columns={columns}
+                      rows={exportTableRows}
+                      fileName="sale-register"
+                    />
+                  </div>
                   <button type="button" className="sales-menu-item" onClick={openModal}>
                     <Plus size={16} /> Add Sale
                   </button>
@@ -1245,21 +1522,163 @@ export default function SaleRegister() {
           )}
         </div>
       </div>
+      {selectedPoNo ? (
+        <div className="po-toolbar-left sales-po-drill">
+          <button type="button" className="po-back-btn" onClick={() => setSelectedPoNo("")}>
+            <ArrowLeft size={16} /> Back
+          </button>
+          <h2 className="model-heading po-heading">Client PO {selectedPoNo}</h2>
+        </div>
+      ) : poCards.length > 0 ? (
+        <>
+        <div className="model-grid">
+          {pagedPoCards.map((card) => (
+            <button
+              key={card.poNo}
+              type="button"
+              className="model-card po-card"
+              onClick={() => setSelectedPoNo(card.poNo)}
+            >
+              {/* A span, not a button: the card itself is a button. */}
+              <span
+                className="model-card-edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPoEdit(card);
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openPoEdit(card);
+                  }
+                }}
+                aria-label={`Edit PO ${card.poNo}`}
+                title="Edit PO details"
+              >
+                <Pencil size={14} />
+              </span>
+              <div className="model-card-heading-row">
+                <div className="model-card-icon">
+                  <FileText size={18} />
+                </div>
+                <span className="model-card-name">{card.poNo}</span>
+              </div>
+              <div className="po-card-details">
+                <span className="po-card-detail-row">
+                  <span className="po-card-detail-label">PO Date</span>
+                  <span className="po-card-detail-value">
+                    {card.clientPoDate ? formatDateDisplay(card.clientPoDate) : "—"}
+                  </span>
+                </span>
+                <span className="po-card-detail-row">
+                  <span className="po-card-detail-label">Client Name</span>
+                  <span className="po-card-detail-value">{card.client || "—"}</span>
+                </span>
+                <span className="po-card-detail-row">
+                  <span className="po-card-detail-label">End Customer Name</span>
+                  <span className="po-card-detail-value">{card.endUserClient || "—"}</span>
+                </span>
+                <span className="po-card-detail-row">
+                  <span className="po-card-detail-label">End Customer PO No</span>
+                  <span className="po-card-detail-value">{card.endUserPoNo || "—"}</span>
+                </span>
+              </div>
+              <div className="po-card-totals">
+                <span className="po-card-total-row">
+                  <span className="model-card-total-label">Qty</span>
+                  <span className="po-card-total-amount">{card.qty}</span>
+                </span>
+                <span className="po-card-total-row">
+                  <span className="model-card-total-label">Basic Price</span>
+                  <span className="po-card-total-amount">{fmtINR(card.base)}</span>
+                </span>
+                <span className="po-card-total-row">
+                  <span className="model-card-total-label">GST Price</span>
+                  <span className="po-card-total-amount">{fmtINR(card.gst)}</span>
+                </span>
+                <span className="po-card-total-row">
+                  <span className="model-card-total-label">PO Total incl. GST</span>
+                  <span className="model-card-total-value">{fmtINR(card.total)}</span>
+                </span>
+              </div>
+              <span className="po-card-meta">
+                {card.rowCount} line{card.rowCount === 1 ? "" : "s"}
+              </span>
+            </button>
+          ))}
+        </div>
+        <CardPagination {...poCardPager} />
+        </>
+      ) : null}
 
+      {/* The card grid is the first level, so the table only appears once a PO is
+          opened. PO Details swaps between the two the same way. */}
+      {selectedPoNo ? (
+        <>
       <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search Sale Register..." />
-            <PageFilter rows={filterOptionRows} fields={SALE_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
-          </div>
-          {!loading && !loadError && (
-            <ExportPdfButton
-              mode="table"
-              title="Sale Register"
-              columns={columns}
-              rows={exportTableRows}
+            <FilterModal rows={rows} options={filterOptions} fields={SALE_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <DateRangeFilter
+              fromDate={fromDate}
+              toDate={toDate}
+              onChangeFrom={setFromDate}
+              onChangeTo={setToDate}
+              onApply={(nextFrom, nextTo) => {
+                setAppliedFromDate(nextFrom);
+                setAppliedToDate(nextTo);
+              }}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+                setAppliedFromDate("");
+                setAppliedToDate("");
+              }}
+              error={dateRangeError}
+              column={dateColumn}
+              columns={SALE_DATE_COLUMNS}
+              onChangeColumn={setDateColumn}
+              startLabel={`From ${activeDateColumnLabel}`}
+              endLabel={`To ${activeDateColumnLabel}`}
             />
-          )}
+          </div>
+          <div className="table-controls-right">
+            {tableTotals.totalBasic !== null || tableTotals.totalGst !== null || tableTotals.totalInclGst !== null ? (
+              <span className="table-total">
+                <span className="table-total-label">Total</span>
+                {tableTotals.totalQty !== null && (
+                  <span className="table-total-value">
+                    {tableTotals.totalQty}
+                    <span className="table-total-scope">(Qty)</span>
+                  </span>
+                )}
+                {tableTotals.totalQty !== null && (tableTotals.totalBasic !== null || tableTotals.totalGst !== null || tableTotals.totalInclGst !== null) && <span className="table-total-scope">|</span>}
+                {tableTotals.totalBasic !== null && (
+                  <span className="table-total-value">
+                    {tableTotals.totalBasic.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="table-total-scope">(Basic Price)</span>
+                  </span>
+                )}
+                {tableTotals.totalBasic !== null && tableTotals.totalGst !== null && <span className="table-total-scope">|</span>}
+                {tableTotals.totalGst !== null && (
+                  <span className="table-total-value">
+                    {tableTotals.totalGst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="table-total-scope">(GST Price)</span>
+                  </span>
+                )}
+                {(tableTotals.totalBasic !== null || tableTotals.totalGst !== null) && tableTotals.totalInclGst !== null && <span className="table-total-scope">|</span>}
+                {tableTotals.totalInclGst !== null && (
+                  <span className="table-total-value">
+                    {tableTotals.totalInclGst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="table-total-scope">(Total incl. GST)</span>
+                  </span>
+                )}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {loading ? (
@@ -1269,18 +1688,20 @@ export default function SaleRegister() {
           </div>
         ) : loadError ? (
           <div className="sales-load-error">{loadError}</div>
-        ) : rows.length === 0 ? (
+        ) : filteredRows.length === 0 ? (
           <div className="sales-date-empty">
-            {filtersActive
-              ? "No sales match the current search or filter."
-              : "No sales recorded yet. Click \"Add Sale\" to create the first one."}
+            {selectedPoNo
+              ? `No sales recorded for Client PO ${selectedPoNo}.`
+              : filtersActive
+                ? `No sales match the current search, filter or ${activeDateColumnLabel} range.`
+                : "No sales recorded yet. Click \"Add Sale\" to create the first one."}
           </div>
         ) : (
           <DataTable columns={tableColumns} rows={serialDisplayRows} onSortChange={setTableSort} onViewDetails={openDetails} />
         )}
       </div>
 
-      {!loading && !loadError && rows.length > 0 && (
+      {!loading && !loadError && filteredRows.length > 0 && !selectedPoNo && (
         <ListPagination
           page={page}
           pageSize={pageSize}
@@ -1291,8 +1712,72 @@ export default function SaleRegister() {
           onPageSizeChange={handlePageSizeChange}
         />
       )}
+        </>
+      ) : null}
 
       {/* ---- Add Sale Modal ---- */}
+      {poEdit && createPortal(
+        <div className="modal-overlay po-edit-overlay" onClick={closePoEdit}>
+          <div
+            className="modal-container po-edit-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit PO ${poEdit.poNo}`}
+          >
+            <div className="modal-header">
+              <h2>Edit PO {poEdit.poNo}</h2>
+              <button type="button" className="modal-close" onClick={closePoEdit} aria-label="Close" disabled={poEditSaving}>
+                <X size={22} />
+              </button>
+            </div>
+            <form
+              className="sale-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                savePoEdit();
+              }}
+            >
+              {poEditError && <div className="sale-form-error">{poEditError}</div>}
+              <div className="sale-form-section-title">PO Details (applied to every line of this PO)</div>
+              <div className="sale-form-grid">
+                {PO_CARD_EDIT_FIELDS.map((field) => (
+                  <label className="sale-field" key={field.key}>
+                    <span>{field.label}</span>
+                    {field.type === "date" ? (
+                      <DatePicker
+                        value={poEdit.values[field.key] || ""}
+                        onChange={(value) => setPoEdit((prev) => ({ ...prev, values: { ...prev.values, [field.key]: value } }))}
+                        ariaLabel={`Select ${field.label.toLowerCase()}`}
+                        popoverZIndex={130000}
+                      />
+                    ) : (
+                      <input
+                        value={poEdit.values[field.key] || ""}
+                        onChange={(e) => {
+                          const { value } = e.target;
+                          setPoEdit((prev) => ({ ...prev, values: { ...prev.values, [field.key]: value } }));
+                        }}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </form>
+            <div className="modal-footer">
+              <button type="button" className="sale-btn-secondary" onClick={closePoEdit} disabled={poEditSaving}>
+                Cancel
+              </button>
+              <button type="button" className="sale-btn-primary" onClick={savePoEdit} disabled={poEditSaving}>
+                {poEditSaving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+                {poEditSaving ? "Updating..." : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {modalOpen && createPortal(
         <div
           className={`modal-overlay${closing ? " closing" : ""}`}
@@ -1320,43 +1805,56 @@ export default function SaleRegister() {
               }}
             >
               {formError && <div className="sale-form-error">{formError}</div>}
-              <div className="sale-form-section-title">Client Information</div>
+              {customerSaleParent ? (
+                <>
+                  <div className="sale-form-section-title">End Customer Details</div>
+                  <div className="sale-form-grid">
+                    {END_USER_DETAIL_FIELDS.map((field) => (
+                      <label className="sale-field" key={field.key}>
+                        <span>{field.label}</span>
+                        {field.type === "date" ? (
+                          <DatePicker
+                            value={formValues[field.key]}
+                            onChange={(value) => setFormValues((prev) => ({ ...prev, [field.key]: value }))}
+                            ariaLabel={`Select ${field.label.toLowerCase()}`}
+                            popoverZIndex={130000}
+                          />
+                        ) : (
+                          <input
+                            type={field.type || "text"}
+                            value={formValues[field.key] || ""}
+                            onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                            placeholder={field.placeholder}
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="sale-form-section-title">Client Information</div>
+                  <div className="sale-form-grid">
+                    <label className="sale-field">
+                      <span>Client PO Date</span>
+                      <DatePicker value={formValues.clientPoDate} onChange={(clientPoDate) => setFormValues((prev) => ({ ...prev, clientPoDate }))} ariaLabel="Select client PO date" popoverZIndex={130000} />
+                    </label>
+                    <label className="sale-field">
+                      <span>Client PO No</span>
+                      <input name="poNo" value={formValues.poNo} onChange={handleFormChange} placeholder="e.g. PO-4521" />
+                    </label>
+                    <label className="sale-field">
+                      <span>Client Name</span>
+                      <input name="client" value={formValues.client} onChange={handleFormChange} placeholder="e.g. Acme Pvt Ltd" />
+                    </label>
+                    <label className="sale-field">
+                      <span>Location</span>
+                      <input name="location" value={formValues.location} onChange={handleFormChange} placeholder="e.g. Chennai" />
+                    </label>
+                  </div>
+                </>
+              )}
               <div className="sale-form-grid">
-                <label className="sale-field">
-                  <span>Client PO Date</span>
-                  <DatePicker value={formValues.clientPoDate} onChange={(clientPoDate) => setFormValues((prev) => ({ ...prev, clientPoDate }))} ariaLabel="Select client PO date" />
-                </label>
-
-                <label className="sale-field">
-                  <span>Client PO No</span>
-                  <input
-                    name="poNo"
-                    value={formValues.poNo}
-                    onChange={handleFormChange}
-                    placeholder="e.g. PO-4521"
-                  />
-                </label>
-
-                <label className="sale-field">
-                  <span>Client Name</span>
-                  <input
-                    name="client"
-                    value={formValues.client}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Acme Pvt Ltd"
-                  />
-                </label>
-
-                <label className="sale-field">
-                  <span>Location</span>
-                  <input
-                    name="location"
-                    value={formValues.location}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Chennai"
-                  />
-                </label>
-
                 <label className="sale-field">
                   <span>Model</span>
                   <SearchableSelect
@@ -1435,7 +1933,7 @@ export default function SaleRegister() {
                 
                  <label className="sale-field">
                   <span>Invoice Date</span>
-                  <DatePicker value={formValues.invoiceDate} onChange={(invoiceDate) => setFormValues((prev) => ({ ...prev, invoiceDate }))} ariaLabel="Select invoice date" />
+                  <DatePicker value={formValues.invoiceDate} onChange={(invoiceDate) => setFormValues((prev) => ({ ...prev, invoiceDate }))} ariaLabel="Select invoice date" popoverZIndex={130000} />
                 </label>
                
                
@@ -1496,12 +1994,12 @@ export default function SaleRegister() {
               <div className="sale-form-grid">
                 <label className="sale-field">
                   <span>Expected Dispatch Date</span>
-                  <DatePicker value={formValues.expectedDispatchDate} onChange={(expectedDispatchDate) => setFormValues((prev) => ({ ...prev, expectedDispatchDate }))} ariaLabel="Select expected dispatch date" />
+                  <DatePicker value={formValues.expectedDispatchDate} onChange={(expectedDispatchDate) => setFormValues((prev) => ({ ...prev, expectedDispatchDate }))} ariaLabel="Select expected dispatch date" popoverZIndex={130000} />
                 </label>
 
                 <label className="sale-field">
                   <span>Actual Dispatch Date</span>
-                  <DatePicker value={formValues.actualDispatchDate} onChange={(actualDispatchDate) => setFormValues((prev) => ({ ...prev, actualDispatchDate }))} ariaLabel="Select actual dispatch date" />
+                  <DatePicker value={formValues.actualDispatchDate} onChange={(actualDispatchDate) => setFormValues((prev) => ({ ...prev, actualDispatchDate }))} ariaLabel="Select actual dispatch date" popoverZIndex={130000} />
                 </label>
                 <label className="sale-field">
                   <span>Dispatch Status</span>
@@ -1513,6 +2011,30 @@ export default function SaleRegister() {
                     placeholder="Select dispatch status"
                   />
                 </label>
+              </div>
+
+              <div className="sale-form-section-title">End Customer Details</div>
+              <div className="sale-form-grid">
+                {END_USER_DETAIL_FIELDS.map((field) => (
+                  <label className="sale-field" key={field.key}>
+                    <span>{field.label}</span>
+                    {field.type === "date" ? (
+                      <DatePicker
+                        value={formValues[field.key]}
+                        onChange={(value) => setFormValues((prev) => ({ ...prev, [field.key]: value }))}
+                        ariaLabel={`Select ${field.label.toLowerCase()}`}
+                        popoverZIndex={130000}
+                      />
+                    ) : (
+                      <input
+                        type={field.type || "text"}
+                        value={formValues[field.key] || ""}
+                        onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder}
+                      />
+                    )}
+                  </label>
+                ))}
               </div>
             </form>
 
@@ -1597,6 +2119,18 @@ export default function SaleRegister() {
                 <h3>Dispatch Details</h3>
                 <div className="sale-details-grid">
                   {DISPATCH_DETAIL_FIELDS.map((field) => (
+                    <React.Fragment key={field.key}>
+                      <div className="sale-details-label">{field.label}</div>
+                      {renderDetailField(field, detailsRow, editValues, handleEditChange, isEditingDetails)}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </section>
+
+              <section className="sale-details-section">
+                <h3>End Customer Details</h3>
+                <div className="sale-details-grid">
+                  {END_USER_DETAIL_FIELDS.map((field) => (
                     <React.Fragment key={field.key}>
                       <div className="sale-details-label">{field.label}</div>
                       {renderDetailField(field, detailsRow, editValues, handleEditChange, isEditingDetails)}

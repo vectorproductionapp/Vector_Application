@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import BackToDashboard from "../components/BackToDashboard";
 
 import { createPortal } from "react-dom";
 import api from "../components/Api";
@@ -8,6 +10,8 @@ import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
 
 import Swal from "sweetalert2";
+
+import { useHeaderSearch } from "../context/HeaderSearch";
 
 import {
 
@@ -37,7 +41,8 @@ import {
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter from "../components/PageFilter";
+import DateRangeFilter from "../components/DateRangeFilter";
+import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
 
 import ExportPdfButton from "../components/ExportPdfButton";
 import { exportQcReportToPdf, prepareQcReportPdf } from "../utils/exportPdf";
@@ -90,27 +95,40 @@ const QC_INSPECTION_ITEMS = [
   { key: "deviceDiscovery", number: "15", description: "Device discovery tool test", method: "Visual Inspection" },
 ];
 
-const createEmptyQcInspection = (checkedBy = "") => ({
+const createEmptyQcInspection = (verifiedBy = "") => ({
   // Left blank on purpose. Units are inspected long after they are built, so the
   // date has to be chosen rather than assumed - pre-filling today would silently
   // date an old device's QC report to the day it was typed in. The field is
   // required, so the report cannot be completed without a real date.
   inspectionDate: "",
-  checkedBy,
-  verifiedBy: "",
+  // Picked from the production incharges.
+  checkedBy: "",
+  // The person who did the QC verifies the report.
+  verifiedBy,
   authorizedBy: "",
   checks: Object.fromEntries(QC_INSPECTION_ITEMS.map((item) => [item.key, ""])),
 });
 
-function normalizeQcInspection(report, checkedBy = "") {
+// `qcBy` is the unit's "QC Done By". When given it always wins for Verified By,
+// so a report reopened after QC Done By was changed shows the new name. The
+// read-only view passes nothing and keeps what was saved.
+function normalizeQcInspection(report, qcBy = "") {
   const source = report && typeof report === "object" ? report : {};
-  const empty = createEmptyQcInspection(checkedBy);
+  const empty = createEmptyQcInspection(qcBy);
   return {
     ...empty,
     ...source,
-    checkedBy: source.checkedBy || checkedBy || "",
+    verifiedBy: String(qcBy || "").trim() || source.verifiedBy || "",
     checks: { ...empty.checks, ...(source.checks || {}) },
   };
+}
+
+// Keeps a saved QC report's Verified By in step with a new QC Done By. A unit
+// without a report is left alone, since there is nothing to verify yet.
+function syncQcVerifiedBy(record, qcBy) {
+  const report = record?.qcInspection;
+  if (!report || typeof report !== "object" || !Object.keys(report).length) return record;
+  return { ...record, qcInspection: { ...report, verifiedBy: qcBy || "" } };
 }
 
 function isQcInspectionComplete(report) {
@@ -277,13 +295,7 @@ const columns = [
 
   { key: "serial", label: "Serial Number", mono: true },
 
-  { key: "stage", label: "Assembling Stage" },
-
   { key: "assembledBy", label: "Assembled By" },
-
-  { key: "qc", label: "QC Status" },
-
-  { key: "qcBy", label: "QC Done By" },
 
   { key: "packagingStatus", label: "Packaging Status" },
 
@@ -294,9 +306,36 @@ const columns = [
   { key: "stockStatus", label: "Stock Status" },
 
 ];
-const PRODUCTION_FILTER_FIELDS = columns.filter((column) => [
-  "model", "phase", "stage", "assembledBy", "qc", "qcBy", "packagingStatus", "packagedBy", "stockStatus",
-].includes(column.key));
+// Fields the PageFilter dropdown offers and the dashboard deep link may set.
+// Listed explicitly instead of being derived from `columns`, because the
+// assembly `stage` and the `qc` status are read on the row and shown in the
+// detail popup but are NOT visible table columns. Deriving from `columns`
+// silently dropped them, so a KPI card arriving with `?field=qc&value=Passed`
+// or `?field=stage&value=In Production` failed validation and the table opened
+// unfiltered.
+const PRODUCTION_FILTER_FIELDS = [
+  { key: "model", label: "Model" },
+  { key: "phase", label: "Phase" },
+  { key: "stage", label: "Assembly Stage" },
+  { key: "assembledBy", label: "Assembled By" },
+  { key: "qc", label: "QC Status" },
+  { key: "qcBy", label: "QC Done By" },
+  { key: "packagingStatus", label: "Packaging Status" },
+  { key: "packagedBy", label: "Packaged By" },
+  { key: "stockStatus", label: "Stock Status" },
+];
+
+// Status cards, mirroring the dashboard KPI row. Each one applies the filter the
+// dashboard deep-link already used for the same card, so clicking here and
+// clicking there land on identical rows. The stage/QC spellings are the values
+// the backend stores and counts on.
+const STATUS_CARDS = [
+  { key: "inProduction", label: "In Production", field: "stage", value: "In Production" },
+  { key: "semiFinished", label: "Semi Finished", field: "stage", value: "Semi Finished" },
+  { key: "qcInspection", label: "Under QC Inspection", field: "qc", value: "Under Inspection" },
+  { key: "qcPassed", label: "QC Passed", field: "qc", value: "Passed" },
+  { key: "qcFailed", label: "QC Failed", field: "qc", value: "Failed" },
+];
 
 // Fields shown in the View modal (mirrors PODetails' PO_DETAIL_FIELDS).
 
@@ -557,12 +596,71 @@ export default function DailyProduction() {
   const canManageProduction = role === "admin" || role === "coadmin" || role === "production_incharge";
   const addActionLabel = isProductionIncharge ? "Assign Task" : "Add Assembly Unit";
 
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One search box, rendered in the global header next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("daily-production", "Search Assembly Units...");
 
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
+
+  // A dashboard KPI card can deep-link here with `?field=<key>&value=<v>` to
+  // open the table already narrowed (e.g. QC Failed -> qc=Failed). The field is
+  // checked against PRODUCTION_FILTER_FIELDS so a hand-written URL cannot set a
+  // filter the PageFilter dropdown does not offer.
+  // The filter the dashboard card applied. While it is still in force the page
+  // shows just that card's name in place of the five status tiles.
+  const [dashboardFocus, setDashboardFocus] = useState(null);
+  const arrivedFromDashboard = useDashboardDeepLink(
+    PRODUCTION_FILTER_FIELDS,
+    (patch) => {
+      const [field, value] = Object.entries(patch)[0] || [];
+      if (field) setDashboardFocus({ field, value });
+      setRowFilters((prev) => ({ ...prev, ...patch }));
+    }
+  );
+  const dashboardHeading = arrivedFromDashboard && dashboardFocus
+    && rowFilters[dashboardFocus.field] === dashboardFocus.value
+    ? (STATUS_CARDS.find((card) => card.field === dashboardFocus.field && card.value === dashboardFocus.value)?.label
+      || dashboardFocus.value)
+    : "";
+
+  // A status card filters on `stage` or `qc`. Only one value of each can be
+  // active, so picking a card replaces that field outright rather than stacking
+  // two values the endpoint could never match together. Clicking the active card
+  // again clears it, so the card toggles.
+  const toggleStatusCard = useCallback((field, value) => {
+    setRowFilters((prev) => {
+      const next = { ...prev };
+      if (next[field] === value) delete next[field];
+      else next[field] = value;
+      return next;
+    });
+  }, []);
   const [filterOptions, setFilterOptions] = useState({});
+  // Quantities per production/QC bucket for the status cards, computed by the
+  // endpoint over the search + date range (ignoring the cards' own filters).
+  const [statusSummary, setStatusSummary] = useState({});
+
+  // ---------- Production date range filter ----------
+  // Draft values live in the pickers; Apply promotes them to the applied values
+  // the request is built from.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [dateRangeError, setDateRangeError] = useState("");
+
+  useEffect(() => {
+    setDateRangeError(
+      fromDate && toDate && toDate < fromDate ? "End Date cannot be earlier than Start Date." : ""
+    );
+  }, [fromDate, toDate]);
+
+  const isDateRangeActive = Boolean(appliedFromDate || appliedToDate);
 
   const [rows, setRows] = useState([]);
+  // Every unit matching the active search/filters/date range, not just the page
+  // on screen. Used only by the export so a filtered export is complete.
+  const [exportRows, setExportRows] = useState([]);
   const [productionStats, setProductionStats] = useState(null);
   const [expandedGraph, setExpandedGraph] = useState(null);
   const [graphYear, setGraphYear] = useState("all");
@@ -584,6 +682,7 @@ export default function DailyProduction() {
   // In Add mode the form is a list of unit blocks; in Edit mode there is one.
   const [itemDrafts, setItemDrafts] = useState([nextAssemblyItem()]);
   const lastItemRef = useRef(null);
+  const formRef = useRef(null);
 
   const [closing, setClosing] = useState(false);
 
@@ -679,7 +778,7 @@ export default function DailyProduction() {
 
       const pageToFetch = targetPage ?? page;
 
-      // Search and PageFilter run on the server. Filtering here instead used to
+      // Search and the toolbar filters run on the server. Filtering here instead used to
       // match only the rows the API had just paged back, so a search or a
       // dropdown selection silently missed every other page.
       const params = new URLSearchParams();
@@ -687,9 +786,19 @@ export default function DailyProduction() {
       params.set("limit", String(pageSize));
       const search = query.trim();
       if (search) params.set("q", search);
-      if (pageFilter.field && pageFilter.value !== "") {
-        params.append("filterField", pageFilter.field);
-        params.append("filterValue", String(pageFilter.value));
+      toFilterParams(rowFilters, PRODUCTION_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
+
+      // Production Date range.
+      if (isDateRangeActive) {
+        params.set("dateField", "date");
+        if (appliedFromDate) {
+          params.append("filterField", "dateFrom");
+          params.append("filterValue", appliedFromDate);
+        }
+        if (appliedToDate) {
+          params.append("filterField", "dateTo");
+          params.append("filterValue", appliedToDate);
+        }
       }
 
       const res = await api.get(`${API_BASE_URL}/assembly?${params.toString()}`);
@@ -701,7 +810,12 @@ export default function DailyProduction() {
       }
 
       setRows(res.data.assemblyUnits || []);
+      // Falls back to the page when an older backend omits the full set.
+      setExportRows(res.data.allRows || res.data.assemblyUnits || []);
       setFilterOptions(res.data.filterOptions || {});
+      // Older backends omit the card counts; fall back to zeros rather than
+      // undefined so the cards render instead of showing "undefined units".
+      setStatusSummary(res.data.summary || {});
       const pagination = res.data.pagination;
       if (pagination) {
         setTotalPages(pagination.totalPages || 1);
@@ -719,11 +833,11 @@ export default function DailyProduction() {
 
     }
 
-  }, [page, pageSize, query, pageFilter]);
+  }, [page, pageSize, query, rowFilters, isDateRangeActive, appliedFromDate, appliedToDate]);
 
   // Changing a filter has to restart at page 1, otherwise narrowing the result
   // set leaves the user parked on a page that no longer exists.
-  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}|${appliedFromDate}:${appliedToDate}`;
   const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -739,6 +853,26 @@ export default function DailyProduction() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, filterKey]);
+
+  // A dashboard KPI card deep-links here with `?field=<key>&value=<v>`, which
+  // useDashboardDeepLink above already applies and then strips from the URL. This
+  // effect only covers the raw `filterField`/`filterValue` pairs, so it merges
+  // rather than replaces, and reads the live location instead of a stale copy.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const filterFields = params.getAll("filterField");
+    const filterValues = params.getAll("filterValue");
+    const urlFilters = {};
+    filterFields.forEach((field, index) => {
+      const value = filterValues[index];
+      if (field && value && PRODUCTION_FILTER_FIELDS.some((option) => option.key === field)) {
+        urlFilters[field] = value;
+      }
+    });
+    if (Object.keys(urlFilters).length > 0) {
+      setRowFilters((prev) => ({ ...prev, ...urlFilters }));
+    }
+  }, []);
 
   // Assembly writes arrive as a WebSocket notice, so an open table refreshes
   // itself instead of polling.  Skipped while a form, QC inspection, or bulk
@@ -871,11 +1005,14 @@ export default function DailyProduction() {
 
   const handleUserSelect = (field) => (value) => {
     const selectedUser = productionUsers.find((user) => user.id === value);
-    setFormValues((prev) => ({
-      ...prev,
-      [field]: selectedUser?.name || "",
-      [`${field}Id`]: selectedUser?.id || "",
-    }));
+    setFormValues((prev) => {
+      const next = {
+        ...prev,
+        [field]: selectedUser?.name || "",
+        [`${field}Id`]: selectedUser?.id || "",
+      };
+      return field === "qcBy" ? syncQcVerifiedBy(next, next.qcBy) : next;
+    });
   };
 
   const handleModelSelect = (modelId) => {
@@ -924,46 +1061,17 @@ export default function DailyProduction() {
 
   };
 
-  // The API already applied the search and PageFilter to every visible unit, so
-  // this is only a cheap double-check. It mirrors the API's case-insensitive
-  // comparison (unlike the shared matchesPageFilter helper, which is
-  // case-sensitive) so it can never hide a row the server matched.
-  const filteredRows = useMemo(() => {
-
-    const q = query.trim().toLowerCase();
-
-    return rows.filter((row) => {
-      const matchesSearch = !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-      if (!matchesSearch) return false;
-      if (!pageFilter.field || pageFilter.value === "") return true;
-      const field = PRODUCTION_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
-      if (!field) return true;
-      return (
-        String(row[field.key] ?? "").trim().toLowerCase() ===
-        String(pageFilter.value).trim().toLowerCase()
-      );
-    });
-
-  }, [query, rows, pageFilter]);
-
-  // The PageFilter dropdown draws its options from the whole result set (the API
-  // sends them), so a narrow page never makes the other values disappear.
-  // Must be a flat array: PageFilter iterates `rows.forEach`.
-  const filterOptionRows = useMemo(
-    () =>
-      PRODUCTION_FILTER_FIELDS.flatMap((field) =>
-        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
-      ),
-    [filterOptions]
-  );
+  // The API already applied the search and PageFilter to every unit before it cut
+  // the page, so the server response is authoritative.
+  const filteredRows = useMemo(() => rows, [rows]);
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
   const [tableSort, setTableSort] = useState(null);
 
   const exportTableRows = useMemo(
-    () => sortRows(filteredRows, columns, tableSort),
-    [filteredRows, tableSort]
+    () => sortRows(exportRows, columns, tableSort),
+    [exportRows, tableSort]
   );
 
   const openAddModal = () => {
@@ -1157,9 +1265,19 @@ export default function DailyProduction() {
   const addItemDraft = () => {
     setItemDrafts((current) => [...current, nextAssemblyItem()]);
     // The form is the scroll container, so bring the new block into view.
-    window.requestAnimationFrame(() => {
-      lastItemRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
+    // Use setTimeout to ensure DOM has updated after state change
+    setTimeout(() => {
+      const form = formRef.current;
+      const item = lastItemRef.current;
+      if (form && item) {
+        const formRect = form.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const scrollTop = itemRect.top - formRect.top + form.scrollTop - 20;
+        form.scrollTo({ top: scrollTop, behavior: "smooth" });
+      } else if (item) {
+        item.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    }, 50);
   };
 
   const removeItemDraft = (index) =>
@@ -1205,7 +1323,10 @@ export default function DailyProduction() {
   const handleItemUser = (index, field) => (value) => {
     const selectedUser = productionUsers.find((user) => user.id === value);
     handleItemField(index, field, selectedUser?.name || "");
-    updateItemDraft(index, (draft) => ({ ...draft, [`${field}Id`]: selectedUser?.id || "" }));
+    updateItemDraft(index, (draft) => {
+      const next = { ...draft, [`${field}Id`]: selectedUser?.id || "" };
+      return field === "qcBy" ? syncQcVerifiedBy(next, selectedUser?.name || "") : next;
+    });
   };
 
   const handleItemSerialChange = (index, serialIndex, value) => {
@@ -1321,11 +1442,20 @@ export default function DailyProduction() {
       completedAt: new Date().toISOString(),
     };
 
+    // The person who verifies the report is the one who did the QC, so
+    // "Verified By" fills the unit's "QC Done By".
+    const verifiedByName = String(qcInspectionDraft.verifiedBy || "").trim();
+    const verifiedByUser = productionUsers.find((user) => user.name === verifiedByName);
+    const qcDoneBy = verifiedByName
+      ? { qcBy: verifiedByName, qcById: verifiedByUser?.id || "" }
+      : {};
+
     if (qcInspectionTarget?.type === "form") {
       if (failedItems.length) {
         const failureEntry = buildQcFailureEntry(qcInspectionDraft);
         updateUnitUnderQc((current) => ({
           ...current,
+          ...qcDoneBy,
           qc: "Failed",
           qcInspection: {},
           qcFailureHistory: [
@@ -1346,6 +1476,7 @@ export default function DailyProduction() {
       }
       updateUnitUnderQc((current) => ({
         ...current,
+        ...qcDoneBy,
         qc: "Passed",
         qcInspection: completedReport,
       }));
@@ -1366,6 +1497,9 @@ export default function DailyProduction() {
         : await api.put(`${API_BASE_URL}/assembly/${row.id}`, {
             qc: "Passed",
             qcInspection: completedReport,
+            // A regular user may only send their own status fields, and is
+            // already the unit's QC Done By.
+            ...(isRegularUser ? {} : qcDoneBy),
           });
       if (!response.data.success) throw new Error(response.data.message || "Failed to save QC inspection");
       const updatedRow = response.data.assemblyUnit;
@@ -1490,6 +1624,42 @@ export default function DailyProduction() {
 
   // ---------- Save/Update Assembly record to the backend, then refresh the table ----------
 
+  // Serials from `serials` already recorded on another unit. In Edit mode the
+  // unit's own unchanged serial is skipped, so the unit can still be saved.
+  // The lookups run in parallel and skip the GET cache so a unit saved a moment
+  // ago is seen.
+  const findTakenSerials = async (serials) => {
+    const originalSerial = String(editOriginalValues?.serial || "").trim().toUpperCase();
+    const wanted = [...new Set(serials.map((serial) => String(serial || "").trim().toUpperCase()).filter(Boolean))]
+      .filter((serial) => !(isEditMode && serial === originalSerial));
+    const results = await Promise.all(wanted.map(async (serial) => {
+      const lookup = await api.get(`${API_BASE_URL}/assembly`, {
+        params: { q: serial, page: 1, limit: 100, _fresh: Date.now() },
+        __vectorSuppressLoader: true,
+      });
+      const matches = [...(lookup.data?.assemblyUnits || []), ...(lookup.data?.allRows || [])];
+      return matches.some((unit) => (
+        String(unit.serial || "").trim().toUpperCase() === serial && unit.id !== formValues.id
+      )) ? serial : null;
+    }));
+    return results.filter(Boolean);
+  };
+
+  // Warns as soon as a serial that is already in use is typed, rather than
+  // only when Save is pressed.
+  const checkSerialOnBlur = async (value) => {
+    const serial = String(value || "").trim();
+    if (!serial) return;
+    try {
+      const taken = await findTakenSerials([serial]);
+      if (taken.length) {
+        reportSaveBlocked(`Serial number already exists: ${taken.join(", ")}. Each serial number can be used only once.`);
+      }
+    } catch {
+      // The check on Save still runs; a failed lookup here must not block typing.
+    }
+  };
+
   const handleSave = async (addAnother = false) => {
 
     if (saving) return;
@@ -1514,11 +1684,40 @@ export default function DailyProduction() {
       }
     }
 
+    // Each block is posted separately, so the server only sees one block's
+    // serials at a time. Catch a serial typed in two blocks before the first
+    // one is saved. Serials already recorded are rejected by the server.
+    const seenSerials = new Set();
+    const repeatedSerials = new Set();
+    units.forEach((unit) => {
+      const serials = Array.isArray(unit.serialNumbers) && unit.serialNumbers.length
+        ? unit.serialNumbers
+        : [unit.serial];
+      serials.map((serial) => String(serial || "").trim().toUpperCase()).filter(Boolean).forEach((serial) => {
+        if (seenSerials.has(serial)) repeatedSerials.add(serial);
+        seenSerials.add(serial);
+      });
+    });
+    if (repeatedSerials.size) {
+      reportSaveBlocked(`Duplicate serial number: ${[...repeatedSerials].join(", ")}. Each serial number can be used only once.`);
+      return;
+    }
+
     setSaving(true);
 
     setFormError("");
 
     try {
+      // A serial already recorded on another unit is refused here as well as
+      // by the server. In Edit mode only a changed serial is checked, so a unit
+      // can still be edited while its unchanged serial is looked up.
+      const takenSerials = await findTakenSerials([...seenSerials]);
+      if (takenSerials.length) {
+        setSaving(false);
+        reportSaveBlocked(`Serial number already exists: ${takenSerials.join(", ")}. Each serial number can be used only once.`);
+        return;
+      }
+
       let res;
 
       if (isEditMode) {
@@ -1877,6 +2076,20 @@ export default function DailyProduction() {
     return [...userOptions, { value: qcVerifiedByName, label: qcVerifiedByName }];
   }, [userOptions, qcVerifiedByName]);
 
+  // "Checked By" offers the same users and production incharges as "Verified
+  // By". A name saved before this was a dropdown stays selectable so old
+  // reports still show it.
+  const qcCheckedByName = String(qcInspectionDraft?.checkedBy || "").trim();
+  const qcCheckedByValue = qcCheckedByName
+    ? productionUsers.find((user) => user.name === qcCheckedByName)?.id || qcCheckedByName
+    : "";
+  const qcCheckedByOptions = useMemo(() => {
+    if (!qcCheckedByName || userOptions.some((option) => option.label === qcCheckedByName)) {
+      return userOptions;
+    }
+    return [...userOptions, { value: qcCheckedByName, label: qcCheckedByName }];
+  }, [userOptions, qcCheckedByName]);
+
   const phaseEmptyMessage = phasesError
 
     ? phasesError
@@ -1901,19 +2114,10 @@ export default function DailyProduction() {
     });
   };
 
-  const formIsIncomplete = validateAssemblyForm(formValues, { validateSerialList: !isEditMode }) !== null;
-
-  // In Add mode the unit fields live in the item blocks, so completeness is
-  // judged per block rather than on the header alone.
-  const addItemsIncomplete =
-    !isEditMode &&
-    (!itemDrafts.length ||
-      itemDrafts.some(
-        (draft) =>
-          validateAssemblyForm({ ...formValues, ...draft }, { validateSerialList: true }) !== null
-      ));
-
-  const saveDisabled = saving || (isEditMode ? formIsIncomplete : addItemsIncomplete);
+  // Only a save in progress disables the button. An incomplete form stays
+  // clickable so handleSave can say what is missing (or which serial already
+  // exists) instead of the button silently doing nothing.
+  const saveDisabled = saving;
 
   useEffect(() => {
     api.get(`${API_BASE_URL}/dashboard`, { __vectorBackground: true })
@@ -2051,12 +2255,58 @@ export default function DailyProduction() {
 </div>
 </div>
 
-      <div className="panel">
-<div className="table-controls-row">
-<div className="table-controls-primary">
-<SearchBar value={query} onChange={setQuery} placeholder="Search Assembly Units..." />
-<PageFilter rows={filterOptionRows} fields={PRODUCTION_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
-</div>
+{/* Status cards double as the drill-down for the dashboard KPI row: clicking one
+            applies the same filter the deep link uses, so both routes agree. */}
+        {dashboardHeading ? (
+          <h2 className="dp-focus-heading">{dashboardHeading}</h2>
+        ) : (
+        <div className="dp-status-cards">
+          {STATUS_CARDS.map((card) => {
+            const active = rowFilters[card.field] === card.value;
+            const count = Number(statusSummary[card.key]) || 0;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                className={`dp-status-card${active ? " is-active" : ""}`}
+                onClick={() => toggleStatusCard(card.field, card.value)}
+                aria-pressed={active}
+              >
+                <span className="dp-status-card-label">{card.label}</span>
+                <span className="dp-status-card-value">{count} units</span>
+                <span className="dp-status-card-detail">
+                  {active ? "Showing these units" : "Click to list these units"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        )}
+
+<div className="panel">
+        <div className="table-controls-row">
+          <div className="table-controls-primary">
+            <FilterModal rows={rows} options={filterOptions} fields={PRODUCTION_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <DateRangeFilter
+              fromDate={fromDate}
+              toDate={toDate}
+              onChangeFrom={setFromDate}
+              onChangeTo={setToDate}
+              onApply={(nextFrom, nextTo) => {
+                setAppliedFromDate(nextFrom);
+                setAppliedToDate(nextTo);
+              }}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+                setAppliedFromDate("");
+                setAppliedToDate("");
+              }}
+              error={dateRangeError}
+              startLabel="From Date"
+              endLabel="To Date"
+            />
+          </div>
 <ExportPdfButton
 
             mode="table"
@@ -2095,10 +2345,16 @@ export default function DailyProduction() {
 </div>
 </div>
 
-        ) : rows.length === 0 ? (
-<div className="production-empty-state">
-<span>{isRegularUser ? "No production tasks are currently assigned to you." : "No Assembly Units yet. Click \"Add Assembly Unit\" to create the first record."}</span>
-</div>
+) : rows.length === 0 ? (
+          <div className="production-empty-state">
+            <span>
+              {isDateRangeActive || query.trim() || countActiveFilters(rowFilters) > 0
+                ? "No assembly units match the current search, filters or date range."
+                : isRegularUser
+                  ? "No production tasks are currently assigned to you."
+                  : 'No Assembly Units yet. Click "Add Assembly Unit" to create the first record.'}
+            </span>
+          </div>
 
         ) : (
 <DataTable
@@ -2180,7 +2436,7 @@ export default function DailyProduction() {
           </div>
 
             <form
-
+              ref={formRef}
               className="production-form"
 
               onSubmit={(e) => {
@@ -2286,7 +2542,7 @@ export default function DailyProduction() {
 <span>Serial Numbers <span className="production-required-asterisk">*</span></span>
 <div className="production-serial-input-list">
   {(formValues.serialNumbers || []).map((serial, index) => (
-    <input key={index} value={serial} onChange={(event) => handleSerialNumberChange(index, event.target.value)} placeholder={`Serial No ${index + 1}`} />
+    <input key={index} value={serial} onChange={(event) => handleSerialNumberChange(index, event.target.value)} onBlur={(event) => checkSerialOnBlur(event.target.value)} placeholder={`Serial No ${index + 1}`} />
   ))}
 </div>
 </label>
@@ -2311,8 +2567,11 @@ export default function DailyProduction() {
                     placeholder="e.g. 1"
 
                     required
+
+                    disabled
                   />
-</label>
+                  <small className="production-field-helper">Quantity is fixed once the unit is recorded.</small>
+                </label>
 
                 <label className="production-field">
 <span>QC Status</span>
@@ -2444,7 +2703,7 @@ export default function DailyProduction() {
                           <span className="production-item-number">
                             Item {index + 1}
                             {draft.serialNumbers?.filter(Boolean).length
-                              ? ` · ${draft.serialNumbers.filter(Boolean).length} serial${draft.serialNumbers.filter(Boolean).length === 1 ? "" : "s"}`
+                              ? ` (${draft.serialNumbers.filter(Boolean).length} serial${draft.serialNumbers.filter(Boolean).length === 1 ? "" : "s"})`
                               : ""}
                           </span>
                           {itemDrafts.length > 1 && (
@@ -2507,6 +2766,7 @@ export default function DailyProduction() {
                                       onChange={(event) =>
                                         handleItemSerialChange(index, serialIndex, event.target.value)
                                       }
+                                      onBlur={(event) => checkSerialOnBlur(event.target.value)}
                                       placeholder={`Serial No ${serialIndex + 1}`}
                                     />
                                     <SearchableSelect
@@ -2742,7 +3002,7 @@ export default function DailyProduction() {
                 </div>
 
                 <div className="production-qc-signoff-grid">
-                  <label><span>Checked By <b>*</b></span><input name="checkedBy" value={qcInspectionDraft.checkedBy || ""} onChange={handleQcInspectionFieldChange} placeholder="Inspector name" readOnly={qcReportReadOnly} /></label>
+                  <label><span>Checked By <b>*</b></span><SearchableSelect options={qcCheckedByOptions} value={qcCheckedByValue} onChange={handleQcInspectionUserSelect("checkedBy")} placeholder="Select User" loading={usersLoading} emptyMessage={usersError || "No users found"} disabled={qcReportReadOnly} panelZIndex={QC_OVERLAY_Z} /></label>
                   <label><span>Verified By <b>*</b></span><SearchableSelect options={qcVerifiedByOptions} value={qcVerifiedByValue} onChange={handleQcInspectionUserSelect("verifiedBy")} placeholder="Select User" loading={usersLoading} emptyMessage={usersError || "No users found"} disabled={qcReportReadOnly} panelZIndex={QC_OVERLAY_Z} /></label>
                   <label><span>Authorized By</span><input name="authorizedBy" value={qcInspectionDraft.authorizedBy || ""} onChange={handleQcInspectionFieldChange} placeholder="Optional" readOnly={qcReportReadOnly} /></label>
                 </div>

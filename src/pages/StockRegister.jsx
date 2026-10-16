@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import ActiveFilterChips from "../components/ActiveFilterChips";
+import BackToDashboard from "../components/BackToDashboard";
 import { createPortal } from "react-dom";
-import { Loader2, RefreshCw, Table2, X } from "lucide-react";
-import SearchBar from "../components/SearchBar";
+import { Loader2, RefreshCw, Table2, TriangleAlert, X, Package, Truck } from "lucide-react";
+import { useHeaderSearch } from "../context/HeaderSearch";
 import api from "../components/Api";
+import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
+import MinStockView from "../components/MinStockView";
+import FinishedGoodsView, { FG_FILTER_FIELDS } from "../components/FinishedGoodsView";
 import { useRealtime } from "../components/RealtimeProvider";
-import PageFilter from "../components/PageFilter";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
@@ -18,6 +24,14 @@ const columns = [
   { key: "phase", label: "Phase" },
   { key: "code", label: "Product Code", mono: true },
   { key: "desc", label: "Material Description" },
+  // Rows come only from invoices; this says whether the BOQ still defines the
+  // material. "Not in BOQ" means the BOM line was deleted while the purchase
+  // remains, which is why make/model/BOM qty are blank on that row.
+  {
+    key: "inBoq",
+    label: "BOM",
+    render: (value) => (value ? "Linked" : "Not in BOQ"),
+  },
   { key: "make", label: "Make" },
   { key: "model", label: "Linked Finished Model" },
   { key: "reqQty", label: "Qty per Unit (BOM)" },
@@ -42,8 +56,11 @@ function errorMessage(error) {
 // Tries several common places a role might live. Once you've confirmed the
 // real shape (see console log below), this can be simplified to `user?.role`.
 export default function StockRegister() {
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One search box, rendered in the global header next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("stock-register", "Search Material Stock Register...");
+
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
   const [rows, setRows] = useState([]);
   const [filterOptions, setFilterOptions] = useState({});
   const [page, setPage] = useState(1);
@@ -54,6 +71,38 @@ export default function StockRegister() {
   const [loadError, setLoadError] = useState("");
   const [detailsRow, setDetailsRow] = useState(null);
   const [highlightCode, setHighlightCode] = useState("");
+  const [view, setView] = useState("table");
+  const [fgQuery, setFgQuery] = useState("");
+  const [fgRows, setFgRows] = useState([]);
+  const [fgFilterOptions, setFgFilterOptions] = useState({});
+  const [fgPage, setFgPage] = useState(1);
+  const [fgPageSize, setFgPageSize] = useState(PAGE_SIZE);
+  const [fgTotalPages, setFgTotalPages] = useState(1);
+  const [fgTotalCount, setFgTotalCount] = useState(0);
+  const [fgLoading, setFgLoading] = useState(false);
+  const [fgLoadError, setFgLoadError] = useState("");
+  const [fgSummary, setFgSummary] = useState({ inStock: 0, sold: 0, total: 0 });
+  // Finished Goods filters live here rather than inside FinishedGoodsView
+  // because the request is made here. They used to be view-local, so they never
+  // reached the query string and the FilterModal (and the summary cards that
+  // drive the same `status` filter) had no effect on the rows.
+  const [fgRowFilters, setFgRowFilters] = useState({});
+
+  // A dashboard KPI card can deep-link here: "In Stock" opens the Finished
+  // Goods tab, "Materials Below Min Stock" opens Min Stock, and a `field`/`value`
+  // pair narrows the table itself. Declared after `view` because it needs
+  // `setView`.
+  // A link that opens the Finished Goods tab carries a Finished Goods filter, so
+  // it has to land in fgRowFilters, not the material table's filters. Read once:
+  // the hook strips `view` from the URL after applying it.
+  const [searchParams] = useSearchParams();
+  const [deepLinkToFg] = useState(() => searchParams.get("view") === "finishedgoods");
+  const arrivedFromDashboard = useDashboardDeepLink(
+    deepLinkToFg ? FG_FILTER_FIELDS : STOCK_FILTER_FIELDS,
+    (patch) => (deepLinkToFg ? setFgRowFilters : setRowFilters)((prev) => ({ ...prev, ...patch })),
+    setView,
+    ["table", "minstock", "finishedgoods"]
+  );
 
   const fetchStock = useCallback(async ({ silent = false, targetPage } = {}) => {
     if (!silent) setLoading(false);
@@ -68,10 +117,7 @@ export default function StockRegister() {
       params.set("limit", String(pageSize));
       const search = query.trim();
       if (search) params.set("q", search);
-      if (pageFilter.field && pageFilter.value !== "") {
-        params.append("filterField", pageFilter.field);
-        params.append("filterValue", String(pageFilter.value));
-      }
+      toFilterParams(rowFilters, STOCK_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
 
       const response = await api.get(`${API_BASE_URL}/stock-register?${params.toString()}`);
       if (!response.data.success) throw new Error(response.data.message || "Failed to load stock register");
@@ -86,11 +132,11 @@ export default function StockRegister() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, query, pageFilter]);
+  }, [page, pageSize, query, rowFilters]);
 
   // Changing a filter has to restart at page 1, otherwise narrowing the result
   // set can leave the user parked on a page that no longer exists.
-  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}`;
   const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -122,40 +168,14 @@ export default function StockRegister() {
 
   // Clear highlight when user changes search or filter
   useEffect(() => {
-    if (query || pageFilter.value) setHighlightCode("");
-  }, [query, pageFilter]);
+    if (query || countActiveFilters(rowFilters)) setHighlightCode("");
+  }, [query, rowFilters]);
 
-  // The API already applied the search and PageFilter to the whole register,
-  // so this is only a cheap double-check. It mirrors the API's
-  // case-insensitive comparison (unlike the shared matchesPageFilter helper,
-  // which is case-sensitive) so it can never hide a row the server matched.
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      const matchesSearch = !q || columns.some((column) => String(row[column.key] ?? "").toLowerCase().includes(q));
-      if (!matchesSearch) return false;
-      if (!pageFilter.field || pageFilter.value === "") return true;
-      const field = STOCK_FILTER_FIELDS.find((item) => item.key === pageFilter.field);
-      if (!field) return true;
-      return (
-        String(row[field.key] ?? "").trim().toLowerCase() ===
-        String(pageFilter.value).trim().toLowerCase()
-      );
-    });
-  }, [query, rows, pageFilter]);
+  // The API already applied the search and PageFilter to the whole register, so
+  // the server response is authoritative.
+  const filteredRows = useMemo(() => rows, [rows]);
 
-  // The PageFilter dropdown draws its options from the whole register (the API
-  // sends them), so a narrow page never makes the other values disappear.
-  // Must be a flat array: PageFilter iterates `rows.forEach`.
-  const filterOptionRows = useMemo(
-    () =>
-      STOCK_FILTER_FIELDS.flatMap((field) =>
-        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
-      ),
-    [filterOptions]
-  );
-
-  const filtersActive = Boolean(query.trim()) || Boolean(pageFilter.value);
+  const filtersActive = Boolean(query.trim()) || countActiveFilters(rowFilters) > 0;
 
   // Which column header the user sorted by. DataTable owns the interaction and
   // reports it back, so the export can be written in the order on screen.
@@ -171,27 +191,118 @@ export default function StockRegister() {
     setPage(1);
   };
 
+  // Finished Goods fetch
+  const fetchFinishedGoods = useCallback(async ({ silent = false, targetPage } = {}) => {
+    if (!silent) setFgLoading(false);
+    setFgLoadError("");
+    const pageToFetch = targetPage ?? fgPage;
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(pageToFetch));
+      params.set("limit", String(fgPageSize));
+      const search = fgQuery.trim();
+      if (search) params.set("q", search);
+      // The endpoint filters the whole set server-side, then pages what is left,
+      // so the summary tiles keep reporting overall counts while the table shows
+      // just the selected status.
+      toFilterParams(fgRowFilters, FG_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
+      const response = await api.get(`${API_BASE_URL}/stock-register/finished-goods?${params.toString()}`);
+      if (!response.data.success) throw new Error(response.data.message || "Failed to load finished goods");
+      setFgRows(response.data.finishedGoods || []);
+      setFgFilterOptions(response.data.filterOptions || {});
+      setFgSummary(response.data.summary || { inStock: 0, sold: 0, total: 0 });
+      const pagination = response.data.pagination || {};
+      setFgTotalPages(pagination.totalPages || 1);
+      setFgTotalCount(pagination.totalCount || 0);
+      if (pagination.page && pagination.page !== pageToFetch) setFgPage(pagination.page);
+    } catch (error) {
+      setFgLoadError(errorMessage(error));
+    } finally {
+      if (!silent) setFgLoading(false);
+    }
+  }, [fgPage, fgPageSize, fgQuery, fgRowFilters]);
+
+  const fgFilterKey = `${fgQuery.trim()}|${JSON.stringify(fgRowFilters)}`;
+  const prevFgFilterKeyRef = useRef(fgFilterKey);
+
+  useEffect(() => {
+    const filtersChanged = prevFgFilterKeyRef.current !== fgFilterKey;
+    prevFgFilterKeyRef.current = fgFilterKey;
+    if (filtersChanged && fgPage !== 1) {
+      setFgPage(1);
+      return;
+    }
+    fetchFinishedGoods({ targetPage: filtersChanged ? 1 : fgPage });
+  }, [fgPage, fgPageSize, fgFilterKey]);
+
+  // Finished goods are derived from assembly_units + sales, so refresh on those writes
+  useRealtime(["assembly_units", "sales"], () => fetchFinishedGoods({ silent: true }));
+
   return (
     <div className="stock-page">
+      <BackToDashboard visible={arrivedFromDashboard} />
       <div className="stock-toolbar">
         <div className="stock-view-switch" role="tablist" aria-label="Stock register view">
           <button
             type="button"
             role="tab"
-            aria-selected="true"
-            className="stock-view-btn active"
+            aria-selected={view === "table"}
+            className={`stock-view-btn${view === "table" ? " active" : ""}`}
+            onClick={() => setView("table")}
           >
             <Table2 size={15} /> Table View
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "minstock"}
+            className={`stock-view-btn${view === "minstock" ? " active" : ""}`}
+            onClick={() => setView("minstock")}
+          >
+            <TriangleAlert size={15} /> Min Stock
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "finishedgoods"}
+            className={`stock-view-btn${view === "finishedgoods" ? " active" : ""}`}
+            onClick={() => setView("finishedgoods")}
+          >
+            <Package size={15} /> Finished Goods
           </button>
         </div>
 
       </div>
 
+      {view === "minstock" ? (
+        <MinStockView onSelectRow={openDetails} />
+      ) : view === "finishedgoods" ? (
+        <FinishedGoodsView
+          query={fgQuery}
+          setQuery={setFgQuery}
+          filters={fgRowFilters}
+          onFiltersChange={setFgRowFilters}
+          rows={fgRows}
+          filterOptions={fgFilterOptions}
+          summary={fgSummary}
+          loading={fgLoading}
+          loadError={fgLoadError}
+          page={fgPage}
+          pageSize={fgPageSize}
+          totalPages={fgTotalPages}
+          totalCount={fgTotalCount}
+          onPageChange={setFgPage}
+          onPageSizeChange={setFgPageSize}
+          onRetry={() => fetchFinishedGoods({ targetPage: fgPage })}
+          onViewDetails={openDetails}
+        />
+      ) : (
+        <>
       <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search Material Stock Register..." />
-            <PageFilter rows={filterOptionRows} fields={STOCK_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+            <FilterModal rows={rows} options={filterOptions} fields={STOCK_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <ActiveFilterChips fields={STOCK_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
           </div>
           <ExportPdfButton mode="table" title="Material Stock Register" columns={columns} rows={exportTableRows} />
         </div>
@@ -221,8 +332,10 @@ export default function StockRegister() {
               onPageSizeChange={handlePageSizeChange}
             />
           )}
+        </>
+      )}
 
-          {detailsRow && createPortal(
+      {detailsRow && createPortal(
             <div className="stock-details-overlay" onClick={closeDetails}>
               <div
                 className="stock-details-container"
@@ -259,7 +372,6 @@ export default function StockRegister() {
             </div>,
             document.body
           )}
-      {/* )} */}
     </div>
   );
 }

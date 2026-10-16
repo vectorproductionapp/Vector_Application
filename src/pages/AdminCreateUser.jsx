@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import Swal from "sweetalert2";
 import {
@@ -14,7 +14,8 @@ import {
   X,
 } from "lucide-react";
 import api from "../components/Api";
-import PageFilter, { matchesPageFilter } from "../components/PageFilter";
+import FilterModal, { countActiveFilters, matchesFilters } from "../components/FilterModal";
+import { useHeaderSearch } from "../context/HeaderSearch";
 import ListPagination from "../components/ListPagination";
 import { useAuth } from "../context/Auth";
 
@@ -80,8 +81,8 @@ function AdminCreateUser() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
-  // Client-side paging: /admin/users returns the whole list and the filter
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
   // runs over every account, so the slice happens after filtering.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -112,7 +113,7 @@ function AdminCreateUser() {
   // A changed filter starts back at page 1 so the first matches are visible.
   useEffect(() => {
     setPage(1);
-  }, [pageFilter.field, pageFilter.value]);
+  }, [rowFilters]);
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
   const setRole = (role) => setForm((f) => ({ ...f, role }));
@@ -230,7 +231,19 @@ function AdminCreateUser() {
     }
   };
 
-  const filteredUsers = users.filter((user) => matchesPageFilter(user, pageFilter, USER_FILTER_FIELDS));
+  // Users are fetched in one unpaginated call, so filtering here covers the whole
+  // list. The search text lives in the top header, next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("users", "Search name, email or role...");
+
+  const searchedUsers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((user) =>
+      [user.name, user.email, user.role].some((value) => String(value ?? "").toLowerCase().includes(q))
+    );
+  }, [users, query]);
+
+  const filteredUsers = searchedUsers.filter((user) => matchesFilters(user, rowFilters, USER_FILTER_FIELDS));
   const totalCount = filteredUsers.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -243,12 +256,12 @@ function AdminCreateUser() {
         <div className="acu-top-left">
           <Users size={20} />
           <div>
-            <h2>Manage Users</h2>
+            <h2>User Management</h2>
             <p>{users.length} account{users.length !== 1 && "s"} registered</p>
           </div>
         </div>
         <div className="acu-top-actions">
-          <PageFilter rows={users} fields={USER_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+          <FilterModal rows={users} fields={USER_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
           <button className="acu-create-btn" onClick={openModal}>
             <UserPlus size={16} />
             Create User
@@ -266,7 +279,11 @@ function AdminCreateUser() {
         ) : filteredUsers.length === 0 ? (
           <div className="acu-empty">
             <Users size={36} />
-            <p>No users found</p>
+            <p>
+              {query.trim() || countActiveFilters(rowFilters) > 0
+                ? `No users match "${query.trim()}".`
+                : "No users found"}
+            </p>
           </div>
         ) : (
           <table className="acu-table">
@@ -306,21 +323,24 @@ function AdminCreateUser() {
             </tbody>
           </table>
         )}
-        {!loading && totalCount > 0 && (
-          <ListPagination
-            page={safePage}
-            pageSize={pageSize}
-            totalPages={totalPages}
-            totalCount={totalCount}
-            rowCount={pageUsers.length}
-            onPageChange={setPage}
-            onPageSizeChange={(next) => {
-              setPageSize(next);
-              setPage(1);
-            }}
-          />
-        )}
       </div>
+
+      {/* Outside the scrollable wrapper: the pager must stay put instead of
+          scrolling away with the rows once the list outgrows the fixed height. */}
+      {!loading && totalCount > 0 && (
+        <ListPagination
+          page={safePage}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          rowCount={pageUsers.length}
+          onPageChange={setPage}
+          onPageSizeChange={(next) => {
+            setPageSize(next);
+            setPage(1);
+          }}
+        />
+      )}
 
       {/* ── Create user modal ── */}
       {showModal && createPortal(

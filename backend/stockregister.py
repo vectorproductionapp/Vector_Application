@@ -19,6 +19,23 @@ def _number(value):
         return 0
 
 
+def _sort_timestamp(value):
+    """Seconds for an ISO date string, or 0 when absent/unparseable.
+
+    Sorting needs a number. The ISO strings in this collection compare
+    correctly as text, but they cannot be negated the way a number can, and
+    `updatedAt` is sometimes missing, so a numeric stamp keeps one ordering
+    expression for every row.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _parse_pagination_params(args):
     try:
         page = int(args.get("page", 1))
@@ -102,6 +119,43 @@ def _row_matches_filters(row, search, filters):
         if _text(row.get(field)).lower() != value.lower():
             return False
     return True
+
+
+def _sale_priority(status):
+    """Priority order for sale dispatch status (higher = more advanced)."""
+    priority = {
+        "": 0, "cancelled": 0, "pending": 1, "processing": 2,
+        "demo": 3, "dispatched": 4, "delivered": 5
+    }
+    return priority.get(str(status or "").strip().casefold(), 0)
+
+
+def _get_delivered_serials():
+    """Serials that a delivered sale has taken out of stock.
+
+    Firestore `==` is case-sensitive, and this app stores dispatch as title case
+    ("Delivered", legacy "Dispatched"). Querying for the lowercase words matched
+    nothing, so every packed unit looked unsold and "Sold Units" always read 0.
+    Firestore cannot compare case-insensitively, so the comparison happens here
+    instead, and only "Delivered" counts - the same rule the dashboard uses - so
+    both pages report one stock figure rather than two.
+    """
+    delivered_serials = set()
+    for doc in db.collection("sale_register").stream():
+        data = doc.to_dict() or {}
+        dispatch = str(data.get("dispatch") or "").strip().casefold()
+        if dispatch != "delivered":
+            continue
+        numbers = data.get("serialNumbers")
+        if isinstance(numbers, list):
+            serials = [str(value).strip() for value in numbers if str(value).strip()]
+        else:
+            # Older records keep one comma-joined `serial`.
+            single = str(data.get("serial") or "").strip()
+            serials = [part.strip() for part in single.split(",") if part.strip()]
+        delivered_serials.update(serial.casefold() for serial in serials)
+
+    return delivered_serials
 
 
 @stockregister_bp.route("/stock-register", methods=["GET"])
@@ -201,8 +255,12 @@ def list_stock_register():
                     "minLevel": 0,
                 }
                 remember_item(key, model_id, phase_id, phase_name, code)
-            item = items[key]
-            item["purchased"] += _number(data.get("qtyRecv"))
+                item = items[key]
+                # Invoices are the only source of rows. A row the BOQ never
+                # matches means the material was invoiced but its BOM line is
+                # gone, which is why such rows show blank make/model/BOM values.
+                item["inBoq"] = False
+                item["purchased"] += _number(data.get("qtyRecv"))
             if not item["desc"]:
                 item["desc"] = data.get("desc", "")
 
@@ -227,6 +285,8 @@ def list_stock_register():
                     # Not available on any invoice yet: not in the register.
                     continue
                 item = items[key]
+                # The BOM still defines this material, so the row is not orphaned.
+                item["inBoq"] = True
                 item["desc"] = row.get("desc", "") or item["desc"]
                 item["make"] = row.get("make", "") or item["make"]
                 item["model"] = row.get("model", "") or item["model"] or model_names.get(model_id, "")
@@ -291,3 +351,193 @@ def list_stock_register():
         return response, 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch stock register: {exc}"}), 500
+
+
+# ---- Finished Goods Stock (Packed units vs Delivered units) ----
+
+_FG_SEARCH_KEYS = ("model", "serial", "phase", "packagedBy", "packagedDate", "status")
+_FG_FILTER_FIELDS = frozenset({"model", "phase", "status"})
+
+
+def _fg_row_matches_filters(row, search, filters):
+    if search and not any(search in _text(row.get(key)).lower() for key in _FG_SEARCH_KEYS):
+        return False
+    for field, value in filters:
+        if _text(row.get(field)).lower() != value.lower():
+            return False
+    return True
+
+
+@stockregister_bp.route("/stock-register/finished-goods", methods=["GET"])
+@roles_required("admin", "coadmin", "production_incharge")
+@cached_read("stock-register-finished-goods", ttl_seconds=120)
+def list_finished_goods_stock():
+    """Finished goods inventory: Packed units (In Stock) vs Delivered units (Sold).
+
+    - In Stock: assembly_units with QC=Passed, packagingStatus=Packed, serial NOT in delivered sales
+    - Sold: assembly_units with QC=Passed, serial IN delivered sales (dispatch=Delivered)
+    - Matches by serial number to determine actual availability.
+    - "Delivered" only, not "Dispatched": a dispatched-but-not-delivered unit is
+      still counted as stock by the dashboard, and both pages must agree.
+    """
+    try:
+        # Get delivered serials from sales register
+        delivered_serials = _get_delivered_serials()
+
+        # Fetch all QC-passed assembly units
+        assembly_docs = list(db.collection("assembly_units").stream())
+        
+        packed_units = []
+        for doc in assembly_docs:
+            data = doc.to_dict() or {}
+            # Only consider QC-passed units
+            if str(data.get("qc", "")).strip().casefold() != "passed":
+                continue
+            
+            serial = str(data.get("serial", "")).strip()
+            if not serial:
+                continue
+            
+            # Determine status by checking if serial is in delivered sales
+            serial_key = serial.casefold()
+            is_delivered = serial_key in delivered_serials
+            status = "Sold" if is_delivered else "In Stock"
+            
+            # Only include packed units for In Stock; include all for Sold
+            packaging_status = str(data.get("packagingStatus", "")).strip()
+            if not is_delivered and packaging_status != "Packed":
+                continue
+            
+            packed_units.append({
+                "id": doc.id,
+                "modelId": data.get("modelId", ""),
+                "model": data.get("model", ""),
+                "phaseId": data.get("phaseId", ""),
+                "phase": data.get("phase", ""),
+                "serial": serial,
+                "packagingStatus": packaging_status,
+                "packagedBy": data.get("packagedBy", ""),
+                "packagedById": data.get("packagedById", ""),
+                "packagedDate": data.get("updatedAt").isoformat() if data.get("updatedAt") else None,
+                "assembledBy": data.get("assembledBy", ""),
+                "assembledDate": data.get("date", ""),
+                "qcBy": data.get("qcBy", ""),
+                "status": status,
+                "isDelivered": is_delivered,
+            })
+
+        # Sort: In Stock first, then Sold; newest packaged date first inside each
+        # group. Undated rows score 0, which the negated stamp pushes behind every
+        # dated row instead of ahead of them.
+        packed_units.sort(key=lambda u: (
+            0 if u["status"] == "In Stock" else 1,
+            -_sort_timestamp(u["packagedDate"]),
+        ))
+
+        # Apply search and filters
+        search = (request.args.get("q") or "").strip().lower()
+        raw_fields = request.args.getlist("filterField")
+        raw_values = request.args.getlist("filterValue")
+        filters = []
+        for raw_field, raw_value in zip(raw_fields, raw_values):
+            field = (raw_field or "").strip()
+            if field in _FG_FILTER_FIELDS:
+                filters.append((field, str(raw_value or "")))
+
+        filtered_units = [u for u in packed_units if _fg_row_matches_filters(u, search, filters)]
+
+        # Filter options for dropdowns
+        filter_options = {
+            key: sorted({_text(u.get(key)) for u in packed_units if _text(u.get(key))},
+                        key=lambda value: value.lower())
+            for key in sorted(_FG_FILTER_FIELDS)
+        }
+
+        page, limit = _parse_pagination_params(request.args)
+        total_count = len(filtered_units)
+        total_pages = max(1, math.ceil(total_count / limit))
+        page = min(page, total_pages)
+        start = (page - 1) * limit
+
+        response = jsonify({
+            "success": True,
+            "finishedGoods": filtered_units[start:start + limit],
+            "filterOptions": filter_options,
+            "summary": {
+                "inStock": sum(1 for u in packed_units if u["status"] == "In Stock"),
+                "sold": sum(1 for u in packed_units if u["status"] == "Sold"),
+                "total": len(packed_units),
+            },
+            "pagination": {"page": page, "limit": limit, "totalCount": total_count,
+                           "totalPages": total_pages, "hasNextPage": page < total_pages,
+                           "hasPrevPage": page > 1},
+        })
+        response.headers["Cache-Control"] = "no-store"
+        return response, 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to fetch finished goods stock: {exc}"}), 500
+
+
+# ---- Debug: Check for duplicate serials in assembly_units ----
+@stockregister_bp.route("/stock-register/debug/assembly-serials", methods=["GET"])
+@roles_required("admin", "coadmin", "production_incharge")
+def debug_assembly_serials():
+    """Debug endpoint to find duplicate serials in assembly_units."""
+    try:
+        assembly_docs = list(db.collection("assembly_units").stream())
+        
+        serial_counts = {}
+        qc_passed = []
+        all_serials = []
+        
+        for doc in assembly_docs:
+            data = doc.to_dict() or {}
+            serial = str(data.get("serial", "")).strip()
+            if not serial:
+                continue
+            all_serials.append(serial)
+            serial_key = serial.casefold()
+            serial_counts[serial_key] = serial_counts.get(serial_key, 0) + 1
+            
+            if str(data.get("qc", "")).strip().casefold() == "passed":
+                qc_passed.append({
+                    "serial": serial,
+                    "packagingStatus": str(data.get("packagingStatus", "")).strip(),
+                    "docId": doc.id,
+                    "model": data.get("model", ""),
+                    "phase": data.get("phase", ""),
+                })
+        
+        duplicates = {serial: count for serial, count in serial_counts.items() if count > 1}
+        
+        # Get delivered serials from sales
+        sales_collection = db.collection("sale_register")
+        delivered_serials = set()
+        for status in ["delivered", "dispatched"]:
+            docs = sales_collection.where("dispatch", "==", status).stream()
+            for doc in docs:
+                data = doc.to_dict() or {}
+                serials = data.get("serialNumbers")
+                if not isinstance(serials, list):
+                    legacy_serial = str(data.get("serial", "")).strip()
+                    serials = [legacy_serial] if legacy_serial else []
+                for s in serials:
+                    if s:
+                        delivered_serials.add(str(s).strip().casefold())
+        
+        # Classify each QC-passed unit
+        for unit in qc_passed:
+            unit["isDelivered"] = unit["serial"].casefold() in delivered_serials
+            unit["status"] = "Sold" if unit["isDelivered"] else ("In Stock" if unit["packagingStatus"] == "Packed" else "Not Packed")
+        
+        return jsonify({
+            "success": True,
+            "totalAssemblyUnits": len(all_serials),
+            "uniqueSerials": len(serial_counts),
+            "duplicateSerials": duplicates,
+            "qcPassedCount": len(qc_passed),
+            "deliveredSerialsCount": len(delivered_serials),
+            "units": qc_passed,
+        }), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Debug error: {exc}"}), 500

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Boxes,
   CircleDot,
@@ -54,7 +55,7 @@ function useCountUp(value, duration = 700) {
   return displayValue;
 }
 
-export default function KpiCard({ kpi }) {
+export default function KpiCard({ kpi, to }) {
   const Icon = KPI_ICONS[kpi.key] || Boxes;
   const animatedValue = useCountUp(kpi.value);
   const value = Number(kpi.value) || 0;
@@ -70,8 +71,31 @@ export default function KpiCard({ kpi }) {
     : kpi.key === "qcInspection" ? "Awaiting quality decision"
     : "Live operational total";
 
+  const className = `kpi-card kpi-card--${tone}${isNegativeMetric && value > 0 ? " kpi-card--attention" : ""}`;
+
+  // Cards with a destination become real links, so middle-click and
+  // "open in new tab" work and the card is reachable by keyboard.
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={`${className} kpi-card--link`}
+        aria-label={`${kpi.label}: ${kpi.value}. Go to details.`}
+      >
+        <span className="kpi-icon" aria-hidden="true">
+          <Icon size={18} strokeWidth={2} />
+        </span>
+        <span className="kpi-value">
+          {kpi.currency ? fmtINR(animatedValue) : animatedValue.toLocaleString("en-IN")}
+        </span>
+        <span className="kpi-label">{kpi.label}</span>
+        <span className="kpi-context">{context}</span>
+      </Link>
+    );
+  }
+
   return (
-    <article className={`kpi-card kpi-card--${tone}${isNegativeMetric && value > 0 ? " kpi-card--attention" : ""}`} aria-label={`${kpi.label}: ${kpi.value}`}>
+    <article className={className} aria-label={`${kpi.label}: ${kpi.value}`}>
       <span className="kpi-icon" aria-hidden="true">
         <Icon size={18} strokeWidth={2} />
       </span>

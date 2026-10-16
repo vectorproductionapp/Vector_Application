@@ -579,6 +579,43 @@ def generate_item_code():
         return jsonify({"success": False, "message": f"Failed to generate Item Code: {exc}"}), 500
 
 
+@models_bp.route("/item-codes/<item_code>", methods=["DELETE"])
+@roles_required("admin", "coadmin")
+def delete_item_code(item_code):
+    """Delete an Item Code and clean up all associated phase and BOQ references."""
+    try:
+        normalised = _normalise_item_code(item_code)
+        if not normalised:
+            return jsonify({"success": False, "message": "Invalid item code format"}), 400
+        
+        item_code_doc = _item_code_ref(normalised).get()
+        if not item_code_doc.exists:
+            return jsonify({"success": False, "message": "Item Code not found"}), 404
+        
+        # 1. Update all phases referencing this item code to remove the reference
+        phases_updated = 0
+        for model_doc in models_collection.stream():
+            phases_snap = model_doc.reference.collection("phases").where("itemCodeId", "==", item_code_doc.id).stream()
+            for phase_doc in phases_snap:
+                model_doc.reference.collection("phases").document(phase_doc.id).update({
+                    "itemCodeId": "",
+                    "itemCode": "",
+                })
+                phases_updated += 1
+        
+        # 2. Delete the item code catalog entry
+        _item_code_ref(normalised).delete()
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Item Code deleted and associated phase references cleaned up.",
+            "itemCode": normalised
+        }), 200
+        
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to delete Item Code: {exc}"}), 500
+
+
 def _assign_global_item_codes(rows, existing_rows=None, create_missing=False):
     """Resolve BOQ rows to catalog Item Codes, preserving legacy payloads.
 
@@ -646,6 +683,115 @@ def _assign_global_item_codes(rows, existing_rows=None, create_missing=False):
     return prepared_rows
 
 
+@models_bp.route("/item-codes/purge-orphans", methods=["POST"])
+@roles_required("admin", "coadmin")
+def purge_orphan_item_codes():
+    """Find Item Codes no BOQ row defines any more and remove them everywhere.
+
+    Codes deleted before this cleanup existed are unreachable from a BOQ save:
+    the code is gone from the rows, so no save reports it as removed, yet its
+    invoice line still keeps it in the Stock Register. This reconciles them.
+
+    Defaults to a dry run so the caller sees the list before anything is deleted
+    - these include invoice lines, which are financial records. Pass
+    `{"confirm": true}` to actually remove them.
+    """
+    try:
+        confirm = bool((request.get_json(silent=True) or {}).get("confirm"))
+
+        boq_codes = set()
+        for boq_doc in db.collection_group("boqs").stream():
+            for row in (boq_doc.to_dict() or {}).get("rows", []) or []:
+                code = _normalise_item_code(row.get("code"))
+                if code:
+                    boq_codes.add(code)
+
+        invoice_codes = set()
+        for invoice_doc in db.collection("invoices").stream():
+            code = _normalise_item_code((invoice_doc.to_dict() or {}).get("code"))
+            if code:
+                invoice_codes.add(code)
+
+        catalog_codes = set()
+        for doc in item_codes_collection.stream():
+            code = _normalise_item_code((doc.to_dict() or {}).get("code"))
+            if code:
+                catalog_codes.add(code)
+
+        orphans = sorted((invoice_codes | catalog_codes) - boq_codes)
+
+        if not confirm or not orphans:
+            return jsonify({
+                "success": True,
+                "purged": [],
+                "orphans": orphans,
+                "confirmationRequired": bool(orphans),
+            }), 200
+
+        purged = _purge_item_code_everywhere(orphans)
+        invalidate_read_cache()
+        return jsonify({
+            "success": True,
+            "purged": purged,
+            "orphans": orphans,
+            "confirmationRequired": False,
+        }), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to purge orphan Item Codes: {exc}"}), 500
+
+
+def _purge_item_code_everywhere(codes):
+    """Remove these Item Codes from every collection that stores one.
+
+    Deleting a BOQ row used to leave the code behind in the global Item Code
+    catalogue, in other phases, and on invoice lines - so it kept showing up in
+    the Stock Register (which is built from invoices) and re-adding the number
+    brought the old description back. This removes the code from all of them.
+
+    Invoice lines are financial records, so this is why the caller must confirm
+    with the user first. Returns a per-code tally of what was removed.
+    """
+    report = {}
+    for code in sorted({_normalise_item_code(value) for value in codes or []} - {""}):
+        removed = {"boqRows": 0, "invoices": 0, "phases": 0}
+
+        # 1. Drop the code from every BOQ row in every phase.
+        for boq_doc in db.collection_group("boqs").stream():
+            boq = boq_doc.to_dict() or {}
+            rows = boq.get("rows", []) or []
+            kept = [row for row in rows
+                    if _normalise_item_code(row.get("code")) != code]
+            if len(kept) == len(rows):
+                continue
+            removed["boqRows"] += len(rows) - len(kept)
+            boq_doc.reference.update({"rows": kept})
+
+        # 2. Clear a phase-level reference to the code.
+        for model_doc in models_collection.stream():
+            phases_ref = model_doc.reference.collection("phases")
+            for phase_doc in phases_ref.stream():
+                if _normalise_item_code((phase_doc.to_dict() or {}).get("itemCode")) != code:
+                    continue
+                phase_doc.reference.update({"itemCode": "", "itemCodeId": ""})
+                removed["phases"] += 1
+
+        # 3. Delete invoice lines carrying the code. One document per line, so
+        #    the documents themselves are what go.
+        for invoice_doc in db.collection("invoices").where("code", "==", code).stream():
+            invoice_doc.reference.delete()
+            removed["invoices"] += 1
+
+        # 4. Delete the catalogue entry so the number starts clean next time.
+        try:
+            _item_code_ref(code).delete()
+        except Exception:
+            pass
+
+        report[code] = removed
+
+    return report
+
+
 def _serialize_boq(doc):
     d = doc.to_dict()
     return {
@@ -676,6 +822,54 @@ def _parse_pagination_params(args):
     return page, limit
 
 
+def _boq_row_text(row, key):
+    """Render one BOQ cell as the search box sees it (plain, trimmed string)."""
+    value = row.get(key)
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    return str(value).strip()
+
+
+# Columns the BOQ search box scans (mirrors BOQ_COLUMNS in Boq.jsx, minus the
+# three money columns that are derived from rate/qty rather than stored).
+_BOQ_SEARCH_KEYS = ("phase", "code", "desc", "make", "model", "uom", "reqQty",
+                    "minStock", "minStockQty", "vendor", "rate", "gstRate", "remarks")
+
+# Fields the BOQ PageFilter dropdown offers (mirrors BOQ_FILTER_FIELDS).
+_BOQ_FILTER_FIELDS = frozenset({"phase", "make", "model", "uom", "vendor"})
+
+
+def _boq_row_matches(row, search, filters):
+    """True when a BOQ row passes the active search + field filters.
+
+    Compared case-insensitively so `dell` / `Dell` behave the same in both
+    layers.  The search runs over every row in the BOQ document before the page
+    is cut, so a hit on page 2 is still found while page 1 is on screen.
+    """
+    if search and not any(search in _boq_row_text(row, key).lower() for key in _BOQ_SEARCH_KEYS):
+        return False
+    return all(_boq_row_text(row, field).lower() == value.lower() for field, value in filters)
+
+
+def _boq_amounts(row):
+    """Basic / GST / total money for one row, matching boqGstAmounts() in the UI."""
+    try:
+        rate = float(row.get("rate") or 0)
+    except (TypeError, ValueError):
+        rate = 0.0
+    try:
+        qty = float(row.get("reqQty") or 0)
+    except (TypeError, ValueError):
+        qty = 0.0
+    if not rate:
+        return None
+    base = rate * qty
+    gst = round(base * _row_gst_rate(row) / 100, 2)
+    return base, gst, round(base + gst, 2)
+
+
 @models_bp.route("/models/<model_id>/phases/<phase_id>/boq", methods=["GET"])
 @roles_required("admin", "coadmin")
 @cached_read("boq", ttl_seconds=120)
@@ -690,13 +884,47 @@ def get_boq(model_id, phase_id):
         boq_data = _serialize_boq(boq_doc)
         rows = boq_data.get("rows", []) or []
 
-        total_count = len(rows)
+        # Search and PageFilter run over every row in the BOQ document, then the
+        # page is cut, so a search never silently misses rows living on other
+        # pages.  The money totals accumulate over the same full match set.
+        search = (request.args.get("q") or "").strip().lower()
+        filters = []
+        for raw_field, raw_value in zip(request.args.getlist("filterField"),
+                                        request.args.getlist("filterValue")):
+            field = (raw_field or "").strip()
+            if field in _BOQ_FILTER_FIELDS:
+                filters.append((field, str(raw_value or "").strip()))
+
+        matching_rows = [row for row in rows if _boq_row_matches(row, search, filters)]
+
+        # Distinct values per filterable field over every BOQ row, so the
+        # PageFilter dropdown keeps its full option list while a filter is on.
+        filter_options = {
+            key: sorted({_boq_row_text(row, key) for row in rows
+                         if _boq_row_text(row, key)},
+                        key=str.lower)
+            for key in sorted(_BOQ_FILTER_FIELDS)
+        }
+
+        total_base = 0.0
+        total_gst = 0.0
+        total_incl_gst = 0.0
+        for row in matching_rows:
+            amounts = _boq_amounts(row)
+            if not amounts:
+                continue
+            base, gst, line_total = amounts
+            total_base += base
+            total_gst += gst
+            total_incl_gst += line_total
+
+        total_count = len(matching_rows)
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
             page = total_pages
 
         offset = (page - 1) * limit
-        page_rows = rows[offset:offset + limit]
+        page_rows = matching_rows[offset:offset + limit]
 
         return jsonify({
             "success": True,
@@ -704,6 +932,9 @@ def get_boq(model_id, phase_id):
                 **boq_data,
                 "rows": page_rows,
                 "allRows": rows,
+                "filterOptions": filter_options,
+                "totals": {"base": round(total_base, 2), "gst": round(total_gst, 2),
+                           "total": round(total_incl_gst, 2)},
                 "pagination": {
                     "page": page,
                     "limit": limit,
@@ -797,14 +1028,33 @@ def update_boq(model_id, phase_id, boq_id):
         if not existing_boq.exists:
             return jsonify({"success": False, "message": "BOQ not found"}), 404
 
+        previous_rows = (existing_boq.to_dict() or {}).get("rows", [])
         rows = _assign_global_item_codes(
             rows,
-            (existing_boq.to_dict() or {}).get("rows", []),
+            previous_rows,
             create_missing=bool(data.get("createMissingItemCodes")),
         )
         _save_suppliers(rows)
         boq_ref.update({"rows": rows})
-        return jsonify({"success": True, "message": "BOQ updated"}), 200
+
+        # Codes this save removed from the BOQ are purged from every collection
+        # that stores one, so the number cannot linger in the catalogue, another
+        # phase, or an invoice (which is what keeps it visible in the Stock
+        # Register). Runs after the write so this BOQ no longer references them.
+        kept = {_normalise_item_code(row.get("code")) for row in rows}
+        removed_codes = [
+            row.get("code") for row in previous_rows
+            if _normalise_item_code(row.get("code")) not in kept
+        ]
+        purged = _purge_item_code_everywhere(removed_codes)
+        if purged:
+            invalidate_read_cache()
+
+        return jsonify({
+            "success": True,
+            "message": "BOQ updated",
+            "purgedItemCodes": purged,
+        }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to update BOQ: {exc}"}), 500
 

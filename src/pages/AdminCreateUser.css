@@ -22,11 +22,25 @@
 .acu-create-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .acu-create-btn:active { transform: translateY(0); }
 
-/* TABLE WRAPPER */
+/* TABLE WRAPPER
+   Matches the shared DataTable wrapper: the body scrolls inside a fixed height
+   and the header sticks, so the pager below stays reachable without scrolling
+   the whole page down once the user list grows past a screenful. */
 .acu-table-wrap {
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--r-md); overflow: hidden; box-shadow: none;
+  overflow-x: auto; overflow-y: auto;
+  max-height: 500px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--bg-table-stripe);
 }
+.acu-table-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
+.acu-table-wrap::-webkit-scrollbar-track { background: var(--bg-table-stripe); border-radius: 6px; }
+.acu-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 6px;
+  border: 2px solid var(--bg-table-stripe);
+}
+.acu-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* LOADING / EMPTY */
 .acu-loading {
@@ -46,12 +60,14 @@
 }
 
 /* TABLE */
-.acu-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.acu-table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
 .acu-table thead th {
   text-align: left; font-size: 11px; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-secondary); background: var(--bg-surface-alt);
   padding: 12px 16px; border-bottom: 1px solid var(--border);
+  /* Stays put while the body scrolls underneath it. */
+  position: sticky; top: 0; z-index: 2;
 }
 .acu-th-action { width: 48px; }
 .acu-table tbody td {
@@ -215,6 +231,9 @@
 .acu-submit:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
 .acu-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* PAGINATION
+   Shared layout from ListPagination.css - no page-specific override needed. */
+
 /* RESPONSIVE */
 @media (max-width: 640px) {
   .acu-page { padding: 18px 16px 36px; }
@@ -227,7 +246,9 @@
 
 /* LIGHT MODE TABLE POLISH */
 html[data-theme="light"] body .app-main .acu-table-wrap {
-  overflow: hidden;
+  /* Must not force `hidden` here: that would cancel the scrollable body set
+     above and push the pager off-screen again. */
+  overflow-x: auto; overflow-y: auto;
   border: 1px solid var(--border) !important;
   border-radius: var(--r-md) !important;
   background: var(--bg-surface) !important;

@@ -51,9 +51,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  /* Allow the right-hand group to drop to its own line rather than squeezing
+     the profile block, which must stay legible at every width. */
+  flex-wrap: wrap;
+  row-gap: 10px;
 }
 
-.app-topbar-left { display: flex; align-items: center; gap: 10px; }
+/* The title yields space (and ellipsizes) before anything else does. */
+.app-topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
 
 .app-menu-btn {
   display: inline-flex;
@@ -80,15 +85,43 @@
   letter-spacing: -0.02em;
   margin: 0;
   color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.app-topbar-right { display: flex; align-items: center; gap: 10px; }
+/* Wraps internally so the search can drop to its own line without the profile
+   having to give up any width. */
+.app-topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Search box contributed by the current page, rendered just before the profile
+   controls. `.search-bar` carries a 220px min-width, so cap it here and let it
+   shrink further at the breakpoints below. */
+.app-topbar-search {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 320px;
+  max-width: 320px;
+  flex: 0 1 320px;
+}
+.app-topbar-search .search-bar { min-width: 0; width: 100%; }
 
 .app-user {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  /* Never shrink: the signed-in identity keeps its full width at every screen
+     size. The search beside it is what yields space instead. */
+  flex: 0 0 auto;
   padding: 5px 10px 5px 5px;
   color: var(--text-primary);
   background: var(--bg-surface);
@@ -223,11 +256,15 @@
   background: linear-gradient(90deg, var(--accent), transparent);
 }
 
+/* The two clusters (controls on the left, total + export on the right) wrap as
+   whole units. Letting each cluster wrap internally produced a ragged three-row
+   toolbar on pages whose Total badge is wide, e.g. Sale Register. */
 .table-controls-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   min-height: 48px;
   margin: 0 0 12px;
   padding: 0 0 12px;
@@ -239,6 +276,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1 1 auto;
   flex-wrap: wrap;
 }
 
@@ -246,13 +284,16 @@
   min-width: min(220px, 42vw);
 }
 
-/* Right-hand cluster: total badge + export button. */
+/* Right-hand cluster: total badge + export button. These stay on one line
+   together so the badge never ends up stranded above the button. */
 .table-controls-right {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .table-total {
@@ -305,6 +346,26 @@
 
 @media (max-width: 1024px) {
   .app-menu-btn { display: inline-flex; }
+  .app-topbar-search { flex: 0 1 220px; max-width: 220px; width: 220px; }
+}
+
+/* Below ~900px the title, search and profile stop fitting on one line, so the
+   search drops onto its own full-width row underneath them. The profile keeps
+   its own row above it and is never compressed. */
+@media (max-width: 900px) {
+  /* Flatten the right-hand group so its items join the topbar row: the profile
+     stays beside the page title and only the search wraps underneath.
+     Wrapping the group as a whole used to leave the profile on a line of its
+     own between the title and the search. */
+  .app-topbar-right { display: contents; }
+  .app-topbar-left { order: 1; flex: 1 1 0; }
+  .app-user { order: 2; flex: 0 0 auto; }
+  .app-topbar-search {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+    width: 100%;
+  }
 }
 
 @media (max-width: 720px) {
@@ -313,6 +374,7 @@
   .app-page-title { font-size: 16px; }
   .app-user { padding-right: 8px; }
   .app-user-name { max-width: 100px; }
+  .app-user-role { max-width: 100px; }
   .app-user-tools svg:not(:last-child) { display: none; }
   .app-refresh-note { display: none; }
   .table-controls-row,
@@ -322,4 +384,174 @@
   .table-controls-right { width: 100%; justify-content: space-between; }
   .table-controls-right .export-pdf-btn { flex: 1 1 auto; }
   .app-footer { padding: 8px 12px; font-size: 10px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Date range filter
+   Shared by every list page that narrows a column by a from/to window. Lives
+   here rather than in one page's stylesheet so the toolbar looks the same on
+   PO Details, Invoices, Daily Production and Sale Register.
+   --------------------------------------------------------------------------- */
+.date-range-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+}
+
+.date-range-filter .dtp-trigger {
+  min-width: 118px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.date-range-filter .dtp-trigger .dtp-value {
+  font-size: 12px;
+}
+
+/* Room between "DD/MM/YYYY" and the calendar icon. */
+.date-range-filter .app-date-picker { min-width: 148px; }
+.date-range-filter .app-date-picker-trigger { gap: 8px; }
+
+/* Column selector, shown only when a range can target more than one date. */
+.date-range-column {
+  height: 32px;
+  max-width: 160px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.date-range-column:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.date-range-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.date-range-clear:hover:not(:disabled) {
+  background: var(--accent-soft-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.date-range-apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.date-range-apply:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.date-range-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Shown when the user picks an end date before the start date. */
+.date-range-error {
+  color: var(--danger, #dc2626);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The range needs the full width once the toolbar stacks. */
+@media (max-width: 640px) {
+  .date-range-filter {
+    margin-left: 0;
+    margin-top: 8px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .date-range-filter .dtp-trigger {
+    flex: 1;
+    min-width: 0;
+  }
+  /* DatePicker renders .app-date-picker, so the rule above no longer reaches
+     it. Lay the range out as a grid: From and To side by side, the column
+     picker and the Apply/Clear buttons on full-width rows. */
+  .date-range-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+  .date-range-filter .date-range-column { grid-column: 1 / -1; max-width: none; width: 100%; height: 38px; }
+  .date-range-filter .app-date-picker { min-width: 0; width: 100%; }
+  .date-range-filter .app-date-picker-trigger { min-width: 0; gap: 6px; padding: 0 10px; font-size: 12.5px; }
+  .date-range-filter .app-date-picker-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .date-range-filter .date-range-apply,
+  .date-range-filter .date-range-clear { width: 100%; height: 38px; justify-content: center; }
+  .date-range-filter .date-range-apply:only-of-type,
+  .date-range-filter .date-range-apply:last-of-type { grid-column: 1 / -1; }
+  .date-range-filter .date-range-error { grid-column: 1 / -1; }
+}
+
+/* ---------------------------------------------------------------------------
+   "Back to Dashboard", shown only on a page opened from a dashboard KPI card.
+   Matches .production-add-btn so it sits on the same line at the same size.
+   --------------------------------------------------------------------------- */
+.deep-link-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.deep-link-back:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.deep-link-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

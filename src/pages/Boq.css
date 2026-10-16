@@ -116,6 +116,19 @@
 .boq-form-subtitle { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
 
 /* BOQ FORM */
+/* Compact item search in the BOQ editor header, beside "+ Add item". */
+.boq-item-search { width: 220px; flex: 0 1 220px; }
+.boq-item-search .search-bar { width: 100%; min-width: 0; margin: 0; height: 40px; padding: 0 12px; box-sizing: border-box; }
+/* Modal form styles give every input its own border and focus ring; inside the
+   search pill that drew a second box, so the input here stays bare. */
+.boq-item-search .search-bar input,
+.boq-item-search .search-bar input:focus {
+  border: none; box-shadow: none; outline: none; background: transparent;
+  padding: 0; height: 100%; font-size: 13.5px; min-width: 0;
+}
+@media (max-width: 640px) { .boq-item-search { width: 150px; flex-basis: 150px; } }
+.boq-item-search-empty { padding: 18px 0; text-align: center; color: var(--text-secondary); }
+
 .boq-form-scroll {
   padding: 22px 24px;
   overflow-y: auto;

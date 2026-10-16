@@ -28,7 +28,7 @@ const navConfig = [
   { id: "production", label: "Daily Production", path: "/production", icon: Factory, roles: ["admin", "coadmin", "production_incharge", "user"] },
   { id: "sales", label: "Sale Register", path: "/sales", icon: ShoppingCart, roles: ["admin", "coadmin", "production_incharge"] },
   { id: "defects", label: "Defective Units", path: "/defects", icon: AlertTriangle, roles: ["admin", "coadmin", "production_incharge"] },
-  { id: "create-user", label: "Create Account", path: "/admin/create-user", icon: UserPlus, roles: ["admin"] },
+  { id: "create-user", label: "User Management", path: "/admin/create-user", icon: UserPlus, roles: ["admin"] },
 ];
 
 export default navConfig;
