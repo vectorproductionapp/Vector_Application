@@ -229,7 +229,7 @@ CLIENTS = ["Acme Pvt Ltd", "Vector Industries", "Bright Sparks Co", "Om Electric
            "Metro Hardware", "Sri Vendor Traders", "Vignesh Suppliers", "Northline Corp"]
 LOCATIONS = ["Chennai", "Bengaluru", "Hyderabad", "Coimbatore", "Mumbai", "Pune", "Delhi", "Kolkata"]
 MODELS = ["GSB-13RE", "GSB-20RE", "HX-450", "HX-900", "VT-100", "VT-250"]
-DISPATCH_OPTIONS = ["Pending", "Processing", "Dispatched", "Delivered", "Cancelled"]
+DISPATCH_OPTIONS = ["Pending", "Processing", "Delivered"]
 WARRANTY_YEARS = [1, 2, 3, 4, 5]
 
 
@@ -270,7 +270,7 @@ def build_row(index, poNo=None, serial=None):
         "date": client_po_date,
         "clientPoDate": client_po_date,
         "expectedDispatchDate": random_date(45, 10),
-        "actualDispatchDate": random_date(9, 0) if dispatch in ("Dispatched", "Delivered") else "",
+        "actualDispatchDate": random_date(9, 0) if dispatch == "Delivered" else "",
         "invoiceNumber": f"INV-2026-{1000 + index}" if dispatch != "Pending" else "",
         "invoiceDate": invoice_date if dispatch != "Pending" else "",
         "unitCost": round(rate * random.uniform(0.6, 0.85), 2),

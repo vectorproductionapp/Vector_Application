@@ -1,23 +1,24 @@
 from datetime import datetime, timezone
 import math
 import re
- 
+
 from flask import Blueprint, request, jsonify
 from firebase_config import db
 from read_cache import cached_read, invalidate_read_cache
+from date_range import in_date_range, read_date_range
 from auth_utils import roles_required
 from attachments import delete_files, entries_of, normalise_entries, upload_files
- 
+
 invoice_bp = Blueprint("invoices", __name__)
 invoices_collection = db.collection("invoices")
 # One document per invoice number.  The files of an invoice are shared by every
 # one of its item lines, so they are stored here rather than on each line.
 invoice_headers_collection = db.collection("invoice_headers")
- 
+
 REQUIRED_FIELDS = ["invoice", "date", "phase", "po", "code", "desc", "qtyInv", "qtyRecv", "verifiedBy"]
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 100
- 
+
 # Everything the Invoices form submits.
 ALLOWED_FIELDS = [
     "invoice", "date", "modelId", "phaseId", "phase", "po", "code", "desc", "qtyInv", "qtyRecv", "verifiedBy",
@@ -184,8 +185,8 @@ def _serialize(doc, include_image=False):
     if include_image:
         payload["attachments"] = files
     return payload
- 
- 
+
+
 def _coerce_qty(value, fallback=0):
     """Best-effort conversion of a qty field to a number; raises ValueError on bad input."""
     return float(value) if str(value).strip() != "" else fallback
@@ -201,8 +202,8 @@ def _parse_pagination_params(args):
     except (TypeError, ValueError):
         limit = DEFAULT_PAGE_SIZE
     return max(1, page), min(MAX_PAGE_SIZE, max(1, limit))
- 
- 
+
+
 @invoice_bp.route("/invoices/header", methods=["POST"])
 @roles_required("admin", "coadmin", "production_incharge", "user")
 def upsert_invoice_header():
@@ -269,11 +270,11 @@ def create_invoice():
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"success": False, "message": "Request body must be JSON"}), 400
- 
+
     missing = [f for f in REQUIRED_FIELDS if not str(data.get(f, "")).strip()]
     if missing:
         return jsonify({"success": False, "message": f"Missing required fields: {', '.join(missing)}"}), 400
- 
+
     try:
         qty_inv = _coerce_qty(data.get("qtyInv", 0))
         qty_recv = _coerce_qty(data.get("qtyRecv", 0))
@@ -325,7 +326,7 @@ def create_invoice():
     try:
         doc_ref = invoices_collection.document()
         created_at = datetime.now(timezone.utc)
- 
+
         record = {k: data.get(k, "") for k in ALLOWED_FIELDS}
         record["attachments"] = attachments
         # The file list is authoritative now, so the legacy single-file fields
@@ -339,7 +340,7 @@ def create_invoice():
         # Kept so the remaining item blocks of this save are recognised as the
         # same invoice rather than as duplicates of it.
         record[SUBMISSION_FIELD] = submission_id
- 
+
         doc_ref.set(record)
 
         invalidate_read_cache()
@@ -357,14 +358,18 @@ def create_invoice():
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to create Invoice: {exc}"}), 500
- 
- 
+
+
 # Columns scanned by the UI's free-text search box (mirrors `columns` in
 # Invoices.jsx).  Values are stringified exactly like the client does.
 _SEARCH_KEYS = ("phase", "invoice", "date", "po", "code", "desc", "qtyInv", "qtyRecv", "verifiedBy")
 
 # Fields the PageFilter dropdown offers (mirrors INVOICE_FILTER_FIELDS).
 _FILTER_FIELDS = frozenset({"phase", "invoice", "po", "code", "verifiedBy"})
+
+# Date columns the toolbar range may target. Keeps a hand-written `dateField`
+# from probing fields the endpoint does not expose.
+_DATE_COLUMNS = frozenset({"date"})
 
 
 def _text(value):
@@ -407,6 +412,12 @@ def list_invoices():
             if field in _FILTER_FIELDS:
                 filters.append((field, str(raw_value or "")))
 
+        # Inclusive range on the invoice date (`?dateField=date&filterField=
+        # dateFrom&filterValue=...&filterField=dateTo&filterValue=...`).
+        date_field, date_from, date_to = read_date_range(request.args, default_field="date")
+        if date_field not in _DATE_COLUMNS:
+            date_field = "date"
+
         all_rows = []
         filtered_rows = []
         header_files = _header_files_map()
@@ -414,6 +425,8 @@ def list_invoices():
             row = _serialize(doc)
             _merge_header_files(row, header_files.get(_header_doc_id(row.get("invoice", ""))))
             all_rows.append(row)
+            if not in_date_range(row.get(date_field), date_from, date_to):
+                continue
             if _row_matches_filters(row, search, filters):
                 filtered_rows.append(row)
 
@@ -444,6 +457,9 @@ def list_invoices():
         return jsonify({
             "success": True,
             "invoices": filtered_rows[offset:offset + limit],
+            # Every row the active search/filters/date range matched, so the
+            # table's export covers the whole result set and not just the page.
+            "allRows": filtered_rows,
             "filterOptions": filter_options,
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,
                            "totalPages": total_pages, "hasNextPage": page < total_pages,
@@ -462,12 +478,18 @@ def list_invoice_groups():
     groups case-insensitively so `po-12` / `PO-12` land on the same card.
     """
     try:
+        from firebase_config import db
+        podetails_collection = db.collection("po_details")
+
+        # First pass: collect all invoices and their PO numbers
+        invoice_pos = {}
         groups = {}
         for doc in invoices_collection.order_by("createdAt", direction="DESCENDING").stream():
             row = _serialize(doc)
             phase_name = _text(row.get("phase")) or "Unassigned"
             invoice_name = _text(row.get("invoice")) or "Untitled Invoice"
             date = _text(row.get("date"))
+            po = _text(row.get("po"))
 
             group = groups.setdefault(phase_name.lower(), {
                 "phase": phase_name,
@@ -480,10 +502,32 @@ def list_invoice_groups():
             invoice = group["invoices"].setdefault(invoice_name.lower(), {
                 "invoice": invoice_name,
                 "date": date,
-                "po": _text(row.get("po")),
+                "po": po,
                 "rowCount": 0,
             })
             invoice["rowCount"] += 1
+
+            # Track PO for this invoice to fetch supplier later
+            if po:
+                invoice_pos[invoice_name.lower()] = po
+
+        # Fetch suppliers from PO Details for all POs
+        supplier_map = {}
+        if invoice_pos:
+            unique_pos = set(invoice_pos.values())
+            for po in unique_pos:
+                if po:
+                    po_doc = podetails_collection.document(po).get()
+                    if po_doc.exists:
+                        po_data = po_doc.to_dict() or {}
+                        supplier_map[po] = _text(po_data.get("supplier"))
+
+        # Add supplier to each invoice card
+        for group in groups.values():
+            for invoice in group["invoices"].values():
+                po = invoice.get("po", "")
+                if po and po in supplier_map:
+                    invoice["supplier"] = supplier_map[po]
 
         payload = []
         for group in groups.values():
@@ -498,8 +542,8 @@ def list_invoice_groups():
         return jsonify({"success": True, "phases": payload}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch invoice cards: {exc}"}), 500
- 
- 
+
+
 @invoice_bp.route("/invoices/<invoice_id>", methods=["GET"])
 def get_invoice(invoice_id):
     try:
@@ -553,8 +597,8 @@ def list_invoice_images():
         return jsonify({"success": True, "attachments": files}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch invoice attachments: {exc}"}), 500
- 
- 
+
+
 @invoice_bp.route("/invoices/attachments/upload", methods=["POST"])
 def upload_invoice_attachments():
     """Store files in Firebase Storage and return their metadata.
@@ -578,8 +622,8 @@ def upload_invoice_attachments():
         return jsonify({"success": False, "message": "None of the files could be stored"}), 400
 
     return jsonify({"success": True, "attachments": entries, "storage": used_storage}), 200
- 
- 
+
+
 @invoice_bp.route("/invoices/attachments", methods=["DELETE"])
 def delete_invoice_attachments():
     """Remove the stored files behind the given attachment metadata."""
@@ -594,24 +638,25 @@ def delete_invoice_attachments():
         return jsonify({"success": False, "message": f"Failed to delete attachments: {exc}"}), 500
 
     return jsonify({"success": True, "message": f"{removed} file(s) removed", "removed": removed}), 200
- 
+
+
 @invoice_bp.route("/invoices/<invoice_id>", methods=["PUT"])
 def update_invoice(invoice_id):
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"success": False, "message": "Request body must be JSON"}), 400
- 
+
     update_fields = {k: v for k, v in data.items() if k in ALLOWED_FIELDS}
     if not update_fields:
         return jsonify({"success": False, "message": "Nothing to update"}), 400
- 
+
     doc_ref = invoices_collection.document(invoice_id)
     existing_doc = doc_ref.get()
     if not existing_doc.exists:
         return jsonify({"success": False, "message": "Invoice not found"}), 404
- 
+
     existing = existing_doc.to_dict()
- 
+
     # Renaming a line moves its invoice number, which must not land on a number
     # another invoice already owns.
     if "invoice" in update_fields:
@@ -638,7 +683,7 @@ def update_invoice(invoice_id):
             update_fields["qtyInv"] = _coerce_qty(update_fields["qtyInv"], existing.get("qtyInv", 0))
         except (ValueError, TypeError):
             return jsonify({"success": False, "message": "Qty Invoiced must be a valid number"}), 400
- 
+
     if "qtyRecv" in update_fields:
         try:
             update_fields["qtyRecv"] = _coerce_qty(update_fields["qtyRecv"], existing.get("qtyRecv", 0))
@@ -672,7 +717,7 @@ def update_invoice(invoice_id):
 
     if "imageName" in update_fields:
         update_fields["imageName"] = _text(update_fields.get("imageName"))[:MAX_NAME_CHARS]
- 
+
     try:
         update_fields["updatedAt"] = datetime.now(timezone.utc)
         doc_ref.update(update_fields)
@@ -685,8 +730,8 @@ def update_invoice(invoice_id):
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to update Invoice: {exc}"}), 500
- 
- 
+
+
 @invoice_bp.route("/invoices/<invoice_id>", methods=["DELETE"])
 def delete_invoice(invoice_id):
     try:
@@ -695,7 +740,7 @@ def delete_invoice(invoice_id):
         if not snapshot.exists:
             return jsonify({"success": False, "message": "Invoice not found"}), 404
 
-        # Stored files go with the record, so Storage does not fill up.
+    # Stored files go with the record, so Storage does not fill up.
         try:
             delete_files(_attachment_files(snapshot.to_dict() or {}))
         except Exception:
@@ -707,8 +752,8 @@ def delete_invoice(invoice_id):
         return jsonify({"success": True, "message": "Invoice deleted"}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to delete Invoice: {exc}"}), 500
- 
- 
+
+
 # ----------------------------------------------------------------------
 # Bulk delete, mirroring the Daily Production / Assembly bulk-delete
 # endpoint: accepts a list of ids, deletes each in a batch, and reports
@@ -721,17 +766,17 @@ def bulk_delete_invoices():
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"success": False, "message": "Request body must be JSON"}), 400
- 
+
     ids = data.get("ids")
     if not isinstance(ids, list) or not ids:
         return jsonify({"success": False, "message": "No Invoice ids provided"}), 400
- 
+
     try:
         batch = db.batch()
         deleted_count = 0
         missing_ids = []
         removed = []
- 
+
         for invoice_id in ids:
             doc_ref = invoices_collection.document(invoice_id)
             snapshot = doc_ref.get()
@@ -747,23 +792,23 @@ def bulk_delete_invoices():
             batch.delete(doc_ref)
             removed.append(data)
             deleted_count += 1
- 
+
         if deleted_count:
             batch.commit()
             # An invoice's files only go once its last line is gone.
             for data in removed:
                 _drop_invoice_header_if_orphaned(data)
- 
+
         if deleted_count == 0:
             return jsonify({
                 "success": False,
                 "message": "None of the selected Invoices could be found",
             }), 404
- 
+
         message = f"{deleted_count} Invoice(s) deleted"
         if missing_ids:
             message += f" ({len(missing_ids)} were already removed)"
- 
+
         invalidate_read_cache()
 
         return jsonify({
@@ -774,4 +819,3 @@ def bulk_delete_invoices():
         }), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to delete Invoices: {exc}"}), 500
- 

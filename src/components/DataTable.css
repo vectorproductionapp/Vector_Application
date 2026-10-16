@@ -1,4 +1,8 @@
-﻿.table-wrap { overflow-x: auto; }
+﻿.table-wrap { 
+  overflow-x: auto; 
+  overflow-y: auto;
+  max-height: 500px; /* Fixed height for scrollable table body */
+}
 
 .table-wrap {
   scrollbar-width: thin;
@@ -43,6 +47,7 @@
   white-space: nowrap;
   position: sticky;
   top: 0;
+  z-index: 2;
   border-bottom: 1px solid var(--border);
 }
 
@@ -195,3 +200,5 @@
 .data-table tbody tr.data-table-row-low-stock.data-table-row-highlight:hover td {
   background: var(--color-danger-bg) !important;
 }
+
+

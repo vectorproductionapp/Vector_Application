@@ -9,6 +9,19 @@
   flex-wrap: wrap;
 }
 
+/* The card-grid search now lives in the app's top header next to the profile
+   (`.app-topbar-search` in App.css), so no toolbar-level rules are needed here. */
+.model-empty {
+  margin: 8px 0 16px;
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
 .model-heading {
   font-family: "Inter", sans-serif;
   font-size: 20px;

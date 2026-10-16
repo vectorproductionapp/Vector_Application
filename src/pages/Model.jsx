@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import api from "../components/Api";
 import Swal from "sweetalert2";
 import { Plus, Layers, Pencil, Trash2, X, Check, MoreVertical } from "lucide-react";
 import CreateEntityModal from "../components/CreateEntityModal";
+import CardPagination, { useCardPagination } from "../components/CardPagination";
+import { useHeaderSearch } from "../context/HeaderSearch";
 import { useRealtime } from "../components/RealtimeProvider";
 import Phase from "./Phase";
 import { useAuth } from "../context/Auth";
@@ -221,11 +223,25 @@ export default function Model() {
     });
   };
 
+  // Cards are fetched in one unpaginated call, so filtering the whole list here
+  // is complete - a search never misses a model that lives off-screen. The text
+  // itself lives in the top header, next to the profile menu.
+  const [query, setQuery] = useHeaderSearch("models", "Search models...", !activeModel);
+
+  const visibleModels = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => String(m.name || "").toLowerCase().includes(q));
+  }, [models, query]);
+  const { pageItems: pagedModels, pagerProps: modelPager } = useCardPagination(visibleModels, query.trim());
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === models.length) {
+    // Selects only what the user can actually see, so "Select All" never picks
+    // up cards hidden behind the search text.
+    if (visibleModels.length > 0 && visibleModels.every((m) => selectedIds.has(m.id))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(models.map((m) => m.id)));
+      setSelectedIds(new Set(visibleModels.map((m) => m.id)));
     }
     // menu stays open so you can immediately hit Delete next
   };
@@ -290,7 +306,7 @@ export default function Model() {
     );
   }
 
-  const allSelected = models.length > 0 && selectedIds.size === models.length;
+  const allSelected = visibleModels.length > 0 && visibleModels.every((m) => selectedIds.has(m.id));
 
   return (
     <div className={`model-page${canManageModels ? "" : " model-readonly"}`}>
@@ -378,8 +394,14 @@ export default function Model() {
 
       {loading && <p className="page-loading">Loading models...</p>}
 
+      {models.length === 0 && !loading ? (
+        <p className="model-empty">No models yet. Use "Create Model" to add the first one.</p>
+      ) : visibleModels.length === 0 ? (
+        <p className="model-empty">No models match "{query.trim()}".</p>
+      ) : null}
+
       <div className="model-grid">
-        {models.map((m) => (
+        {pagedModels.map((m) => (
           <button
             key={m.id}
             className={`model-card${selectMode ? " model-card-select-mode" : ""}${selectMode && selectedIds.has(m.id) ? " model-card-selected" : ""}`}
@@ -424,6 +446,7 @@ export default function Model() {
           </button>
         ))}
       </div>
+      <CardPagination {...modelPager} />
 
       {showModal && (
         <CreateEntityModal

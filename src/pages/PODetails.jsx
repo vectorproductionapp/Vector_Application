@@ -5,11 +5,13 @@ import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
 import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
-import SearchBar, { SearchableSelect } from "../components/SearchBar";
-import PageFilter from "../components/PageFilter";
+import { SearchableSelect } from "../components/SearchBar";
+import { useHeaderSearch } from "../context/HeaderSearch";
+import FilterModal from "../components/FilterModal";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
+import CardPagination, { useCardPagination } from "../components/CardPagination";
 import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
 import { applyColumnFormulas, applyDateColumnFormats, toDateCellDate } from "../components/BulkUploadModal";
 import ImageStrip from "../components/ImageStrip";
@@ -17,6 +19,7 @@ import "../components/ImageAttachment.css";
 import StatusDropdown from "../components/StatusDropdown";
 import { formatDate } from "../utils/date";
 import DatePicker from "../components/DatePicker";
+import DateRangeFilter from "../components/DateRangeFilter";
 import { fmtINR } from "../data/mockData";
 import "./PODetails.css";
 import "./Model.css";
@@ -105,7 +108,7 @@ const poBasicPrice = (row) => {
 const columns = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No", mono: true },
-  { key: "supplier", label: "Supplier" },
+  { key: "supplier", label: "Supplier Name" },
   { key: "date", label: "PO Date", isDate: true },
   { key: "code", label: "Item Code", mono: true },
   { key: "desc", label: "Item Description" },
@@ -116,7 +119,6 @@ const columns = [
   { key: "basicPrice", label: "Basic Price", render: (row) => fmtINR(poBasicPrice(row)), format: (value, row) => fmtINR(poBasicPrice(row) || value) },
   { key: "gst", label: "GST Price", format: fmtINR },
   { key: "value", label: "Total incl. GST", format: fmtINR },
-  { key: "status", label: "Status" },
 ];
 const PO_FILTER_FIELDS = columns.filter((column) =>
   ["phase", "po", "supplier", "code", "status"].includes(column.key)
@@ -152,7 +154,7 @@ const excelGst = (token) => {
 const BULK_COLUMNS = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No" },
-  { key: "supplier", label: "Supplier" },
+  { key: "supplier", label: "Supplier Name" },
   { key: "date", label: "PO Date", isDate: true },
   { key: "code", label: "Item Code" },
   { key: "desc", label: "Item Description" },
@@ -532,7 +534,7 @@ const rows = [];
 const PO_DETAIL_FIELDS = [
   { key: "phase", label: "Phase" },
   { key: "po", label: "PO No", editable: true },
-  { key: "supplier", label: "Supplier", editable: true, isSupplier: true },
+  { key: "supplier", label: "Supplier Name", editable: true, isSupplier: true },
   { key: "date", label: "PO Date", isDate: true, editable: true },
   { key: "code", label: "Item Code" },
   { key: "make", label: "Make" },
@@ -753,9 +755,12 @@ function calculatePoAmounts(qty, rate, gstRate = "") {
 }
 
 export default function PODetails() {
-  const [query, setQuery] = useState("");
-  const [pageFilter, setPageFilter] = useState({ field: "", value: "" });
+  // One entry per filterable field; a missing key means "All" for that field.
+  const [rowFilters, setRowFilters] = useState({});
   const [rows, setRows] = useState([]);
+  // Every line matching the active search/filters/date range, not just the page
+  // on screen. Used only by the export so a filtered export is complete.
+  const [exportRows, setExportRows] = useState([]);
 
   // Card drill-down, mirroring Models -> Phases -> table:
   // PO cards first, then the phases inside one PO, then the line-item table.
@@ -766,6 +771,17 @@ export default function PODetails() {
   // table, so the selection lives in this tab's sessionStorage.
   const [selectedPo, setSelectedPo] = useState(() => readDrill(DRILL_KEY)?.po ?? null);
   const [selectedPhase, setSelectedPhase] = useState(() => readDrill(DRILL_KEY)?.phase ?? null);
+
+  // One search box in the header serves every level of the drill-down: the
+  // phase grid, the PO grid inside a phase, and the line-item table inside a PO.
+  // Declared here (after the two selections above) because the placeholder
+  // depends on them, and before every consumer further down the component.
+  const searchPlaceholder = selectedPo
+    ? "Search PO Details..."
+    : selectedPhase
+      ? "Search POs in this phase..."
+      : "Search phases or PO numbers...";
+  const [query, setQuery] = useHeaderSearch("po-details", searchPlaceholder, true);
 
   useEffect(() => {
     writeDrill(
@@ -796,6 +812,21 @@ export default function PODetails() {
   const [totalPoGst, setTotalPoGst] = useState(0);
   const [filterOptions, setFilterOptions] = useState({});
 
+  // Date range filter for PO Details table
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  // Applied dates (used for actual filtering)
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [dateRangeError, setDateRangeError] = useState("");
+
+  // An inverted range would silently return nothing, so it is refused here.
+  useEffect(() => {
+    setDateRangeError(
+      fromDate && toDate && toDate < fromDate ? "End Date cannot be earlier than Start Date." : ""
+    );
+  }, [fromDate, toDate]);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [formValues, setFormValues] = useState(emptyPoForm);
@@ -803,6 +834,7 @@ export default function PODetails() {
   // One set of files for the whole PO, stored on the PO record itself.
   const [poAttachments, setPoAttachments] = useState([]);
   const lastItemRef = useRef(null);
+  const formRef = useRef(null);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -953,7 +985,9 @@ export default function PODetails() {
     setCardsLoading(true);
     setCardsError("");
     try {
-      const res = await api.get(`${API_BASE_URL}/po-details/groups`);
+      // Add timestamp to bypass server-side cache
+      const timestamp = Date.now();
+      const res = await api.get(`${API_BASE_URL}/po-details/groups?_=${timestamp}`);
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load phase cards");
       }
@@ -1014,26 +1048,35 @@ export default function PODetails() {
       const search = query.trim();
       if (search) params.set("q", search);
 
-      // Card scope first, then the toolbar's PageFilter.  The API accepts
+      // Card scope first, then the toolbar's filters.  The API accepts
       // repeated filterField/filterValue pairs and matches them ignoring case,
       // so `po-12` / `PO-12` and `pending` / `Pending` behave the same.
       const pairs = [
         ["po", selectedPo],
         ["phase", selectedPhase],
       ];
-      if (pageFilter.field && pageFilter.value !== "") {
-        pairs.push([pageFilter.field, String(pageFilter.value)]);
-      }
+      PO_FILTER_FIELDS.forEach((field) => {
+        const selected = rowFilters[field.key];
+        if (String(selected ?? "") !== "") pairs.push([field.key, String(selected)]);
+      });
       pairs.forEach(([field, value]) => {
         params.append("filterField", field);
         params.append("filterValue", value);
       });
+
+      // Date range filter - use applied dates
+      if (appliedFromDate) params.append("filterField", "dateFrom");
+      if (appliedFromDate) params.append("filterValue", appliedFromDate);
+      if (appliedToDate) params.append("filterField", "dateTo");
+      if (appliedToDate) params.append("filterValue", appliedToDate);
 
       const res = await api.get(`${API_BASE_URL}/po-details?${params.toString()}`);
       if (!res.data.success) {
         throw new Error(res.data.message || "Failed to load PO Details");
       }
       setRows(res.data.poDetails || []);
+      // Falls back to the page when an older backend omits the full set.
+      setExportRows(res.data.allRows || res.data.poDetails || []);
 
       // Server-computed over the whole filtered set, so the badge always
       // matches the card scope plus whatever the search box/PageFilter select.
@@ -1053,11 +1096,11 @@ export default function PODetails() {
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page, pageSize, query, pageFilter, selectedPo, selectedPhase]);
+  }, [page, pageSize, query, rowFilters, selectedPo, selectedPhase, appliedFromDate, appliedToDate]);
 
   // Scope (PO card / phase card) and toolbar filters both come from the API,
   // so changing either restarts at page 1 instead of showing an empty page.
-  const filterKey = `${query.trim()}|${pageFilter.field || ""}|${pageFilter.value ?? ""}`;
+  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}|${appliedFromDate}|${appliedToDate}`;
   const scopeKey = `${selectedPo || ""}::${selectedPhase || ""}`;
   const prevFilterKeyRef = useRef(filterKey);
   const prevScopeKeyRef = useRef(scopeKey);
@@ -1108,7 +1151,7 @@ export default function PODetails() {
 
   const resetFilters = () => {
     setQuery("");
-    setPageFilter({ field: "", value: "" });
+    setRowFilters({});
     setPage(1);
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -1289,36 +1332,9 @@ export default function PODetails() {
     }
   };
 
-  // Case-insensitive field filter: users type "pending" or "Pending" freely.
-  // The API applies the same rule, so this local pass stays a safe double-check.
-  const matchesPoPageFilter = (row, filter) => {
-    if (!filter?.field || filter.value === "") return true;
-    const field = PO_FILTER_FIELDS.find((item) => item.key === filter.field);
-    if (!field) return true;
-    return (
-      String(row[field.key] ?? "").trim().toLowerCase() ===
-      String(filter.value).trim().toLowerCase()
-    );
-  };
-
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      const matchesSearch = !q || columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q));
-      return matchesSearch && matchesPoPageFilter(row, pageFilter);
-    });
-  }, [query, rows, pageFilter]);
-
-  // PageFilter builds its value dropdown from `rows`, which are now filtered
-  // server-side.  Feed it one synthetic row per distinct value (from the API's
-  // whole-collection `filterOptions`) so the list never shrinks while filtered.
-  const filterOptionRows = useMemo(
-    () =>
-      PO_FILTER_FIELDS.flatMap((field) =>
-        (filterOptions[field.key] || []).map((value) => ({ [field.key]: value }))
-      ),
-    [filterOptions]
-  );
+  // The API already applied the search and PageFilter to every PO row before it
+  // cut the page, so the server response is authoritative.
+  const filteredRows = useMemo(() => rows, [rows]);
 
   const openModal = () => {
     setFormValues(emptyPoForm);
@@ -1378,12 +1394,20 @@ export default function PODetails() {
       ...previous,
       nextPoLineForm({ ...formValues, gstRate: "18" }),
     ]);
-    // Bring the new block into view; the form is the scroll container.  "start"
-    // puts the whole new item on screen instead of only its top edge, which is
-    // what "nearest" did on short viewports.
-    window.requestAnimationFrame(() => {
-      lastItemRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
+    // Bring the new block into view; the form is the scroll container.
+    // Use setTimeout to ensure DOM has updated after state change
+    setTimeout(() => {
+      const form = formRef.current;
+      const item = lastItemRef.current;
+      if (form && item) {
+        const formRect = form.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const scrollTop = itemRect.top - formRect.top + form.scrollTop - 20;
+        form.scrollTo({ top: scrollTop, behavior: "smooth" });
+      } else if (item) {
+        item.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    }, 50);
   };
 
   const removeItemDraft = (index) => {
@@ -2279,6 +2303,36 @@ export default function PODetails() {
     [phaseCards, selectedPhase]
   );
 
+  // The card grids come from /po-details/groups, which returns every phase and
+  // PO unpaginated, so filtering client-side is complete - no search can miss a
+  // card that lives off-screen. The text itself lives in the top header, next to
+  // the profile menu, and both card levels read the same `query` the table
+  // uses, because the header box is claimed once for the whole drill-down.
+  const visiblePhaseCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return phaseCards;
+    return phaseCards.filter((card) => {
+      // A phase also matches when one of its PO numbers matches, so typing a PO
+      // no finds the phase that has to be opened first.
+      if (String(card.phase || "").toLowerCase().includes(q)) return true;
+      return (card.pos || []).some((po) => 
+        String(po.po || "").toLowerCase().includes(q) ||
+        String(po.supplier || "").toLowerCase().includes(q)
+      );
+    });
+  }, [phaseCards, query]);
+  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, query.trim());
+
+  const visiblePoCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !selectedPhaseCard) return selectedPhaseCard?.pos || [];
+    return (selectedPhaseCard.pos || []).filter((po) => 
+      String(po.po || "").toLowerCase().includes(q) ||
+      String(po.supplier || "").toLowerCase().includes(q)
+    );
+  }, [selectedPhaseCard, query]);
+  const { pageItems: pagedPoCards, pagerProps: poCardPager } = useCardPagination(visiblePoCards, `${selectedPhase}|${query.trim()}`);
+
   const viewTitle = !selectedPhase
     ? "PO Details"
     : !selectedPo
@@ -2413,9 +2467,14 @@ export default function PODetails() {
           <div className="po-empty-state">
             <span>No PO Details yet. Click "Create PO" to add the first record.</span>
           </div>
+        ) : visiblePhaseCards.length === 0 ? (
+          <div className="po-empty-state">
+            <span>No phases or PO numbers match "{query.trim()}".</span>
+          </div>
         ) : (
+          <>
           <div className="model-grid">
-            {phaseCards.map((card) => (
+            {pagedPhaseCards.map((card) => (
               <button
                 key={card.phase}
                 type="button"
@@ -2450,11 +2509,19 @@ export default function PODetails() {
               </button>
             ))}
           </div>
+          <CardPagination {...phaseCardPager} />
+          </>
         )
       ) : !selectedPo ? (
         selectedPhaseCard && selectedPhaseCard.pos.length > 0 ? (
-          <div className="model-grid">
-            {selectedPhaseCard.pos.map((po) => (
+          visiblePoCards.length === 0 ? (
+            <div className="po-empty-state">
+              <span>No POs in {selectedPhase} match "{query.trim()}".</span>
+            </div>
+          ) : (
+            <>
+            <div className="model-grid">
+              {pagedPoCards.map((po) => (
               <button
                 key={po.po}
                 type="button"
@@ -2467,7 +2534,16 @@ export default function PODetails() {
                   </div>
                   <span className="model-card-name">{po.po}</span>
                 </div>
-                {po.date && <span className="model-card-time">{formatDate(po.date)}</span>}
+                <div className="po-card-details">
+                  <span className="po-card-detail-row">
+                    <span className="po-card-detail-label">PO Date</span>
+                    <span className="po-card-detail-value">{po.date ? formatDate(po.date) : "—"}</span>
+                  </span>
+                  <span className="po-card-detail-row">
+                    <span className="po-card-detail-label">Supplier Name</span>
+                    <span className="po-card-detail-value">{po.supplier || "—"}</span>
+                  </span>
+                </div>
                 <div className="po-card-totals">
                   <span className="po-card-total-row">
                     <span className="model-card-total-label">Basic Price</span>
@@ -2479,15 +2555,18 @@ export default function PODetails() {
                   </span>
                   <span className="po-card-total-row">
                     <span className="model-card-total-label">PO Total incl. GST</span>
-                    <span className="model-card-total-value">{fmtINR(po.totalValue)}</span>
+                    <span className="po-card-total-value">{fmtINR(po.totalValue)}</span>
                   </span>
                 </div>
                 <span className="po-card-meta">
                   {po.rowCount} line{po.rowCount === 1 ? "" : "s"}
                 </span>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+            <CardPagination {...poCardPager} />
+            </>
+          )
         ) : (
           <div className="po-empty-state">
             <span>No POs found for phase {selectedPhase}.</span>
@@ -2498,8 +2577,26 @@ export default function PODetails() {
           <div className="panel">
             <div className="table-controls-row">
               <div className="table-controls-primary">
-                <SearchBar value={query} onChange={setQuery} placeholder="Search PO Details..." />
-                <PageFilter rows={filterOptionRows} fields={PO_FILTER_FIELDS} value={pageFilter} onChange={setPageFilter} />
+                <FilterModal rows={rows} options={filterOptions} fields={PO_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+                <DateRangeFilter
+                  fromDate={fromDate}
+                  toDate={toDate}
+                  onChangeFrom={setFromDate}
+                  onChangeTo={setToDate}
+                  onApply={(nextFrom, nextTo) => {
+                    setAppliedFromDate(nextFrom);
+                    setAppliedToDate(nextTo);
+                  }}
+                  onClear={() => {
+                    setFromDate("");
+                    setToDate("");
+                    setAppliedFromDate("");
+                    setAppliedToDate("");
+                  }}
+                  error={dateRangeError}
+                  startLabel="From Date"
+                  endLabel="To Date"
+                />
               </div>
               <div className="table-controls-right">
                 <span className="table-total">
@@ -2533,7 +2630,7 @@ export default function PODetails() {
                   mode="table"
                   title={`${selectedPo} ${selectedPhase}`}
                   columns={columns}
-                  rows={filteredRows}
+                  rows={exportRows}
                   fileName={`${selectedPo}-${selectedPhase}`}
                 />
               </div>
@@ -2623,6 +2720,7 @@ export default function PODetails() {
             </div>
 
             <form
+              ref={formRef}
               className="po-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -3135,6 +3233,7 @@ export default function PODetails() {
                         value={editForm.date}
                         onChange={(date) => setEditForm((prev) => ({ ...prev, date }))}
                         ariaLabel="Select PO date"
+                        popoverZIndex={130000}
                       />
                     </label>
                   </div>
@@ -3263,6 +3362,7 @@ export default function PODetails() {
                               value={draft.expectedDeliveryDate}
                               onChange={(date) => handleDetailsItemDateChange(index, "expectedDeliveryDate", date)}
                               ariaLabel={`Select expected delivery date for item ${index + 1}`}
+                              popoverZIndex={130000}
                             />
                           </label>
 

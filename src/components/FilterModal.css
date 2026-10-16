@@ -1,0 +1,166 @@
+.filter-modal-root { position: relative; display: inline-flex; flex: 0 0 auto; }
+
+/* TOOLBAR TRIGGER */
+.filter-modal-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--accent);
+  background: var(--bg-surface);
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.filter-modal-trigger:hover,
+.filter-modal-trigger:focus-visible {
+  outline: none;
+  color: var(--accent);
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft-bg);
+}
+.filter-modal-trigger.active {
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.filter-modal-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--bg-surface);
+  font-size: 10px;
+}
+
+/* BACKDROP + CARD */
+.filter-modal-overlay {
+  position: fixed; inset: 0; z-index: 129000; display: flex;
+  align-items: center; justify-content: center; padding: 16px;
+  background: var(--overlay);
+}
+.filter-modal {
+  width: min(400px, 100%); display: flex; flex-direction: column;
+  /* Never taller than the screen: header and footer stay put, the field list
+     scrolls inside the body when a page offers many filters. */
+  max-height: calc(100dvh - 32px); margin: auto;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--bg-surface); box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.filter-modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.filter-modal-heading {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+}
+.filter-modal-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-sm);
+  color: var(--text-secondary); background: transparent; cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+.filter-modal-close:hover { color: var(--accent); background: var(--accent-soft-bg); }
+
+/* ONE STACKED SELECT PER FIELD */
+.filter-modal-body {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--bg-table-stripe);
+}
+.filter-modal-body::-webkit-scrollbar { width: 6px; }
+.filter-modal-body::-webkit-scrollbar-track { background: var(--bg-table-stripe); border-radius: 6px; }
+.filter-modal-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 6px; border: 2px solid var(--bg-table-stripe);
+}
+.filter-modal-body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.filter-modal-field { display: flex; flex-direction: column; gap: 5px; }
+.filter-modal-label { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.filter-modal-field .searchable-select-trigger {
+  width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text-primary);
+  background-color: var(--bg-surface); font: inherit; font-size: 12px; font-weight: 600;
+}
+
+/* RESET / APPLY */
+.filter-modal-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}
+.filter-modal-reset {
+  min-height: 34px; padding: 0 14px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text-primary);
+  background: var(--bg-surface); font: inherit; font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: border-color 150ms ease, background 150ms ease;
+}
+.filter-modal-reset:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft-bg); }
+.filter-modal-reset:disabled { opacity: .5; cursor: not-allowed; }
+.filter-modal-apply {
+  min-height: 34px; padding: 0 16px; border: 0; border-radius: var(--r-sm);
+  color: var(--accent-contrast); background: var(--accent); font: inherit;
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: background 150ms ease;
+}
+.filter-modal-apply:hover { background: var(--accent-hover); }
+
+@media (max-width: 640px) {
+  .filter-modal-root { flex: 1 1 auto; }
+  .filter-modal-trigger { width: 100%; }
+  .filter-modal-overlay { padding: 12px; align-items: flex-end; }
+  .filter-modal { width: 100%; max-height: calc(100dvh - 24px); }
+}
+/* ACTIVE FILTER CHIPS
+   The trigger only counts how many filters are on. A deep link from a
+   dashboard card (or any applied selection) also needs to say *which* filter
+   and *what* value, otherwise the table looks pre-filtered for no reason. */
+.filter-modal-root { flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.filter-chip-label { overflow: hidden; text-overflow: ellipsis; }
+.filter-chip-value { font-weight: 800; }
+
+.filter-chip-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.filter-chip-clear:hover { background: var(--accent); color: var(--accent-contrast); }
+
+.filter-chip-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}

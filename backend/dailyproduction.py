@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 import math
+import re
  
 from flask import Blueprint, request, jsonify
 from firebase_config import db, users_collection
 from auth_utils import roles_required
 from read_cache import cached_read, invalidate_read_cache
+from date_range import in_date_range, read_date_range
  
 dailyproduction_bp = Blueprint("dailyproduction", __name__)
 assembly_collection = db.collection("assembly_units")
@@ -15,6 +17,10 @@ REQUIRED_FIELDS = [
 ]
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 100
+
+# Fields the status cards filter on. A card count ignores these so the cards do
+# not zero each other out; every other filter still narrows them.
+_CARD_FILTER_FIELDS = frozenset({"stage", "qc"})
  
 # Everything the dailyproduction Production (Assembly) form submits.
 ALLOWED_FIELDS = [
@@ -41,8 +47,49 @@ USER_STATUS_FIELDS = {
     "qc": ("qcById", "qcBy"),
     "packagingStatus": ("packagedById", "packagedBy"),
 }
- 
- 
+
+
+def _status_card_totals(entries):
+    """Quantity per production/QC bucket, for the page's status cards.
+
+    Mirrors the dashboard KPI arithmetic in `_sales_dashboard_data`: whole `qty`
+    rather than a document count, `Semi Finished` read off the stage totals, and
+    both "Under Inspection" and "Pending" treated as awaiting a QC decision.
+    """
+    in_production = 0.0
+    semi_finished = 0.0
+    qc_passed = 0.0
+    qc_failed = 0.0
+    qc_inspection = 0.0
+
+    for entry in entries:
+        row = entry["row"]
+        try:
+            quantity = float(row.get("qty") or 0)
+        except (TypeError, ValueError):
+            quantity = 0.0
+        stage = str(row.get("stage") or "").strip()
+        if stage == "In Production":
+            in_production += quantity
+        elif stage == "Semi Finished":
+            semi_finished += quantity
+        qc = str(row.get("qc") or "").strip()
+        if qc == "Passed":
+            qc_passed += quantity
+        elif qc == "Failed":
+            qc_failed += quantity
+        elif qc in ("Under Inspection", "Pending"):
+            qc_inspection += quantity
+
+    return {
+        "inProduction": in_production,
+        "semiFinished": semi_finished,
+        "qcPassed": qc_passed,
+        "qcFailed": qc_failed,
+        "qcInspection": qc_inspection,
+    }
+
+
 def _stock_status(data, sale_status_by_serial=None):
     """Mirror the Daily_Production Stock Status formula in the workbook."""
     if data.get("qc") != "Passed":
@@ -212,11 +259,35 @@ _FILTER_FIELDS = frozenset({
     "packagingStatus", "packagedBy", "stockStatus",
 })
 
+# Date columns the toolbar range may target. Keeps a hand-written `dateField`
+# from probing fields the endpoint does not expose.
+_DATE_COLUMNS = frozenset({"date"})
+
 
 def _text(value):
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return "" if value is None else str(value).strip()
+
+
+def _date_sort_value(value):
+    """One comparable form of a stored production date.
+
+    A date reaches the register either as a Firestore timestamp or as a
+    `YYYY-MM-DD` string, and a unit can also carry a full ISO timestamp, so all
+    three are reduced to `YYYYMMDDhhmmss`.  An unreadable or missing date
+    returns `None` and the unit sinks to the bottom of the list.
+    """
+    if hasattr(value, "isoformat"):
+        value = value.isoformat()
+    match = re.match(
+        r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2})?)?",
+        str(value or "").strip(),
+    )
+    if not match:
+        return None
+    year, month, day, hour, minute, second = match.groups()
+    return f"{year}{month}{day}{hour or '00'}{minute or '00'}{(second or '00')[:2]}"
 
 
 def _toolbar_entry(doc):
@@ -296,6 +367,30 @@ def list_production_users():
         return jsonify({"success": False, "message": f"Failed to fetch production users: {exc}"}), 500
  
  
+def _existing_serials(serials, exclude_id=None):
+    """Serials from ``serials`` that another assembly unit already uses.
+
+    A serial identifies one physical device, so it may be recorded only once.
+    Firestore matches exactly, so the as-typed, upper and lower spellings are
+    all queried and compared case-insensitively.
+    """
+    wanted = {str(serial or "").strip().casefold() for serial in serials if str(serial or "").strip()}
+    variants = sorted({
+        variant
+        for serial in serials if str(serial or "").strip()
+        for variant in (str(serial).strip(), str(serial).strip().upper(), str(serial).strip().lower())
+    })
+    taken = set()
+    for start in range(0, len(variants), 30):
+        for doc in assembly_collection.where("serial", "in", variants[start:start + 30]).stream():
+            if doc.id == exclude_id:
+                continue
+            value = str((doc.to_dict() or {}).get("serial", "")).strip()
+            if value.casefold() in wanted:
+                taken.add(value)
+    return sorted(taken, key=str.casefold)
+
+
 @dailyproduction_bp.route("/assembly", methods=["POST"])
 @roles_required(*MANAGER_ROLES)
 def create_assembly_unit():
@@ -324,6 +419,12 @@ def create_assembly_unit():
         return jsonify({"success": False, "message": f"Please provide {int(qty)} serial number(s)"}), 400
     if len({serial.lower() for serial in serial_numbers}) != len(serial_numbers):
         return jsonify({"success": False, "message": "Duplicate serial numbers are not allowed"}), 400
+    taken = _existing_serials(serial_numbers)
+    if taken:
+        return jsonify({
+            "success": False,
+            "message": f"Serial number already exists: {', '.join(taken)}",
+        }), 409
 
     if data.get("qc") and data.get("stage") != "Completed":
         return jsonify({
@@ -402,6 +503,9 @@ def list_assembly_units():
     caller may see *before* the page is cut - previously the browser filtered
     only the rows the API had just returned, so a search matched one page at a
     time.  `pagination.totalCount` always covers every matching unit.
+
+    Rows come back newest production date first.  This is the only page that
+    reads `/assembly`, so the ordering is a Daily Production table change only.
     """
     try:
         page, limit = _parse_pagination_params(request.args)
@@ -413,6 +517,12 @@ def list_assembly_units():
             field = (raw_field or "").strip()
             if field in _FILTER_FIELDS:
                 filters.append((field, str(raw_value or "")))
+
+        # Inclusive range on the production date (`?dateField=date&filterField=
+        # dateFrom&filterValue=...&filterField=dateTo&filterValue=...`).
+        date_field, date_from, date_to = read_date_range(request.args, default_field="date")
+        if date_field not in _DATE_COLUMNS:
+            date_field = "date"
 
         base_query = assembly_collection.order_by("createdAt", direction="DESCENDING")
         docs = list(base_query.stream())
@@ -432,7 +542,32 @@ def list_assembly_units():
         for entry in entries:
             entry["row"]["stockStatus"] = _stock_status(entry["data"], sale_status_by_serial)
 
-        matched = [entry for entry in entries if _matches(entry["row"], search, filters)]
+        matched = [
+            entry for entry in entries
+            if in_date_range(entry["row"].get(date_field), date_from, date_to)
+            and _matches(entry["row"], search, filters)
+        ]
+
+        # Counts for the page's status cards. They honour the search and the date
+        # range, but deliberately ignore `stage` and `qc`: those are the fields
+        # the cards filter on, so counting them here would make every other card
+        # collapse to zero as soon as one card is active. The buckets and the
+        # spelling match the dashboard KPI cards, so the two pages agree.
+        card_filters = [(f, v) for f, v in filters if f not in _CARD_FILTER_FIELDS]
+        card_scope = [
+            entry for entry in entries
+            if in_date_range(entry["row"].get(date_field), date_from, date_to)
+            and _matches(entry["row"], search, card_filters)
+        ]
+        summary = _status_card_totals(card_scope)
+
+        # Production is read as a diary: the newest production date leads, not
+        # whichever unit happens to have been entered last.  Undated units sit
+        # at the bottom instead of jumping to the top.
+        matched.sort(
+            key=lambda entry: _date_sort_value(entry["data"].get("date")) or "",
+            reverse=True,
+        )
 
         # Distinct values per filterable field over every visible unit, so the
         # PageFilter dropdown never loses options while a filter is active.
@@ -451,7 +586,11 @@ def list_assembly_units():
         return jsonify({
             "success": True,
             "assemblyUnits": [_serialize(entry["doc"], sale_status_by_serial) for entry in page_entries],
+            # Every unit the active search/filters/date range matched, so the
+            # table's export covers the whole result set and not just the page.
+            "allRows": [_serialize(entry["doc"], sale_status_by_serial) for entry in matched],
             "filterOptions": filter_options,
+            "summary": summary,
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,
                            "totalPages": total_pages, "hasNextPage": page < total_pages,
                            "hasPrevPage": page > 1},
@@ -516,6 +655,16 @@ def update_assembly_unit(unit_id):
             id_field, name_field = USER_STATUS_FIELDS[field]
             if not _assigned_to_current_user(existing_data, id_field, name_field):
                 return jsonify({"success": False, "message": "This task is not assigned to you"}), 403
+
+    if "serial" in update_fields:
+        update_fields["serial"] = str(update_fields["serial"] or "").strip()
+        if update_fields["serial"].casefold() != str(existing_data.get("serial", "")).strip().casefold():
+            taken = _existing_serials([update_fields["serial"]], exclude_id=unit_id)
+            if taken:
+                return jsonify({
+                    "success": False,
+                    "message": f"Serial number already exists: {', '.join(taken)}",
+                }), 409
 
     candidate = {**existing_data, **update_fields}
     if update_fields.get("qc") and candidate.get("stage") != "Completed":

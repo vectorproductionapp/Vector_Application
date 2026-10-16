@@ -150,6 +150,9 @@
   .invoices-kebab-wrapper { display: block; }
 }
 
+/* The card-level search moved to the app top header (`.app-topbar-search` in
+   App.css), so no toolbar-level rules are needed here. */
+
 .invoices-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 320px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .invoices-load-error { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 320px; font-size: 14px; font-weight: 600; color: var(--accent); }
 .invoices-load-error-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -328,7 +331,7 @@
 .invoices-details-close:hover { background: var(--bg-table-hover); }
 .invoices-details-body { padding: 8px 0 4px; overflow-y: auto; flex: 1; }
 .invoices-details-section { width: 100%; }
-.invoices-details-section h3 { margin: 0 20px 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent); padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+/* Section headings are styled once, for every detail popup, in global.css. */
 
 .invoices-details-grid { display: grid; grid-template-columns: minmax(140px, 45%) 1fr; row-gap: 14px; column-gap: 15px; padding: 0 20px 15px; width: 100%; }
 .invoices-details-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); align-self: start; padding-top: 1px; }
@@ -381,6 +384,17 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.invoices-card-supplier {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 640px) {

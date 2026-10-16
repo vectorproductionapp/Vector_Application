@@ -19,7 +19,7 @@ function toIsoDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export default function DatePicker({ value, onChange, disabled = false, ariaLabel = "Select date", popoverZIndex = 1200 }) {
+export default function DatePicker({ value, onChange, disabled = false, ariaLabel = "Select date", popoverZIndex = 130000 }) {
   const [open, setOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
@@ -62,7 +62,9 @@ export default function DatePicker({ value, onChange, disabled = false, ariaLabe
   // instead (the old `:has(.app-date-picker-popover)` rule) let the item cards
   // spill over the footer and outside the dialog.  Because the portal lands on
   // <body>, `popoverZIndex` has to clear whatever dialog raised itself, or the
-  // calendar opens behind that dialog's backdrop.
+  // calendar opens behind that dialog's backdrop.  global.css pins every
+  // *-details-overlay to 5000 (!important), so the default sits above that; a
+  // caller can still pass a lower value when it owns the whole stacking order.
   useLayoutEffect(() => {
     if (!open) {
       setPopStyle(null);

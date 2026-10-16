@@ -138,6 +138,25 @@
 .attachment-upload-btn:hover { background: var(--accent-hover); }
 .attachment-status { font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: normal; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-hidden-input { display: none; }
+
+/* Existing attachments shown in the edit form. Each row can be toggled off,
+   and a removed row is struck through so the pending change is obvious. */
+.attachment-existing { margin-top: 10px; }
+.attachment-existing-title { margin: 0 0 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary); }
+.attachment-existing-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.attachment-existing-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-table-stripe); color: var(--text-secondary); transition: border-color 150ms ease, opacity 150ms ease; }
+.attachment-existing-item:hover { border-color: var(--border-strong); }
+.attachment-existing-item.is-removed { opacity: .55; border-style: dashed; }
+.attachment-existing-item.is-removed .attachment-existing-name { text-decoration: line-through; }
+.attachment-existing-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-primary); }
+.attachment-remove-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--text-secondary); cursor: pointer; transition: color 150ms ease, border-color 150ms ease, background 150ms ease; }
+.attachment-remove-btn:hover { color: var(--color-danger-text); border-color: var(--border); background: var(--bg-table-hover); }
+.attachment-existing-note { margin: 8px 0 0; font-size: 12px; color: var(--color-danger-text); }
+
+/* Newly picked files, each with its own remove button. */
+.image-preview-item { position: relative; display: inline-flex; }
+.image-preview-remove { position: absolute; top: 3px; right: 3px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .62); color: #fff; cursor: pointer; transition: background 150ms ease; }
+.image-preview-remove:hover { background: var(--color-danger-text); }
 .image-preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .image-preview img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); }
 
@@ -199,6 +218,62 @@
 .details-modal-image-thumb { width: 72px; height: 72px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; cursor: pointer; background: var(--bg-table-stripe); transition: border-color 150ms ease; }
 .details-modal-image-thumb:hover { border-color: var(--accent); }
 .details-modal-image-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Tile + hover delete affordance for attachments in the View popup. */
+.details-modal-image-wrap { position: relative; display: inline-flex; }
+.details-modal-image-delete { position: absolute; top: 3px; right: 3px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .62); color: #fff; cursor: pointer; opacity: 0; transition: opacity 150ms ease, background 150ms ease; }
+.details-modal-image-wrap:hover .details-modal-image-delete,
+.details-modal-image-delete:focus-visible { opacity: 1; }
+.details-modal-image-delete:hover { background: var(--color-danger-text); }
+.details-modal-image-delete:disabled { opacity: .5; cursor: progress; }
+
+/* An attachment the browser cannot render (e.g. a Storage object with no
+   download token returns 403) degrades to a labelled file card rather than a
+   broken-image glyph. */
+.details-modal-image-thumb.is-file {
+  width: auto;
+  min-width: 72px;
+  max-width: 190px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-table-stripe);
+}
+.details-modal-image-fallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+.details-modal-image-fallback-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details-modal-lightbox-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 28px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.details-modal-lightbox-fallback-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.details-modal-lightbox-fallback-hint { margin: 0; font-size: 13px; line-height: 1.6; }
 .details-modal-footer { display: flex; justify-content: flex-end; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--bg-table-stripe); flex-shrink: 0; }
 .details-modal-close-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--accent); color: var(--accent-contrast); font-size: 14px; font-weight: 600; cursor: pointer; transition: background 150ms ease; }
 .details-modal-close-btn:hover { background: var(--accent-hover); }

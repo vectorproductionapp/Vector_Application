@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from firebase_config import db
 from auth_utils import roles_required
 from read_cache import cached_read
+from date_range import in_date_range, read_date_range
  
 saleregister_bp = Blueprint("saleregister", __name__)
 sales_collection = db.collection("sale_register")
@@ -24,6 +25,7 @@ ALLOWED_FIELDS = [
     "date", "poNo", "client", "clientContact", "location", "modelId", "model", "serial", "serialNumbers", "qty", "dispatch", "value",
     "clientPoDate", "expectedDispatchDate", "actualDispatchDate", "invoiceNumber", "invoiceDate",
     "unitCost", "gstRate", "warrantyPeriod", "warrantyStartDate", "warrantyEndDate",
+    "endUserClient", "endUserLocation", "endUserPoDate", "endUserPoNo",
 ]
  
 # Warranty Period is now stored as an integer number of years (1-5), set by
@@ -37,16 +39,40 @@ _SEARCH_KEYS = ("clientPoDate", "poNo", "client", "clientContact", "location",
                 "model", "serial", "qty", "unitCost", "gstRate", "value",
                 "invoiceNumber", "invoiceDate", "warrantyPeriod",
                 "warrantyStartDate", "warrantyEndDate", "expectedDispatchDate",
-                "actualDispatchDate", "dispatch")
+                "actualDispatchDate", "dispatch",
+                "endUserClient", "endUserLocation", "endUserPoNo", "endUserPoDate")
 
 # Fields the PageFilter dropdown offers (mirrors SALE_FILTER_FIELDS).
-_FILTER_FIELDS = frozenset({"client", "location", "model", "dispatch"})
+_FILTER_FIELDS = frozenset({
+    "client", "location", "model", "dispatch",
+    "endUserClient", "endUserLocation",
+})
+
+# Date columns the toolbar range may target (mirrors SALE_DATE_COLUMNS).
+# `date` is a derived alias of clientPoDate and the warranty dates are computed
+# from the invoice date, so neither can be filtered independently.
+_DATE_COLUMNS = frozenset({
+    "clientPoDate", "endUserPoDate", "expectedDispatchDate",
+    "actualDispatchDate", "invoiceDate",
+})
 
 
 def _text(value):
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return "" if value is None else str(value).strip()
+
+
+def _number(value):
+    """Coerce a stored field to a float, treating blanks/garbage as 0."""
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _display_number(value):
+    return int(value) if float(value).is_integer() else value
 
 
 def _row_matches_filters(row, search, filters):
@@ -94,6 +120,10 @@ def _serialize(doc):
         "warrantyPeriod": d.get("warrantyPeriod", ""),
         "warrantyStartDate": d.get("warrantyStartDate", ""),
         "warrantyEndDate": d.get("warrantyEndDate", ""),
+        "endUserClient": d.get("endUserClient", ""),
+        "endUserLocation": d.get("endUserLocation", ""),
+        "endUserPoDate": d.get("endUserPoDate", ""),
+        "endUserPoNo": d.get("endUserPoNo", ""),
         "createdAt": d.get("createdAt").isoformat() if d.get("createdAt") else None,
         "updatedAt": d.get("updatedAt").isoformat() if d.get("updatedAt") else None,
     }
@@ -397,15 +427,42 @@ def list_sales():
             if field in _FILTER_FIELDS:
                 filters.append((field, str(raw_value or "")))
 
+        # Inclusive range over one of the sale's date columns. The column is
+        # named explicitly because this page stores many dates (client PO,
+        # end-customer PO, dispatch, invoice, warranty) and the toolbar must not
+        # have to guess which one is being narrowed. Only the known columns are
+        # honoured, so a hand-written `dateField` cannot probe other fields.
+        date_field, date_from, date_to = read_date_range(
+            request.args, default_field="clientPoDate"
+        )
+        if date_field not in _DATE_COLUMNS:
+            date_field = "clientPoDate"
+
         base_query = sales_collection.order_by("createdAt", direction="DESCENDING")
         all_docs = list(base_query.stream())
 
         # Apply search and field filters to the full collection, then slice.
+        # The money/qty totals accumulate here so they describe every matching
+        # sale, not just the page the caller is looking at.
         matching_docs = []
+        matching_rows = []
+        total_qty = 0.0
+        total_base = 0.0
+        total_gst = 0.0
+        total_incl_gst = 0.0
         for doc in all_docs:
             serialized = _serialize(doc)
+            if not in_date_range(serialized.get(date_field), date_from, date_to):
+                continue
             if _row_matches_filters(serialized, search, filters):
                 matching_docs.append(doc)
+                matching_rows.append(serialized)
+                qty = _number(serialized.get("qty"))
+                unit_cost = _number(serialized.get("unitCost"))
+                total_qty += qty
+                total_base += unit_cost * qty
+                total_gst += unit_cost * qty * _number(serialized.get("gstRate")) / 100
+                total_incl_gst += _number(serialized.get("value"))
 
         # Distinct values per filterable field over every sale, so the
         # PageFilter dropdown never loses options while a filter is active.
@@ -422,10 +479,18 @@ def list_sales():
         offset = (page - 1) * limit
         page_docs = matching_docs[offset:offset + limit]
 
+        # One lookup for the whole matching set, then sliced: `allRows` lets the
+        # table's export cover every filtered sale instead of only the 10 rows
+        # that happen to be on screen.
+        export_rows = _attach_customer_sales(matching_rows)
+
         return jsonify({
             "success": True,
-            "sales": _attach_customer_sales([_serialize(doc) for doc in page_docs]),
+            "sales": export_rows[offset:offset + limit],
+            "allRows": export_rows,
             "filterOptions": filter_options,
+            "totals": {"qty": _display_number(total_qty), "base": total_base,
+                       "gst": total_gst, "total": total_incl_gst},
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,
                            "totalPages": total_pages, "hasNextPage": page < total_pages,
                            "hasPrevPage": page > 1},

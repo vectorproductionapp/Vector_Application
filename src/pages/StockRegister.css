@@ -57,10 +57,17 @@
 .stock-details-close-btn { height: 34px; padding: 0 14px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 150ms ease; }
 .stock-details-close-btn:hover { background: var(--accent-hover); }
 
+@media (max-width: 400px) {
+  .stock-view-btn svg { display: none; }
+}
+
 @media (max-width: 640px) {
   .stock-toolbar { flex-wrap: wrap; justify-content: flex-end; }
   .stock-toolbar > * { flex: 1 1 100%; }
-  .stock-view-switch { justify-content: center; }
+  /* The three tabs share the width equally instead of keeping their desktop
+     width; centring an over-wide row pushed "Table View" off the left edge. */
+  .stock-view-switch { display: flex; justify-content: stretch; min-width: 0; }
+  .stock-view-btn { flex: 1 1 0; min-width: 0; justify-content: center; gap: 5px; padding: 0 6px; font-size: 11.5px; }
   .table-export-bar { justify-content: stretch; }
   .table-export-bar > * { width: 100%; }
   .stock-details-overlay { padding: 12px; }
@@ -70,4 +77,109 @@
   .stock-details-value { padding-top: 4px; }
   .stock-details-grid > :nth-last-child(-n + 2) { border-bottom: 1px solid var(--border); }
   .stock-details-grid > :last-child { border-bottom: 0; }
+}
+
+/* ===== Finished Goods View ===== */
+
+.fg-loading, .fg-empty-state, .fg-load-error {
+  display: flex; align-items: center; justify-content: center; min-height: 320px;
+  text-align: center; color: var(--text-secondary); font-size: 14px; font-weight: 600;
+}
+.fg-loading { flex-direction: column; gap: 10px; color: var(--accent); }
+.fg-load-error { color: var(--accent); }
+.fg-load-error > div { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+.fg-retry {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px;
+  border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--text-primary);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 150ms ease;
+}
+.fg-retry:hover { background: var(--accent-hover); }
+
+.fg-summary-row {
+  display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;
+}
+/* Each card is a button: it filters the table to that status, so it needs the
+   button resets plus a visible pressed state. Sized to its content rather than
+   `flex: 1`, which would stretch the single remaining card across the panel. */
+.fg-summary-card {
+  display: flex; align-items: center; gap: 14px; text-align: left; font-family: inherit;
+  padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-xl);
+  background: var(--bg-surface); box-shadow: var(--shadow-sm); color: inherit;
+  min-width: 260px; max-width: 340px; flex: 0 1 auto; cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+.fg-summary-card:hover { border-color: var(--accent-soft-border); box-shadow: var(--shadow-md); }
+.fg-summary-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
+.fg-summary-card.is-active { border-color: var(--accent); background: var(--accent-soft-bg); box-shadow: var(--shadow-md); }
+.fg-summary-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: var(--r-lg);
+  background: var(--accent-soft-bg); color: var(--accent);
+}
+.fg-summary-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fg-summary-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.fg-summary-value { font-size: 20px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.fg-summary-detail { font-size: 12px; color: var(--text-secondary); }
+
+/* Reachable only when a filter matches nothing, and the summary cards that set
+   that filter are replaced by the empty state, so the reset lives here. */
+.fg-empty-state { flex-direction: column; gap: 14px; }
+.fg-clear-filters {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg-surface); color: var(--text-primary);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.fg-clear-filters:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Row highlighting for Sold vs In Stock */
+.data-table tbody tr.fg-row-sold,
+.data-table tbody tr.fg-row-sold td {
+  background: var(--color-danger-soft) !important;
+}
+.data-table tbody tr.fg-row-sold:hover,
+.data-table tbody tr.fg-row-sold:hover td {
+  background: var(--color-danger-bg) !important;
+}
+.data-table tbody tr.fg-row-in-stock,
+.data-table tbody tr.fg-row-in-stock td {
+  background: var(--color-success-soft) !important;
+}
+.data-table tbody tr.fg-row-in-stock:hover,
+.data-table tbody tr.fg-row-in-stock:hover td {
+  background: var(--color-success-bg) !important;
+}
+
+/* Finished Goods Details Modal */
+.fg-details-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--overlay); }
+.fg-details-container {
+  width: min(680px, 100%); max-height: min(760px, calc(100vh - 40px)); display: flex;
+  flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-xl);
+  background: var(--bg-surface); box-shadow: var(--shadow-lg);
+}
+.fg-details-header, .fg-details-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.fg-details-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.fg-details-footer { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
+.fg-details-close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.fg-details-close:hover { background: var(--bg-table-stripe); color: var(--accent); }
+.fg-details-body { overflow-y: auto; padding: 20px; }
+.fg-details-grid { display: grid; grid-template-columns: minmax(145px, .8fr) minmax(0, 1.2fr); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.fg-details-value { color: var(--text-primary); overflow-wrap: anywhere; }
+.fg-details-grid > :nth-last-child(-n + 2) { border-bottom: 0; }
+.fg-details-close-btn { height: 34px; padding: 0 14px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 150ms ease; }
+.fg-details-close-btn:hover { background: var(--accent-hover); }
+
+@media (max-width: 640px) {
+  .fg-summary-row { flex-direction: column; }
+  .fg-summary-card { min-width: 0; width: 100%; }
+  .fg-details-overlay { padding: 12px; }
+  .fg-details-body { padding: 12px; }
+  .fg-details-header, .fg-details-footer { padding: 14px; }
+  .fg-details-grid { grid-template-columns: 1fr; }
+  .fg-details-value { padding-top: 4px; }
+  .fg-details-grid > :nth-last-child(-n + 2) { border-bottom: 1px solid var(--border); }
+  .fg-details-grid > :last-child { border-bottom: 0; }
 }

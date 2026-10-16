@@ -131,6 +131,7 @@ import { ChevronDown, KeyRound, Menu, User, X } from "lucide-react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/Auth";
+import { HeaderSearchField, HeaderSearchProvider } from "./context/HeaderSearch";
 import ProtectedRoute from "./components/ProtectedRoute";
 import GlobalApiLoader from "./components/GlobalApiLoader";
 import { RealtimeProvider } from "./components/RealtimeProvider";
@@ -299,6 +300,7 @@ function AppShell() {
           </div>
 
           <div className="app-topbar-right">
+            <HeaderSearchField />
             <div className="profile-menu-wrap"><button type="button" className="profile-menu-toggle" onClick={() => setProfileMenuOpen((open) => !open)} aria-label="Open profile menu" aria-expanded={profileMenuOpen}><ChevronDown size={16} /></button>{profileMenuOpen && <div className="profile-menu"><button type="button" onClick={() => { setProfileMenuOpen(false); setProfileOpen(true); }}><KeyRound size={15} /> Change password</button></div>}</div>
             <button type="button" className="profile-password-trigger" onClick={() => setProfileOpen(true)}><KeyRound size={15} /> Change password</button>
             <div className="app-user" title={`${email || name || "Signed-in user"} — ${roleLabel}`}>
@@ -394,7 +396,7 @@ function AppShell() {
           </Routes>
         </main>
         <footer className="app-footer">
-           © 2026 Office2000 Solutions Pvt Ltd
+           © {new Date().getFullYear()} Vector Indojanix Private Limited
         </footer>
       </div>
     </div>
@@ -407,6 +409,8 @@ return (
 <AuthProvider>
 {/* One WebSocket for the app: pages refresh their own view when data changes. */}
 <RealtimeProvider>
+{/* Pages hand their top-header search box to the shell through this slot. */}
+<HeaderSearchProvider>
 <BrowserRouter>
 <GlobalApiLoader />
 <Routes>
@@ -419,6 +423,7 @@ return (
 <Route path="/*" element={<AppShell />} />
 </Routes>
 </BrowserRouter>
+</HeaderSearchProvider>
 </RealtimeProvider>
 </AuthProvider>
 </ThemeProvider>

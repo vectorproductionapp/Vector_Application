@@ -87,6 +87,25 @@
 .sales-menu-item:hover { background: var(--accent-soft-bg); color: var(--accent); }
 .sales-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* The export button keeps its own markup, restyled to read as a menu row. */
+.sales-menu-export .export-pdf-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.sales-menu-export .export-pdf-btn:hover:not(:disabled) { background: var(--accent-soft-bg); color: var(--accent); }
+.sales-menu-export .export-pdf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 @media (max-width: 640px) {
   .sales-toolbar-actions { display: none; }
   .sales-kebab-wrapper { display: block; }
@@ -123,7 +142,9 @@
 .sale-field input:focus, .sale-field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .sale-field input::placeholder { color: var(--text-secondary); font-weight: 400; }
 
-.sale-form-section-title { grid-column: 1 / -1; font-size: 12.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent); margin: 18px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+/* Only the grid placement is page-specific; the typography is shared with every
+   other form/popup heading in global.css. */
+.sale-form-section-title { grid-column: 1 / -1; }
 .sale-form-section-title:first-of-type { margin-top: 20px; }
 
 @media (max-width: 900px) { .sale-form-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -144,7 +165,7 @@
 .sale-details-close:hover { background: var(--bg-table-hover); }
 .sale-details-body { overflow-y: auto; padding: 22px 24px 24px; flex: 1; display: flex; flex-direction: column; gap: 22px; width: 100%; }
 .sale-details-section { width: 100%; }
-.sale-details-section h3 { margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent); padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+/* Section headings are styled once, for every detail popup, in global.css. */
 .sale-details-grid { display: grid; grid-template-columns: minmax(140px, 45%) 1fr; row-gap: 14px; column-gap: 16px; width: 100%; }
 .sale-details-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); align-self: start; padding-top: 1px; }
 .sale-details-value { font-size: 13.5px; font-weight: 400; color: var(--text-primary); word-break: break-word; align-self: start; }
@@ -197,3 +218,45 @@ select.sale-details-edit-input { appearance: none; background-image: url("data:i
 .sale-serial-edit-list input { height: 38px; padding: 0 12px; border-radius: var(--r-sm); outline: none; font-size: 13px; transition: border-color 150ms ease, box-shadow 150ms ease; }
 .sale-serial-edit-list input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .sale-details-value:has(.sale-serial-edit-list) { width: 100%; }
+
+/* ---- Client PO card drill-down (card grid -> that PO's table) ----
+   The card grid, card chrome and the Back button reuse the PO Details classes
+   (.model-grid / .model-card / .po-card classes / .po-back-btn) so both pages
+   read as one pattern. Only the row holding Back plus the open PO name is
+   page-specific. */
+.sales-po-drill { margin-bottom: 14px; }
+.sales-po-drill .po-heading { margin: 0; }
+
+@media (max-width: 640px) {
+  .sales-po-drill { flex: 1 1 100%; }
+  .sales-po-drill .po-heading { font-size: 17px; }
+}
+
+/* EDIT PO DIALOG (PO card pencil)
+   Four columns on desktop, two on tablets, one on phones. On phones the dialog
+   fills the screen width, the form scrolls under a fixed header and footer, and
+   the footer buttons share the row so both stay within thumb reach. */
+.modal-container.po-edit-modal { max-width: 960px; max-height: min(88vh, 720px); }
+.modal-container.po-edit-modal .sale-form { padding-top: 18px; }
+.modal-container.po-edit-modal .sale-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.modal-container.po-edit-modal .sale-field { min-width: 0; }
+.modal-container.po-edit-modal .sale-field > input,
+.modal-container.po-edit-modal .sale-field > div { width: 100%; min-width: 0; }
+.modal-container.po-edit-modal .modal-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+@media (max-width: 1024px) {
+  .modal-container.po-edit-modal { max-width: 720px; }
+  .modal-container.po-edit-modal .sale-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .modal-overlay.po-edit-overlay { padding: 12px; align-items: center; }
+  .modal-container.po-edit-modal { max-height: calc(100dvh - 24px); border-radius: var(--r-lg); }
+  .modal-container.po-edit-modal .modal-header { padding: 14px 16px; }
+  .modal-container.po-edit-modal .modal-header h2 { font-size: 16px; }
+  .modal-container.po-edit-modal .sale-form { padding: 14px 16px 20px; }
+  .modal-container.po-edit-modal .sale-form-grid { grid-template-columns: 1fr; gap: 14px; }
+  .modal-container.po-edit-modal .sale-form-section-title { font-size: 11px; }
+  .modal-container.po-edit-modal .modal-footer { padding: 12px 16px; gap: 10px; }
+  .modal-container.po-edit-modal .modal-footer > button { flex: 1 1 0; justify-content: center; }
+}

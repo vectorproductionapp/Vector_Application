@@ -30,6 +30,21 @@ def _display_number(value):
     return int(value) if float(value).is_integer() else value
 
 
+def _unit_value_total(sales):
+    """Total of Unit Cost x Qty across sales, ignoring the GST-inclusive value.
+
+    The dashboard's Sales Value KPI reports the unit-level spend rather than
+    the stored PO value, so it lines up with the Basic Price total the table
+    pages show.
+    """
+    total = 0
+    for sale in sales:
+        if sale.get("dispatch") == "Cancelled":
+            continue
+        total += _number(sale.get("unitCost")) * _number(sale.get("qty"))
+    return total
+
+
 def _packed_period(date_value, weekly=False):
     """Return a stable day or ISO-week key for an assembly date."""
     try:
@@ -114,15 +129,45 @@ def _stream_collection(name):
     return [(doc.to_dict() or {}) for doc in db.collection(name).stream()]
 
 
+# A sale counts as dispatched once it leaves the warehouse.  The register calls
+# that state "Delivered" now; sales saved before the rename still say
+# "Dispatched", so both spellings are counted.
+DISPATCHED_STATUSES = ("Dispatched", "Delivered")
+
+# A unit is "added to stock" once assembly has finished it, or once packaging
+# has sealed it. Either milestone means the unit physically exists as stock, so
+# both are counted - and each unit is only ever counted once.
+STOCK_STAGE = "Completed"
+STOCK_PACKAGING = "Packed"
+
+
+def _sale_serials(sale):
+    """Every serial a sale covers.
+
+    Newer sale records split a multi-serial dispatch into `serialNumbers`, while
+    older ones (and single-unit sales) keep a comma-joined `serial`. Both are
+    merged so a serial is matched regardless of which shape it was saved in.
+    """
+    serials = set()
+    numbers = sale.get("serialNumbers")
+    if isinstance(numbers, list):
+        serials.update(value.strip() for value in map(str, numbers) if value.strip())
+    single = str(sale.get("serial") or "").strip()
+    if single:
+        serials.update(part.strip() for part in single.split(",") if part.strip())
+    return serials
+
+
 def _sales_dashboard_data(sales_docs, model_names, include_all_active_sales=False):
     """Build the sales chart payload for either Vector or Customer Sales."""
     dispatched = [
         sale for sale in sales_docs
         if sale.get("dispatch") != "Cancelled"
-        and (include_all_active_sales or sale.get("dispatch") == "Dispatched")
+        and (include_all_active_sales or sale.get("dispatch") in DISPATCHED_STATUSES)
     ]
     locations = defaultdict(float); location_by_day = defaultdict(float); location_by_week = defaultdict(float)
     client_by_day = defaultdict(float); sales_by_month = defaultdict(float); sales_by_model_month = defaultdict(float)
+    end_user_location_by_day = defaultdict(float); end_user_client_by_day = defaultdict(float)
     for sale in sales_docs:
         if sale.get("dispatch") == "Cancelled":
             continue
@@ -135,12 +180,18 @@ def _sales_dashboard_data(sales_docs, model_names, include_all_active_sales=Fals
         location_by_week[(_packed_period(sale.get("date"), weekly=True), location)] += quantity
         client = (sale.get("client") or "Unspecified").strip() or "Unspecified"
         client_by_day[(_packed_period(sale.get("date")), client)] += quantity
+        end_user_location = (sale.get("endUserLocation") or sale.get("location") or "Unspecified").strip() or "Unspecified"
+        end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
+        end_user_client = (sale.get("endUserClient") or sale.get("client") or "Unspecified").strip() or "Unspecified"
+        end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
         sales_by_month[_packed_period(sale.get("date"))[:7]] += quantity
     return {
-        "kpis": {"sold": _display_number(sum(_number(sale.get("qty")) for sale in dispatched)), "salesValue": sum(_number(sale.get("value")) for sale in sales_docs)},
+        "kpis": {"sold": _display_number(sum(_number(sale.get("qty")) for sale in dispatched)), "salesValue": _unit_value_total(sales_docs)},
         "modelNames": sorted(set(model_names) | {model for _, model in sales_by_model_month}, key=str.casefold),
         "locationSalesByDay": [{"period": period, "location": location, "units": _display_number(units)} for (period, location), units in sorted(location_by_day.items())],
         "clientSalesByDay": [{"period": period, "client": client, "units": _display_number(units)} for (period, client), units in sorted(client_by_day.items())],
+        "endUserLocationByDay": [{"period": period, "location": location, "units": _display_number(units)} for (period, location), units in sorted(end_user_location_by_day.items())],
+        "endUserClientByDay": [{"period": period, "client": client, "units": _display_number(units)} for (period, client), units in sorted(end_user_client_by_day.items())],
         "salesByMonth": [{"period": period, "units": _display_number(units)} for period, units in sorted(sales_by_month.items())],
         "salesByModelMonth": [{"period": period, "model": model, "units": _display_number(units)} for (period, model), units in sorted(sales_by_model_month.items())],
     }
@@ -192,6 +243,7 @@ def get_dashboard():
         for unit in assembly_activity_docs:
             quantity = _number(unit.get("qty"))
             stage_totals[unit.get("stage", "")] += quantity
+        semi_finished = stage_totals["Semi Finished"]
 
         for unit in qc_activity_docs:
             quantity = _number(unit.get("qty"))
@@ -208,13 +260,47 @@ def get_dashboard():
             if unit.get("packagingStatus") == "Packed":
                 packed += quantity
 
-        sales_value = sum(_number(sale.get("value")) for sale in sale_docs)
-        dispatched_sales = [sale for sale in sale_docs if sale.get("dispatch") == "Dispatched"]
-        units_sold = sum(_number(sale.get("qty")) for sale in dispatched_sales)
+        sales_value = _unit_value_total(sale_docs)
+        dispatched_sales = [sale for sale in sale_docs if sale.get("dispatch") in DISPATCHED_STATUSES]
+        # "Total qty delivered" counts a sale once it has actually been
+        # delivered, not while it is only marked dispatched. Compared with
+        # casefold because dispatch is stored as title case and older rows may
+        # differ; the Finished Goods page uses the same rule so the two agree.
+        delivered_sales = [
+            sale for sale in sale_docs
+            if str(sale.get("dispatch") or "").strip().casefold() == "delivered"
+        ]
+        units_sold = sum(_number(sale.get("qty")) for sale in delivered_sales)
+
+        # Serials that have left the warehouse. A device is identified by its
+        # serial in both collections, so this is what links a sale back to the
+        # unit it consumed.
+        sold_serials = set()
+        for sale in delivered_sales:
+            sold_serials |= _sale_serials(sale)
+
+        # Stock that is still physically available: units added to stock, minus
+        # the ones already delivered. Counting the whole `qty` and not just the
+        # document keeps a multi-unit record honest, and the floor at zero stops
+        # a sale that was entered before its unit existed from showing negative.
+        in_stock_added = 0
+        in_stock_sold = 0
+        for unit in assembly_activity_docs:
+            quantity = _number(unit.get("qty"))
+            stage = str(unit.get("stage") or "").strip()
+            packaging = str(unit.get("packagingStatus") or "").strip()
+            if stage != STOCK_STAGE and packaging != STOCK_PACKAGING:
+                continue
+            in_stock_added += quantity
+            if str(unit.get("serial") or "").strip() in sold_serials:
+                in_stock_sold += quantity
+        in_stock = max(0, in_stock_added - in_stock_sold)
         locations = defaultdict(float)
         location_by_day = defaultdict(float)
         location_by_week = defaultdict(float)
         client_by_day = defaultdict(float)
+        end_user_location_by_day = defaultdict(float)
+        end_user_client_by_day = defaultdict(float)
         sales_by_month = defaultdict(float)
         sales_by_model_month = defaultdict(float)
         production_by_model = defaultdict(float)
@@ -232,6 +318,11 @@ def get_dashboard():
         qc_by_month_status_user = defaultdict(float)
         packaged_by_month_status = defaultdict(float)
         packaged_by_month_status_user = defaultdict(float)
+        # Day-level status splits. The monthly buckets above cannot answer "how
+        # much in this date range", so these carry the same status/user detail
+        # one day at a time for the analytics date filter.
+        qc_by_day_status_user = defaultdict(float)
+        packaged_by_day_status_user = defaultdict(float)
         # The model sales trend should reflect every active sale as soon as it
         # is recorded. Dispatch status is intentionally only used for the
         # separate dispatch KPIs and dispatch charts below.
@@ -251,6 +342,10 @@ def get_dashboard():
             location_by_week[(_packed_period(sale.get("date"), weekly=True), location)] += quantity
             client = (sale.get("client") or "Unspecified").strip() or "Unspecified"
             client_by_day[(_packed_period(sale.get("date")), client)] += quantity
+            end_user_location = (sale.get("endUserLocation") or location).strip() or "Unspecified"
+            end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
+            end_user_client = (sale.get("endUserClient") or client).strip() or "Unspecified"
+            end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
             period = _packed_period(sale.get("date"))
             sales_by_month[period[:7]] += quantity
 
@@ -279,6 +374,7 @@ def get_dashboard():
             qc_by_month_status[(month, qc_status)] += quantity
             qc_user = scoped_user_name or (unit.get("qcBy") or "Unassigned").strip() or "Unassigned"
             qc_by_month_status_user[(month, qc_status, qc_user)] += quantity
+            qc_by_day_status_user[(period, qc_status, qc_user)] += quantity
             if unit.get("qcBy") or unit.get("qcById"):
                 qc_by_day[(_packed_period(unit.get("date")), qc_user)] += quantity
                 qc_by_week[(_packed_period(unit.get("date"), weekly=True), qc_user)] += quantity
@@ -292,6 +388,7 @@ def get_dashboard():
             packaged_by_month_status[(month, packaging_status)] += quantity
             packaged_user = scoped_user_name or (unit.get("packagedBy") or "Unassigned").strip() or "Unassigned"
             packaged_by_month_status_user[(month, packaging_status, packaged_user)] += quantity
+            packaged_by_day_status_user[(period, packaging_status, packaged_user)] += quantity
             if unit.get("packagingStatus") == "Packed":
                 packed_by_day[( _packed_period(unit.get("date")), model)] += quantity
                 packed_by_week[(_packed_period(unit.get("date"), weekly=True), model)] += quantity
@@ -307,22 +404,39 @@ def get_dashboard():
         quality_pass_rate = round((qc_passed / qc_total) * 100) if qc_total else 0
         reorder_count = 0 if user_scoped else _stock_reorder_count(assembly_docs, po_docs, invoice_docs, boq_docs)
 
+        # "Total Unit" is defined as the sum of the five pipeline buckets the
+        # cards below it already show, so the headline always agrees with the
+        # row of figures under it. The buckets are counted independently, so a
+        # unit that somehow carries both a production stage and a QC verdict
+        # would be counted in both - that matches what the cards display.
+        total_units = (
+            stage_totals["In Production"]
+            + semi_finished
+            + qc_passed
+            + qc_failed
+            + qc_inspection
+        )
+
         return jsonify({
             "success": True,
             "kpis": {
+                "total": _display_number(total_units),
                 "inProduction": _display_number(stage_totals["In Production"]),
-                "semiFinished": _display_number(stage_totals["Semi Finished"]),
+                "semiFinished": _display_number(semi_finished),
                 "qcInspection": _display_number(qc_inspection),
                 "qcFailed": _display_number(qc_failed),
                 "qcPassed": _display_number(qc_passed),
                 "packed": _display_number(packed),
+                "inStock": _display_number(in_stock),
+                "inStockAdded": _display_number(in_stock_added),
+                "inStockSold": _display_number(in_stock_sold),
                 "sold": _display_number(units_sold),
                 "salesValue": sales_value,
                 "defects": len(defect_docs),
                 "reorder": reorder_count,
             },
             "qualityPassRate": quality_pass_rate,
-            "dispatchLocationCount": len(locations),
+            "dispatchLocationCount": len(locations) + len({loc for (_, loc) in end_user_location_by_day.keys() if loc != "Unspecified"}),
             "modelNames": sorted({
                 (model.get("name") or "").strip()
                 for model in model_docs
@@ -346,6 +460,14 @@ def get_dashboard():
             "clientSalesByDay": [
                 {"period": period, "client": client, "units": _display_number(units)}
                 for (period, client), units in sorted(client_by_day.items())
+            ],
+            "endUserLocationByDay": [
+                {"period": period, "location": location, "units": _display_number(units)}
+                for (period, location), units in sorted(end_user_location_by_day.items())
+            ],
+            "endUserClientByDay": [
+                {"period": period, "client": client, "units": _display_number(units)}
+                for (period, client), units in sorted(end_user_client_by_day.items())
             ],
             "salesByMonth": [
                 {"period": period, "units": _display_number(units)}
@@ -382,6 +504,14 @@ def get_dashboard():
             "packagedByMonthStatusUser": [
                 {"period": period, "status": status, "user": user, "units": _display_number(units)}
                 for (period, status, user), units in sorted(packaged_by_month_status_user.items())
+            ],
+            "qcByDayStatusUser": [
+                {"period": period, "status": status, "user": user, "units": _display_number(units)}
+                for (period, status, user), units in sorted(qc_by_day_status_user.items())
+            ],
+            "packagedByDayStatusUser": [
+                {"period": period, "status": status, "user": user, "units": _display_number(units)}
+                for (period, status, user), units in sorted(packaged_by_day_status_user.items())
             ],
             "packedByDay": [
                 {"period": period, "model": model, "units": _display_number(units)}

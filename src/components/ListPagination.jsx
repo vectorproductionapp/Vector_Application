@@ -45,6 +45,10 @@ export default function ListPagination({
   rowCount = 0,
   onPageChange,
   onPageSizeChange,
+  // Card grids page in the browser and show "cards" in multiples of the
+  // grid's columns; tables keep the defaults.
+  itemLabel = "rows",
+  pageSizeOptions = PAGE_SIZE_OPTIONS,
 }) {
   const safeTotalPages = Math.max(1, totalPages || 1);
 
@@ -56,7 +60,7 @@ export default function ListPagination({
 
   const handlePageSizeChange = (event) => {
     const next = Number(event.target.value);
-    if (!PAGE_SIZE_OPTIONS.includes(next) || next === pageSize) return;
+    if (!pageSizeOptions.includes(next) || next === pageSize) return;
     onPageSizeChange?.(next);
   };
 
@@ -67,7 +71,7 @@ export default function ListPagination({
     <div className="pg-root">
       <div className="pg-row">
         <p className="pg-hint">
-          Showing {firstRow}–{lastRow} of {totalCount} rows
+          Showing {firstRow}–{lastRow} of {totalCount} {itemLabel}
         </p>
 
         <div className="pg-controls">
@@ -128,25 +132,25 @@ export default function ListPagination({
             aria-label="Last page"
           >
             <ChevronsRight size={16} />
-          </button>
-        </div>
+            </button>
+          </div>
 
-        <label className="pg-size">
-          <span>Show</span>
-          <select
-            className="pg-size-select"
-            value={pageSize}
-            onChange={handlePageSizeChange}
-            aria-label="Rows per page"
-          >
-            {PAGE_SIZE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <span>per page</span>
-        </label>
+          <label className="pg-size">
+            <span>Show</span>
+            <select
+              className="pg-size-select"
+              value={pageSize}
+              onChange={handlePageSizeChange}
+              aria-label={`${itemLabel.charAt(0).toUpperCase()}${itemLabel.slice(1)} per page`}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <span>per page</span>
+          </label>
       </div>
     </div>
   );
