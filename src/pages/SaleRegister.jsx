@@ -3,8 +3,8 @@ import useDashboardDeepLink from "../components/useDashboardDeepLink";
 import BackToDashboard from "../components/BackToDashboard";
 import Swal from "sweetalert2";
 import { createPortal } from "react-dom";
-import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check, Eye, FileText, ArrowLeft } from "lucide-react";
-import SearchBar, { SearchableSelect } from "../components/SearchBar";
+import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check, FileText, ArrowLeft } from "lucide-react";
+import { SearchableSelect } from "../components/SearchBar";
 import DateRangeFilter from "../components/DateRangeFilter";
 import { useHeaderSearch } from "../context/HeaderSearch";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
@@ -547,7 +547,7 @@ function renderDetailField(
 }
 
 export default function SaleRegister() {
-  const [query, setQuery] = useHeaderSearch("sale-register", "Search Sale Register...");
+  const [query] = useHeaderSearch("sale-register", "Search Sale Register...");
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
 
@@ -729,38 +729,6 @@ const [totalCount, setTotalCount] = useState(0);
     setCustomerSaleDetailsParent(null);
     setDetailsRow(row);
     setEditValues(buildEditValues(row));
-    setIsEditingDetails(false);
-    setDetailsError("");
-    setDetailsClosing(false);
-    setDetailsOpen(true);
-  };
-
-  const openCustomerSale = (row) => {
-    setCustomerSaleParent(row);
-    setFormValues(emptySaleForm);
-    initialFormValuesRef.current = emptySaleForm;
-    setFormError("");
-    setClosing(false);
-    setModalOpen(true);
-  };
-
-  const openCustomerSaleForEdit = (row) => {
-    if (!row.customerSale) return;
-    const customerSale = { ...row.customerSale, id: getRowId(row) };
-    setCustomerSaleParent(row);
-    setFormValues(buildEditValues(customerSale, true));
-    initialFormValuesRef.current = buildEditValues(customerSale, true);
-    setFormError("");
-    setClosing(false);
-    setModalOpen(true);
-  };
-
-  const openCustomerSaleDetails = (row) => {
-    if (!row.customerSale) return;
-    const customerSale = { ...row.customerSale, id: getRowId(row) };
-    setCustomerSaleDetailsParent(row);
-    setDetailsRow(customerSale);
-    setEditValues(buildEditValues(customerSale));
     setIsEditingDetails(false);
     setDetailsError("");
     setDetailsClosing(false);
