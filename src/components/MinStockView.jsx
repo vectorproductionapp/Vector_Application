@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronRight, Loader2, PackageX, RefreshCw, TrendingUp, X } from "lucide-react";
 import api from "./Api";
+import ListPagination from "./ListPagination";
 import { useRealtime } from "./RealtimeProvider";
 import "./MinStockView.css";
 
@@ -13,15 +14,42 @@ function errorMessage(error) {
   return error?.response?.data?.message || error?.message || "Failed to load min stock overview.";
 }
 
+// The backend status is only "REORDER - BELOW MIN" or "OK", so "out of stock"
+// has to come from the closing figure itself: nothing (or less) left.
 function isOutOfStock(row) {
-  if (row.status) return /out/i.test(row.status);
   return (Number(row.closing) || 0) <= 0;
 }
 
 function isLowStock(row) {
-  if (row.status) return /low/i.test(row.status);
+  if (/reorder|below|low/i.test(row.status || "")) return true;
   const minLevel = Number(row.minLevel) || 0;
   return minLevel > 0 && (Number(row.closing) || 0) <= minLevel;
+}
+
+// Pages a list in the browser; the view already holds every row. The page
+// snaps back to 1 when `resetKey` changes and is clamped when the list shrinks.
+function useClientPagination(items, resetKey) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  useEffect(() => setPage(1), [resetKey]);
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
+  return {
+    pageItems,
+    pagerProps: {
+      page: safePage,
+      pageSize,
+      totalPages,
+      totalCount: items.length,
+      rowCount: pageItems.length,
+      onPageChange: setPage,
+      onPageSizeChange: (size) => {
+        setPageSize(size);
+        setPage(1);
+      },
+    },
+  };
 }
 
 function rowName(row) {
@@ -147,6 +175,12 @@ export default function MinStockView({ onSelectRow }) {
     [lowRows, outRows, purchasedRows]
   );
 
+  const { pageItems: pagedAlerts, pagerProps: alertPager } = useClientPagination(lowStockRows);
+  const { pageItems: pagedDetailRows, pagerProps: detailPager } = useClientPagination(
+    openCard ? cardDetails[openCard].items : [],
+    openCard
+  );
+
   if (loading) {
     return (
       <div className="minstock-loading">
@@ -220,8 +254,9 @@ export default function MinStockView({ onSelectRow }) {
         {lowStockRows.length === 0 ? (
           <p className="minstock-hint">Everything is comfortably stocked.</p>
         ) : (
+          <div className="minstock-alert-scroll">
           <ul className="minstock-alert-list">
-            {lowStockRows.map((row) => (
+            {pagedAlerts.map((row) => (
               <li
                 className={`minstock-alert-item${isOutOfStock(row) ? " danger" : ""}`}
                 key={row.code || row.desc}
@@ -248,7 +283,9 @@ export default function MinStockView({ onSelectRow }) {
               </li>
             ))}
           </ul>
+          </div>
         )}
+        {lowStockRows.length > 0 && <ListPagination {...alertPager} itemLabel="alerts" />}
       </div>
 
       {detail && createPortal(
@@ -289,7 +326,7 @@ export default function MinStockView({ onSelectRow }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {detail.items.map((row) => (
+                        {pagedDetailRows.map((row) => (
                           <tr key={`${row.code || ""}-${row.phase || ""}`}>
                             {DETAIL_COLUMNS.map((column) => (
                               <td
@@ -316,6 +353,12 @@ export default function MinStockView({ onSelectRow }) {
                 </div>
               )}
             </div>
+
+            {detail.items.length > 0 && (
+              <div className="minstock-modal-pager">
+                <ListPagination {...detailPager} itemLabel="items" />
+              </div>
+            )}
 
             <div className="minstock-modal-footer">
               <button type="button" className="minstock-modal-close-btn" onClick={closeCard}>Close</button>

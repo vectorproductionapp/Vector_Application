@@ -1,0 +1,1090 @@
+2026-10-16 13:39:27,879 INFO vector.realtime realtime WebSocket listening on /ws
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.175:5000
+Press CTRL+C to quit
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=1542.7 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:39:37] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=1548.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 13:39:37] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:40:28] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:40:37] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:42:32] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:42:40] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:43:21] "POST /item-codes/purge-orphans HTTP/1.1" 401 -
+127.0.0.1 - - [16/Oct/2026 13:43:50] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=711.2 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 13:43:52] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:43:55] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:05] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+C:\Users\ADMIN\AppData\Local\Programs\Python\Python311\Lib\site-packages\google\cloud\firestore_v1\base_collection.py:317: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+  return query.where(field_path, op_string, value)
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=2105.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 13:44:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:17] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:17] "GET /po-details/groups?_=1792138457240 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:18] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/invoices status=200 total_ms=533.1 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 13:44:20] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase-1&filterField=invoice&filterValue=21567 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:20] "GET /invoices/images?ids=EA3EUNLhTdJKojDvwM37 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:22] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:22] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:24] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:25] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:44:30] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:46:26] "GET /main.3545e1311a386d0e266b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 13:46:27] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:46:27] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=520.8 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 13:46:28] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=697.3 auth_ms=1.4
+127.0.0.1 - - [16/Oct/2026 13:46:49] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:04] "GET /main.e5ba2879126283770284.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 13:50:06] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:06] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:06] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:06] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=529.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 13:50:06] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:08] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:09] "GET /main.6c5efbe53d329a810a1d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 13:50:10] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:10] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:10] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:10] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:10] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:13] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:39] "GET /main.e9e544f578fa420ccac3.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models status=200 total_ms=501.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:40] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:41] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:41] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=552.6 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:41] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=610.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:41] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:42] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:46] "GET /main.1117b896420bf1695c86.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 13:50:46] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=2&limit=10 HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=511.2 auth_ms=0.2
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=505.9 auth_ms=0.2
+slow_request method=GET path=/models status=200 total_ms=546.6 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:47] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=559.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:47] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=570.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:47] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:47] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:47] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:48] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=541.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 13:50:50] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=2&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:50] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=789.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 13:50:55] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:55] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:57] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:58] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:58] "GET /po-details/groups?_=1792138858041 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:50:58] "GET /po-details/groups?_=1792138858040 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=527.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 13:50:59] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:53:51] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:06] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:09] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:10] "GET /po-details/groups?_=1792139049748 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:10] "GET /po-details/groups?_=1792139049747 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:12] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:12] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 13:54:14] "GET /stock-register?page=1&limit=100000 HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=613.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:00:37] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=527.1 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:00:39] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:00:40] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=930.2 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:00:40] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=1024.0 auth_ms=0.6
+127.0.0.1 - - [16/Oct/2026 14:00:40] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:00:41] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=652.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:02:16] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:02:46] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:03:59] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:03:59] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=759.6 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:04:00] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:04:00] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:05:49] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:06:57] "GET /main.8b986a9df33404d9ebff.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models status=200 total_ms=797.3 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:06:59] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=796.6 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:06:59] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:07:22] "GET /main.81bde27d952a8a63a4fe.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 14:07:25] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:07:25] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:08:58] "GET /main.91281962f34391a22830.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 14:09:01] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=933.5 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:09:02] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:09:40] "GET /main.97cb59e13794293b2ac7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 14:09:41] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:09:41] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:10:31] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=536.8 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 14:10:31] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:10:32] "GET /po-details/groups?_=1792140032096 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:10:32] "GET /suppliers HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=657.6 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 14:10:34] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:13:09] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:13:11] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:13:11] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:13:11] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=885.6 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:13:12] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:13:12] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:15:33] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=709.1 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:15:33] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:20:35] "GET /main.37b21925f88ec0a1e783.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models status=200 total_ms=846.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:20:38] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=1085.7 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:20:38] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=617.8 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:22:34] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=1111.5 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:27:57] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=1286.0 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:27:57] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=788.9 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:31:44] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:32:10] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=591.6 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:32:10] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=3638.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:39:19] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=4044.9 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:39:20] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/production-users status=200 total_ms=2327.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:39:21] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=2667.9 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:39:21] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=3111.5 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:39:22] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:39:25] "GET /sales/available-serials?modelId=NTLXxofAdCi8ksLWmhpH&model=model-1&excludeSaleId=5kNlhTYWDafK1ZAUK8PY HTTP/1.1" 200 -
+2026-10-16 14:40:20,755 INFO vector.realtime realtime notice scope=sales action=post clients=0
+127.0.0.1 - - [16/Oct/2026 14:40:20] "POST /sales/bulk-delete HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=504.6 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:40:21] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:40:26] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:40:26] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:40:29] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:40:35] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=867.4 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:40:36] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:40:59] "GET /sales/available-serials?modelId=NTLXxofAdCi8ksLWmhpH&model=model-1 HTTP/1.1" 200 -
+2026-10-16 14:42:12,906 INFO vector.realtime realtime notice scope=sales action=post clients=0
+127.0.0.1 - - [16/Oct/2026 14:42:12] "POST /sales HTTP/1.1" 201 -
+slow_request method=GET path=/sales status=200 total_ms=1034.1 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:42:13] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=643.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 14:42:26] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:42:30] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:42:56] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:42:57] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:43:01] "GET /sales/available-serials?modelId=NTLXxofAdCi8ksLWmhpH&model=model-1&excludeSaleId=5mwhpmIVztwRH9mc8G2w HTTP/1.1" 200 -
+2026-10-16 14:43:51,938 INFO vector.realtime realtime notice scope=sales action=put clients=0
+127.0.0.1 - - [16/Oct/2026 14:43:51] "PUT /sales/5mwhpmIVztwRH9mc8G2w HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:43:52] "GET /sales/available-serials?modelId=NTLXxofAdCi8ksLWmhpH&model=model-1&excludeSaleId=5mwhpmIVztwRH9mc8G2w HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=1393.4 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:43:55] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:44:25] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:44:25] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=954.3 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:44:25] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:44:27] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:44:42] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:46:36] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:46:36] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=549.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 14:46:57] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:48:28] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:48:32] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=555.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 14:48:32] "GET /assembly?page=1&limit=10&filterField=stage&filterValue=In+Production HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=955.2 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:48:33] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:48:39] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=586.5 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:48:39] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:48:42] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:50:12] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:50:15] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=624.2 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:50:16] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:50:20] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:51:56] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=571.2 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:51:57] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=647.7 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:51:57] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=868.4 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:52:03] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=946.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 14:53:27] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 14:59:17] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=851.5 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 14:59:18] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=506.8 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 14:59:20] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:00:39] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:00:39] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:00:41] "GET /stock-register?page=1&limit=100000 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:00:55] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=757.0 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 15:00:56] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:00:58] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:00] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:03] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:33] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=774.8 auth_ms=0.3
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=770.7 auth_ms=0.4
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=802.9 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:01:34] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:34] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:34] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:01:35] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:14] "GET /po-details/groups?_=1792143134008 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:14] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:14] "GET /po-details/groups?_=1792143134009 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:16] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:17] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:17] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:19] "GET /stock-register?page=1&limit=100000 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:02:22] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=608.1 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:02:27] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:09:29] "GET /main.928f55c8984cc67b2c13.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/dashboard status=200 total_ms=807.8 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 15:09:32] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:09:43] "GET /main.178d8d0d6c757c6409cb.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:09:44] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:10:06] "GET /main.b6e2428652d61dd186e7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:10:08] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:12:15] "GET /main.593cbd9825939e4a1963.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:12:17] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:12:17] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:12:17] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=635.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:12:29] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=791.9 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:19:12] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:19:13] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:19:13] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:19:13] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:19:17] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:30:12] "GET /main.f98c14c13371413718ab.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:30:14] "GET /main.f98c14c13371413718ab.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/defects status=200 total_ms=1010.9 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 15:30:14] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:30:15] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=693.6 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 15:30:15] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=617.0 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 15:30:18] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:30:19] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:30:19] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=503.9 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:30:19] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:39:40] "GET /main.03c4ba4b40a1f434acf5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:39:40] "GET /main.03c4ba4b40a1f434acf5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:39:40] "GET /main.03c4ba4b40a1f434acf5.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/defects status=200 total_ms=1430.7 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:39:43] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=1660.5 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:39:43] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=1686.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:39:43] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:39:43] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:39:43] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=POST path=/login status=200 total_ms=667.7 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 15:47:22] "POST /login HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=500.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:47:24] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=526.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:48:29] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=584.2 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:48:29] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=909.1 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:48:29] "GET /stock-register?page=1&limit=10&filterField=status&filterValue=OK HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:50:54] "GET /main.4a26e5ff4c9953bb47e5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:50:54] "GET /main.4a26e5ff4c9953bb47e5.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 15:50:54] "GET /main.4a26e5ff4c9953bb47e5.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/defects status=200 total_ms=526.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:50:58] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=824.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:50:58] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=975.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:50:58] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=741.0 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 15:50:58] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:52:40] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:52:42] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:52:42] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:52:42] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:55:49] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:55:49] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:57:28] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=525.5 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:57:28] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=728.0 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 15:57:28] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:59:33] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 15:59:58] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:00:25] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:00:26] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:01:57] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:01:57] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:01:58] "GET /po-details/groups?_=1792146717699 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:01:58] "GET /po-details/groups?_=1792146717700 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:01:58] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:02:09] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:02:09] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:03:28] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:03:52] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:36] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:36] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=724.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:05:37] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:41] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:41] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:41] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:05:47] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=552.6 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:05:56] "GET /assembly?page=1&limit=10&filterField=qc&filterValue=Passed HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:07] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:08] "GET /po-details/groups?_=1792146968228 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:08] "GET /po-details/groups?_=1792146968227 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:09] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:09] "GET /po-details/groups?_=1792146969709 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:15] "GET /po-details/groups?_=1792146975592 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:15] "GET /po-details/groups?_=1792146975591 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:21] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=513.9 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:06:21] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:21] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:21] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=PUT path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq/3xBsq9omjumpdElCoF06 status=200 total_ms=701.8 auth_ms=0.1
+2026-10-16 16:06:38,681 INFO vector.realtime realtime notice scope=phases action=put clients=0
+127.0.0.1 - - [16/Oct/2026 16:06:38] "PUT /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq/3xBsq9omjumpdElCoF06 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:39] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:39] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=560.7 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:06:45] "GET /models HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=596.7 auth_ms=0.1
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=599.4 auth_ms=0.2
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=653.7 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:06:45] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=672.9 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:06:45] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:45] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:45] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:46] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:50] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:06:50] "GET /item-codes HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=1223.9 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:08:52] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:08:53] "GET /po-details/groups?_=1792147132854 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:08:53] "GET /po-details/groups?_=1792147132853 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:08:54] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:08:54] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=527.8 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:08:54] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:18] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:19] "GET /main.b833ba18aefe9d65acb7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:09:22] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:22] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:22] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:22] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:31] "GET /main.84e24c96dcfbc8e0a926.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:09:32] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:32] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:32] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:32] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:44] "GET /main.26121f094631818c13f6.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:09:45] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:45] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:45] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:45] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:51] "GET /main.53c586923cf4da53084b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:09:52] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:52] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:52] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:09:53] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:02] "GET /main.caea759670c9c6f01340.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:10:03] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:03] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:03] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:03] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:12] "GET /main.a2b03beed63b1e7edb93.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:10:13] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:13] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:13] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:13] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:33] "GET /assembly?page=1&limit=10&filterField=stage&filterValue=In+Production HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:45] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:45] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:45] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:10:45] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:11:03] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:11:04] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:11:07] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:12:37] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=1299.4 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:12:39] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=830.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:12:42] "GET /assembly?page=1&limit=10&filterField=stage&filterValue=In+Production HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:12:47] "GET /assembly?page=1&limit=10&filterField=qc&filterValue=Passed HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:12:51] "GET /assembly?page=1&limit=10&filterField=qc&filterValue=Failed HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:12:54] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:12:54] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:12] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=540.7 auth_ms=0.2
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=542.1 auth_ms=0.1
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=616.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:13:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:15] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:13:15] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:45] "GET /main.c82821cef4ccc5bf5753.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models status=200 total_ms=530.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:14:48] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=545.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:14:48] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:48] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:48] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=587.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:14:48] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:49] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:50] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:50] "GET /item-codes HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:14:59] "GET /main.a34807b51c23a413de7e.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=508.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:15:00] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:00] "GET /models HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=514.4 auth_ms=0.2
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=537.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:15:00] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:00] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:00] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:01] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:05] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:05] "GET /po-details/groups?_=1792147505154 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:05] "GET /po-details/groups?_=1792147505153 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:06] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:06] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:06] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:07] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:07] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=587.0 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:15:07] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:15:13] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+2026-10-16 16:15:36,175 INFO vector.realtime realtime notice scope=assembly_units action=post clients=0
+127.0.0.1 - - [16/Oct/2026 16:15:36] "POST /assembly HTTP/1.1" 201 -
+slow_request method=GET path=/assembly status=200 total_ms=1236.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:15:38] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:16:50] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:16:50] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:20:46] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=570.8 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 16:20:47] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=509.0 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 16:21:19] "GET /sales?page=1&limit=10&q=3 HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=938.3 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 16:21:19] "GET /sales?page=1&limit=10&q=34 HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=744.3 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 16:21:19] "GET /sales?page=1&limit=10&q=345 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:24] "GET /sales?page=1&limit=10&q=s HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:25] "GET /sales?page=1&limit=10&q=f HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:25] "GET /sales?page=1&limit=10&q=fd HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:26] "GET /sales?page=1&limit=10&q=fds HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:26] "GET /sales?page=1&limit=10&q=fdsr HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:33] "GET /sales?page=1&limit=10&q=4 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:34] "GET /sales?page=1&limit=10&q=43 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:35] "GET /sales?page=1&limit=10&q=435 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:36] "GET /sales?page=1&limit=10&q=4356 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:36] "GET /sales?page=1&limit=10&q=43568 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:39] "GET /sales?page=1&limit=10&q=43567 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:40] "GET /sales?page=1&limit=10&q=435678 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:49] "GET /main.25157a675b81ec6a7e4d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:21:53] "GET /main.0c171e74a887fd019d5e.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:21:53] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:53] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:54] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:21:54] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:22:21] "GET /main.2ae9554d0b7eb450307a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:22:21] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:22:21] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:23:10] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=750.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:23:10] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=770.6 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:23:10] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:23:26] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+2026-10-16 16:24:09,417 INFO vector.realtime realtime notice scope=assembly_units action=post clients=0
+127.0.0.1 - - [16/Oct/2026 16:24:09] "POST /assembly HTTP/1.1" 201 -
+slow_request method=GET path=/assembly status=200 total_ms=822.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:24:11] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:25:05] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:25:08] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+2026-10-16 16:25:21,649 INFO vector.realtime realtime notice scope=assembly_units action=post clients=0
+127.0.0.1 - - [16/Oct/2026 16:25:21] "POST /assembly HTTP/1.1" 201 -
+slow_request method=GET path=/assembly status=200 total_ms=638.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:25:23] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:25:51] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:25:54] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:27:56] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:27:58] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:14] "GET /main.f2b8f532944562e37356.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:28:15] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:16] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:16] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=649.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:28:16] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:33] "GET /main.bd3ef1f01093eda82eba.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:28:33] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:33] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:34] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:28:34] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:29:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+2026-10-16 16:29:24,496 INFO vector.realtime realtime notice scope=assembly_units action=post clients=0
+127.0.0.1 - - [16/Oct/2026 16:29:24] "POST /assembly/bulk-delete HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=865.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:29:25] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:29:31] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:29:31] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:29:31] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=502.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:29:31] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:29:44] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:33:49] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=1111.1 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:36:16] "GET /assembly?q=ASADB3W5Y&page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:28] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:37] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:46] "GET /main.cd30aa7bec6fec281975.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:36:47] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:47] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:53] "GET /main.6f52000a0e31c9106693.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:36:53] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:36:53] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:37:09] "GET /main.d01df3ae15ed9e8ea9a9.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:37:13] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:37:13] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:37:23] "GET /main.6332cb2b58c14fcf5caa.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:37:24] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:37:24] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=747.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:37:40] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:37:48] "GET /main.fa1814282def2982e071.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:37:49] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:38:10] "GET /main.791e0596febf59f0d4aa.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:38:13] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:39:01] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=1035.0 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 16:39:02] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=889.1 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 16:39:12] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/production-users status=200 total_ms=888.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:39:12] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:39:16] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=605.5 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 16:39:30] "GET /assembly?q=ASADB3W5Y&page=1&limit=100&_fresh=1792148969580 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:39:44] "GET /assembly?q=ASADB3W5Y&page=1&limit=100&_fresh=1792148983779 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:39:56] "GET /assembly?q=ASADB3W5Y&page=1&limit=100&_fresh=1792148996555 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:07] "GET /assembly?q=ASADB3W5&page=1&limit=100&_fresh=1792149007314 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:32] "GET /assembly?q=ASADB3W5&page=1&limit=100&_fresh=1792149031571 HTTP/1.1" 200 -
+2026-10-16 16:40:32,278 INFO vector.realtime realtime notice scope=assembly_units action=post clients=0
+127.0.0.1 - - [16/Oct/2026 16:40:32] "POST /assembly HTTP/1.1" 201 -
+slow_request method=GET path=/assembly status=200 total_ms=649.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:40:33] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:34] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:34] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:35] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:35] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:40:59] "GET /sales/available-serials?modelId=NTLXxofAdCi8ksLWmhpH&model=model-1&excludeSaleId=0ADLdQEoG51snbwSKgno HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases status=200 total_ms=549.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:42:10] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=590.9 auth_ms=0.1
+slow_request method=POST path=/item-codes/purge-orphans status=200 total_ms=595.9 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 16:42:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+slow_request method=GET path=/models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq status=200 total_ms=674.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:42:14] "GET /models/NTLXxofAdCi8ksLWmhpH/phases/mgm1wDTEm6mvjFmOZc3U/boq?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:14] "POST /item-codes/purge-orphans HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:16] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:18] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:18] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:27] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:28] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=695.1 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 16:42:28] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:29] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:29] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:29] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:30] "GET /po-details/groups?_=1792149150080 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:30] "GET /po-details/groups?_=1792149150079 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:42:30] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:43:49] "GET /main.4691e25ab47596b5c81c.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:43:51] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:44:04] "GET /main.9991e7632332d74aeb9b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:44:05] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:44:19] "GET /main.7551004b3e91d5e738a2.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:44:22] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/defects status=200 total_ms=580.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:44:53] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:44:54] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:44:54] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:46:15] "GET /main.2d723a59526f69614ae1.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:46:17] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:46:18] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:46:44] "GET /main.43d7afba58f8c73e0f4a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:46:47] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:46:47] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:47:33] "GET /main.0bb21ee002fa72b3c7f7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:47:36] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:47:36] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:47:39] "GET /main.70ec4f3b50e6b1a431b8.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:47:40] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:47:40] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:47:50] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=554.3 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 16:49:16] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:49:18] "GET /po-details/groups?_=1792149557874 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:49:18] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:49:35] "GET /main.3e697eff61f41ded50fb.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:49:36] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:49:50] "GET /main.9cf475052e7ff5b954fc.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/dashboard status=200 total_ms=570.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 16:49:51] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:50:02] "GET /main.6a7886e2616b5d4296ab.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:50:03] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:51:14] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:35] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:35] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:35] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:38] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:49] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:53:49] "GET /po-details/groups?_=1792149829617 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:56:25] "GET /main.7fda8861878fc52d9363.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 16:56:26] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:57:33] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 16:59:43] "GET /main.eed6499613ca88cc0d4a.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/dashboard status=200 total_ms=516.2 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 16:59:45] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:01:48] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:01:51] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:37] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:41] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:44] "GET /po-details/groups?_=1792150364426 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:44] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:44] "GET /po-details/groups?_=1792150364429 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:48] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:52] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:52] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:55] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:55] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:55] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=560.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:02:56] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:59] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:02:59] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:03] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:06] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:11] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:15] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:19] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:19] "GET /po-details/groups?_=1792150398884 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:19] "GET /po-details/groups?_=1792150398887 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:22] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:26] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:26] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:30] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:30] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:30] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:30] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:33] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:33] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:37] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:41] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:46] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:50] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:54] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:54] "GET /po-details/groups?_=1792150434638 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:55] "GET /po-details/groups?_=1792150434642 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:03:59] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:03] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:03] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:08] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:08] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:08] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:08] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:12] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:16] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:20] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:25] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:30] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:34] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:35] "GET /po-details/groups?_=1792150474768 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:35] "GET /po-details/groups?_=1792150474772 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:39] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:43] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:43] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:48] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:48] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:48] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:48] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:52] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:52] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:04:57] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:01] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:06] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:10] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:15] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:15] "GET /po-details/groups?_=1792150514935 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:15] "GET /po-details/groups?_=1792150514939 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:19] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:23] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:23] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:28] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:28] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:28] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=582.2 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:05:28] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:32] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:32] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:05:36] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/admin/users status=200 total_ms=530.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:05:41] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:06:45] "GET /main.1d542eeb961e1d5a3bed.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:06:46] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:01] "GET /main.e5e87fd09984663788d1.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:07:04] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:19] "GET /main.01e005a794cf67599e0a.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:07:20] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:33] "GET /main.7b01b47ccaf437529e8b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:07:35] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=698.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:07:41] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=834.3 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:07:46] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:50] "GET /po-details/groups?_=1792150669860 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:50] "GET /po-details/groups?_=1792150669864 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:50] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:54] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:57] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:58] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:07:58] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:02] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:02] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:02] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=553.6 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:08:03] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:06] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:07] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/defects status=200 total_ms=695.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:08:11] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:15] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:18] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:18] "GET /po-details/groups?_=1792150698034 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:18] "GET /po-details/groups?_=1792150698033 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:20] "GET /po-details/groups?_=1792150699935 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:20] "GET /po-details/groups?_=1792150699934 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:20] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:20] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:22] "GET /po-details/groups?_=1792150701903 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:24] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:29] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:29] "GET /po-details/groups?_=1792150709002 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:29] "GET /po-details/groups?_=1792150709006 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:33] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:37] "GET /po-details/groups?_=1792150717130 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:37] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:37] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:39] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:39] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:42] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:42] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:42] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:42] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:45] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:46] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:46] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:51] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:08:55] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:00] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:05] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:09] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:09] "GET /po-details/groups?_=1792150749393 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:09] "GET /po-details/groups?_=1792150749398 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:14] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:18] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:18] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:22] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:22] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:22] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:22] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:25] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:25] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:29] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:33] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:37] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:42] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:45] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:46] "GET /po-details/groups?_=1792150785785 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:46] "GET /po-details/groups?_=1792150785787 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:49] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:53] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:53] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:57] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:57] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:57] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:09:57] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:00] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:00] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:04] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:07] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:12] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:16] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:21] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:21] "GET /po-details/groups?_=1792150821025 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:21] "GET /po-details/groups?_=1792150821026 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:25] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:28] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:28] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:32] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:32] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:32] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=574.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:10:32] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:36] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:36] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:40] "GET /defects?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:10:44] "GET /admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:11:05] "GET /main.ad4555b07c993bee686d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:11:06] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=649.4 auth_ms=0.3
+127.0.0.1 - - [16/Oct/2026 17:13:11] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:14:16] "GET /main.37848d64a5f09ee850c8.hot-update.json HTTP/1.1" 404 -
+slow_request method=GET path=/dashboard status=200 total_ms=518.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:14:17] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:14:42] "GET /main.54b0e23f6252bd32116f.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:14:43] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:14:59] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:15:11] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:15:40] "GET /main.5c61c725d8c5b2b55e8c.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:15:41] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:15:46] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=736.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:15:51] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:15:57] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=626.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:15:59] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:02] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:18] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:23] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:30] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:35] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:16:56] "GET /main.bbd8856d88a201cd6f2d.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:16:58] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:17:04] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:17:08] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:17:13] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:17:21] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:17:25] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:18:01] "GET /main.a950697f0a8adf741b3b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:18:02] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:18:08] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:18:08] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=728.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:18:12] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:18:20] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:18:24] "GET /assembly?page=1&limit=100 HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=837.0 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 17:22:23] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:23:34] "GET /main.9e9c03339b9a5b257246.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:23:35] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:23:37] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:23:55] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:24:08] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:24:24] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=529.9 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:24:24] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:24:37] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=701.6 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 17:24:41] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:24:49] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:24:52] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:12] "GET /main.0e2598505cb2a770ca94.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:25:13] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:13] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:13] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:13] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:19] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=638.8 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:25:19] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:21] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:24] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:28] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:37] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:41] "GET /sales?page=1&limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:41] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:41] "GET /po-details/groups?_=1792151741141 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:45] "GET /po-details/groups?_=1792151744784 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:25:46] "GET /po-details?page=1&limit=10&filterField=po&filterValue=25678&filterField=phase&filterValue=phase-1 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:33] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:34] "GET /po-details/groups?_=1792151794349 HTTP/1.1" 200 -
+slow_request method=GET path=/invoices/groups status=200 total_ms=580.4 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 17:26:36] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:39] "GET /main.c5145bbc6657d0dafa1b.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:26:39] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase-1&filterField=invoice&filterValue=21567 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:41] "GET /po-details/groups?_=1792151799949 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:41] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:41] "GET /invoices?page=1&limit=10&filterField=phase&filterValue=phase-1&filterField=invoice&filterValue=21567 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:42] "GET /invoices/images?ids=EA3EUNLhTdJKojDvwM37 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:43] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:43] "GET /po-details/groups?_=1792151803452 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:43] "GET /po-details/groups?_=1792151803453 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:55] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:55] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=838.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:26:55] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=835.3 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:26:55] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:59] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:59] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:59] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:26:59] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:03] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:03] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:03] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:03] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:08] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:08] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:08] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:08] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:12] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:12] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:12] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:27:12] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:28:42] "GET /main.470c30402c8d4659b53c.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:28:42] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:28:43] "GET /po-details/groups?_=1792151922712 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:28:43] "GET /po-details/groups?_=1792151922683 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:01] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:02] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:02] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:03] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:03] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:03] "GET /dashboard HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=562.9 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:29:04] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:33] "GET /main.445adb20021efdc3b167.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:29:34] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:34] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:34] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=539.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:29:34] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:37] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:37] "GET /po-details/groups?_=1792151977313 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:37] "GET /po-details/groups?_=1792151977314 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:38] "GET /main.a9f3e52011c9e6d0c2a0.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:29:39] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:39] "GET /po-details/groups?_=1792151979214 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:29:39] "GET /po-details/groups?_=1792151979210 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:14] "GET /main.243f63dcc9bd3e0d05f7.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:30:15] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:15] "GET /po-details/groups?_=1792152015082 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:15] "GET /po-details/groups?_=1792152015053 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:50] "GET /main.bf074772fe2b0fe91704.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:30:51] "GET /po-details/groups?_=1792152051208 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:51] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:30:51] "GET /po-details/groups?_=1792152051242 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register status=200 total_ms=592.7 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:31:10] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/stock-register/finished-goods status=200 total_ms=681.1 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:31:10] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:10] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:13] "GET /po-details/groups?_=1792152073493 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:13] "GET /po-details/groups?_=1792152073492 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:14] "GET /main.bdc9ce153c738ec5be61.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:31:15] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:15] "GET /po-details/groups?_=1792152075071 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:15] "GET /po-details/groups?_=1792152075067 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:16] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:18] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:18] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:20] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:20] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=602.4 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:31:20] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=1030.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:31:21] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:23] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:48] "GET /main.fb53ea6d13c389823ac4.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:31:58] "GET /main.afebf31193b29ecd46f3.hot-update.json HTTP/1.1" 404 -
+127.0.0.1 - - [16/Oct/2026 17:31:59] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:31:59] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:19] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:22] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:25] "GET /po-details/groups?_=1792152144740 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:25] "GET /po-details/groups?_=1792152144729 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:25] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:30] "GET /invoices/groups HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=751.5 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:32:36] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=783.7 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 17:32:36] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:38] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:38] "GET /production-users HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:38] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:38] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:38] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:39] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:39] "GET /po-details/groups?_=1792152159369 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:39] "GET /po-details/groups?_=1792152159368 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:41] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:41] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:44] "GET /po-details/groups?_=1792152163941 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:44] "GET /po-details/groups?_=1792152163942 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:45] "GET /models/NTLXxofAdCi8ksLWmhpH/phases HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:47] "GET /suppliers HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:47] "GET /po-details/groups?_=1792152167487 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:47] "GET /po-details/groups?_=1792152167515 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:53] "GET /invoices/groups HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:58] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:32:58] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/models status=200 total_ms=516.4 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 17:50:05] "GET /models HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=625.2 auth_ms=0.1
+127.0.0.1 - - [16/Oct/2026 17:51:36] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:51:37] "GET /production-users HTTP/1.1" 200 -
+slow_request method=GET path=/assembly status=200 total_ms=1000.7 auth_ms=0.2
+127.0.0.1 - - [16/Oct/2026 17:51:38] "GET /assembly?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:51:41] "GET /sales?page=1&limit=10&filterField=dispatch&filterValue=Delivered HTTP/1.1" 200 -
+slow_request method=GET path=/sales status=200 total_ms=546.4 auth_ms=0.0
+127.0.0.1 - - [16/Oct/2026 17:51:42] "GET /sales?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:51:44] "GET /stock-register?page=1&limit=10 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:51:44] "GET /stock-register/finished-goods?page=1&limit=10&filterField=status&filterValue=In+Stock HTTP/1.1" 200 -
+127.0.0.1 - - [16/Oct/2026 17:51:44] "GET /stock-register/finished-goods?page=1&limit=10 HTTP/1.1" 200 -
+slow_request method=GET path=/dashboard status=200 total_ms=790.5 auth_ms=0.4
+127.0.0.1 - - [16/Oct/2026 17:59:41] "GET /dashboard HTTP/1.1" 200 -

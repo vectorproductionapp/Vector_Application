@@ -469,10 +469,14 @@ def create_assembly_unit():
             record["qty"] = 1
             record["createdAt"] = created_at
             record["updatedAt"] = created_at
+            # When QC / packaging happened, so the dashboard's per-user activity
+            # can be filtered by that day rather than the assembly date.
+            record["qcAt"] = created_at if record.get("qc") else None
+            record["packagedAt"] = created_at if record.get("packagingStatus") == "Packed" else None
             doc_ref.set(record)
             created_units.append({
                 "id": doc_ref.id,
-                **{k: record[k] for k in record if k not in ("createdAt", "updatedAt")},
+                **{k: record[k] for k in record if k not in ("createdAt", "updatedAt", "qcAt", "packagedAt")},
                 "createdAt": created_at.isoformat(),
                 "updatedAt": created_at.isoformat(),
             })
@@ -706,6 +710,21 @@ def update_assembly_unit(unit_id):
             "packagedById": "",
         })
 
+    # Stamp the moment QC was decided and the unit was packed (cleared when
+    # they are reset), so per-user activity reports the day the work was done.
+    now = datetime.now(timezone.utc)
+    if "qc" in update_fields:
+        new_qc = str(update_fields["qc"] or "").strip()
+        if not new_qc:
+            update_fields["qcAt"] = None
+        elif new_qc != str(existing_data.get("qc") or "").strip():
+            update_fields["qcAt"] = now
+    if "packagingStatus" in update_fields:
+        if update_fields["packagingStatus"] != "Packed":
+            update_fields["packagedAt"] = None
+        elif existing_data.get("packagingStatus") != "Packed":
+            update_fields["packagedAt"] = now
+
     merged_data = {**existing_data, **update_fields}
     missing = [field for field in REQUIRED_FIELDS if not str(merged_data.get(field, "")).strip()]
     if missing:
@@ -721,7 +740,7 @@ def update_assembly_unit(unit_id):
             return jsonify({"success": False, "message": "Quantity must be greater than zero"}), 400
  
     try:
-        update_fields["updatedAt"] = datetime.now(timezone.utc)
+        update_fields["updatedAt"] = now
         doc_ref.update(update_fields)
         updated_doc = doc_ref.get()
         return jsonify({
@@ -792,11 +811,13 @@ def append_qc_failure(unit_id):
     try:
         doc_ref.update({
             "qc": "Failed",
+            "qcAt": failed_at,
             "qcInspection": {},
             "qcFailureHistory": history,
             "packagingStatus": "",
             "packagedBy": "",
             "packagedById": "",
+            "packagedAt": None,
             "updatedAt": failed_at,
         })
         updated_doc = doc_ref.get()

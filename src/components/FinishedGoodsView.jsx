@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, RefreshCw, X, Package } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCw, X, Package } from "lucide-react";
 import SearchBar from "./SearchBar";
 import FilterModal from "./FilterModal";
 import ActiveFilterChips from "./ActiveFilterChips";
@@ -77,6 +77,25 @@ export default function FinishedGoodsView({
       setFilters(next);
     },
     [activeFilters, setFilters]
+  );
+
+  // "In Stock" belongs to the card: the highlighted card already says the table
+  // is narrowed, so that status is kept out of the Filter count and the chips.
+  // A status picked in the Filter dialog (e.g. Sold) still shows there as usual.
+  const cardOwnsStatus = activeFilters.status === STATUS_IN_STOCK;
+  const panelFilters = useMemo(() => {
+    if (!cardOwnsStatus) return activeFilters;
+    const { status, ...rest } = activeFilters;
+    return rest;
+  }, [activeFilters, cardOwnsStatus]);
+  // The dialog and chips never see the card's status, so put it back on their
+  // changes unless they chose a status of their own.
+  const setPanelFilters = useCallback(
+    (next) => {
+      const value = next || {};
+      setFilters(cardOwnsStatus && !value.status ? { ...value, status: STATUS_IN_STOCK } : value);
+    },
+    [cardOwnsStatus, setFilters]
   );
 
   const openDetails = useCallback((row) => setDetailsRow(row), []);
@@ -181,13 +200,13 @@ export default function FinishedGoodsView({
   );
 
   return (
-    <div>
-      <div className="panel">
-        {/* The In Stock card is the drill-down: clicking it narrows the table to those
-            units using the `status` filter the endpoint already applies, so no
-            new server behaviour is involved. Sold units stay reachable through
-            the Status dropdown rather than a second tile. */}
-        <div className="fg-summary-row">
+    <div className="fg-page">
+      {/* The In Stock card is the drill-down: clicking it narrows the table to those
+          units using the `status` filter the endpoint already applies, so no
+          new server behaviour is involved. Sold units stay reachable through
+          the Status dropdown rather than a second tile. It sits above the table
+          panel, like the Min Stock cards, rather than inside it. */}
+      <div className="fg-summary-row">
           <button
             type="button"
             className={`fg-summary-card in-stock${statusFilter === STATUS_IN_STOCK ? " is-active" : ""}`}
@@ -201,17 +220,19 @@ export default function FinishedGoodsView({
               <span className="fg-summary-label">In Stock</span>
               <span className="fg-summary-value">{summary.inStock ?? 0} units</span>
               <span className="fg-summary-detail">
-                {statusFilter === STATUS_IN_STOCK ? "Showing these units" : "Click to list these units"}
+                {statusFilter === STATUS_IN_STOCK ? "Showing these units · click to clear" : "Click to list these units"}
               </span>
             </div>
+            <ChevronRight size={18} className="fg-summary-chevron" aria-hidden="true" />
           </button>
-        </div>
+      </div>
 
+      <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
             <SearchBar value={query} onChange={setQuery} placeholder="Search Finished Goods..." />
-            <FilterModal rows={rows} options={filterOptions} fields={FG_FILTER_FIELDS} value={activeFilters} onChange={setFilters} />
-            <ActiveFilterChips fields={FG_FILTER_FIELDS} value={activeFilters} onChange={setFilters} />
+            <FilterModal rows={rows} options={filterOptions} fields={FG_FILTER_FIELDS} value={panelFilters} onChange={setPanelFilters} />
+            <ActiveFilterChips fields={FG_FILTER_FIELDS} value={panelFilters} onChange={setPanelFilters} />
           </div>
           <ExportPdfButton mode="table" title="Finished Goods Inventory" columns={FG_COLUMNS} rows={exportTableRows} />
         </div>

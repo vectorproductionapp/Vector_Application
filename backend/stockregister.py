@@ -372,9 +372,10 @@ def _fg_row_matches_filters(row, search, filters):
 @roles_required("admin", "coadmin", "production_incharge")
 @cached_read("stock-register-finished-goods", ttl_seconds=120)
 def list_finished_goods_stock():
-    """Finished goods inventory: Packed units (In Stock) vs Delivered units (Sold).
+    """Finished goods inventory: QC-passed units (In Stock) vs Delivered units (Sold).
 
-    - In Stock: assembly_units with QC=Passed, packagingStatus=Packed, serial NOT in delivered sales
+    - In Stock: assembly_units with QC=Passed, serial NOT in delivered sales, whatever
+      the packaging status - the same rule as Daily Production's Stock Status
     - Sold: assembly_units with QC=Passed, serial IN delivered sales (dispatch=Delivered)
     - Matches by serial number to determine actual availability.
     - "Delivered" only, not "Dispatched": a dispatched-but-not-delivered unit is
@@ -403,10 +404,10 @@ def list_finished_goods_stock():
             is_delivered = serial_key in delivered_serials
             status = "Sold" if is_delivered else "In Stock"
             
-            # Only include packed units for In Stock; include all for Sold
+            # A QC-passed unit is stock whether or not it has been packed yet,
+            # matching Daily Production's Stock Status; the Packaging Status
+            # column shows which ones are still pending.
             packaging_status = str(data.get("packagingStatus", "")).strip()
-            if not is_delivered and packaging_status != "Packed":
-                continue
             
             packed_units.append({
                 "id": doc.id,
@@ -418,7 +419,9 @@ def list_finished_goods_stock():
                 "packagingStatus": packaging_status,
                 "packagedBy": data.get("packagedBy", ""),
                 "packagedById": data.get("packagedById", ""),
-                "packagedDate": data.get("updatedAt").isoformat() if data.get("updatedAt") else None,
+                # When it was packed; older units only have their last update.
+                "packagedDate": (data.get("packagedAt") or data.get("updatedAt")).isoformat()
+                if (data.get("packagedAt") or data.get("updatedAt")) else None,
                 "assembledBy": data.get("assembledBy", ""),
                 "assembledDate": data.get("date", ""),
                 "qcBy": data.get("qcBy", ""),

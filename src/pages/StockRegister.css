@@ -97,30 +97,44 @@
 }
 .fg-retry:hover { background: var(--accent-hover); }
 
+/* Finished Goods: summary cards above the table panel, same grid as Min Stock.
+   Three tracks keep a single card at a third of the width instead of
+   stretching it across the page. */
+.fg-page { display: flex; flex-direction: column; gap: 18px; }
 .fg-summary-row {
-  display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
 }
 /* Each card is a button: it filters the table to that status, so it needs the
    button resets plus a visible pressed state. Sized to its content rather than
    `flex: 1`, which would stretch the single remaining card across the panel. */
 .fg-summary-card {
-  display: flex; align-items: center; gap: 14px; text-align: left; font-family: inherit;
-  padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-xl);
-  background: var(--bg-surface); box-shadow: var(--shadow-sm); color: inherit;
-  min-width: 260px; max-width: 340px; flex: 0 1 auto; cursor: pointer;
-  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%;
+  text-align: left; font-family: inherit; overflow: hidden;
+  padding: 18px 20px; border: 1px solid var(--border); border-radius: var(--r-xl);
+  background: var(--bg-surface); box-shadow: var(--shadow-sm); color: inherit; cursor: pointer;
+  transition: transform 180ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
-.fg-summary-card:hover { border-color: var(--accent-soft-border); box-shadow: var(--shadow-md); }
+/* Accent strip on the left edge marks the card as the stock tile. */
+.fg-summary-card::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent);
+}
+.fg-summary-card:hover { transform: translateY(-2px); border-color: var(--accent-soft-border); box-shadow: var(--shadow-md); }
+.fg-summary-chevron {
+  margin-left: auto; flex-shrink: 0; color: var(--text-secondary);
+  transition: transform 150ms ease, color 150ms ease;
+}
+.fg-summary-card:hover .fg-summary-chevron { transform: translateX(3px); color: var(--accent); }
+.fg-summary-card.is-active .fg-summary-chevron { color: var(--accent); transform: rotate(90deg); }
 .fg-summary-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-bg); }
 .fg-summary-card.is-active { border-color: var(--accent); background: var(--accent-soft-bg); box-shadow: var(--shadow-md); }
 .fg-summary-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 44px; height: 44px; border-radius: var(--r-lg);
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 46px; height: 46px; border-radius: var(--r-lg); border: 1px solid var(--accent-soft-border);
   background: var(--accent-soft-bg); color: var(--accent);
 }
 .fg-summary-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fg-summary-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
-.fg-summary-value { font-size: 20px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.fg-summary-value { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
 .fg-summary-detail { font-size: 12px; color: var(--text-secondary); }
 
 /* Reachable only when a filter matches nothing, and the summary cards that set
@@ -172,9 +186,15 @@
 .fg-details-close-btn { height: 34px; padding: 0 14px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 150ms ease; }
 .fg-details-close-btn:hover { background: var(--accent-hover); }
 
+@media (max-width: 1024px) {
+  .fg-summary-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 640px) {
-  .fg-summary-row { flex-direction: column; }
-  .fg-summary-card { min-width: 0; width: 100%; }
+  .fg-page { gap: 12px; }
+  .fg-summary-row { grid-template-columns: minmax(0, 1fr); }
+  .fg-summary-card { padding: 14px 16px; }
+  .fg-summary-value { font-size: 20px; }
   .fg-details-overlay { padding: 12px; }
   .fg-details-body { padding: 12px; }
   .fg-details-header, .fg-details-footer { padding: 14px; }

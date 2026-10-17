@@ -1,6 +1,6 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -53,6 +53,30 @@ def _packed_period(date_value, weekly=False):
         return f"{iso.year}-W{iso.week:02d}" if weekly else parsed.date().isoformat()
     except (TypeError, ValueError):
         return "Undated"
+
+
+# The plant runs on India time; a UTC stamp taken after midnight IST must land
+# on the IST day the work was done.
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _event_period(unit, stamp_field, weekly=False, fallbacks=("date",)):
+    """Day / ISO-week key for when a step happened.
+
+    `stamp_field` is the moment the step was recorded (e.g. `packagedAt`).
+    Units saved before that field existed fall back, in order, to `fallbacks`.
+    """
+    for field in (stamp_field, *fallbacks):
+        value = unit.get(field)
+        if not value:
+            continue
+        if isinstance(value, datetime):
+            if value.tzinfo is not None:
+                value = value.astimezone(_IST)
+            iso = value.isocalendar()
+            return f"{iso.year}-W{iso.week:02d}" if weekly else value.date().isoformat()
+        return _packed_period(value, weekly=weekly)
+    return "Undated"
 
 
 def _assigned_to_current_user(data, id_field, name_field):
@@ -134,12 +158,6 @@ def _stream_collection(name):
 # "Dispatched", so both spellings are counted.
 DISPATCHED_STATUSES = ("Dispatched", "Delivered")
 
-# A unit is "added to stock" once assembly has finished it, or once packaging
-# has sealed it. Either milestone means the unit physically exists as stock, so
-# both are counted - and each unit is only ever counted once.
-STOCK_STAGE = "Completed"
-STOCK_PACKAGING = "Packed"
-
 
 def _sale_serials(sale):
     """Every serial a sale covers.
@@ -180,10 +198,14 @@ def _sales_dashboard_data(sales_docs, model_names, include_all_active_sales=Fals
         location_by_week[(_packed_period(sale.get("date"), weekly=True), location)] += quantity
         client = (sale.get("client") or "Unspecified").strip() or "Unspecified"
         client_by_day[(_packed_period(sale.get("date")), client)] += quantity
-        end_user_location = (sale.get("endUserLocation") or sale.get("location") or "Unspecified").strip() or "Unspecified"
-        end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
-        end_user_client = (sale.get("endUserClient") or sale.get("client") or "Unspecified").strip() or "Unspecified"
-        end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
+        # End-customer series only: a sale without end-customer details is left
+        # out rather than shown under the client's name or location.
+        end_user_location = str(sale.get("endUserLocation") or "").strip()
+        if end_user_location:
+            end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
+        end_user_client = str(sale.get("endUserClient") or "").strip()
+        if end_user_client:
+            end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
         sales_by_month[_packed_period(sale.get("date"))[:7]] += quantity
     return {
         "kpis": {"sold": _display_number(sum(_number(sale.get("qty")) for sale in dispatched)), "salesValue": _unit_value_total(sales_docs)},
@@ -278,6 +300,7 @@ def get_dashboard():
         sold_serials = set()
         for sale in delivered_sales:
             sold_serials |= _sale_serials(sale)
+        sold_serials = {serial.casefold() for serial in sold_serials}
 
         # Stock that is still physically available: units added to stock, minus
         # the ones already delivered. Counting the whole `qty` and not just the
@@ -287,12 +310,12 @@ def get_dashboard():
         in_stock_sold = 0
         for unit in assembly_activity_docs:
             quantity = _number(unit.get("qty"))
-            stage = str(unit.get("stage") or "").strip()
-            packaging = str(unit.get("packagingStatus") or "").strip()
-            if stage != STOCK_STAGE and packaging != STOCK_PACKAGING:
+            # Same rule as Daily Production and Finished Goods: a unit is stock
+            # once it passes QC, packed or not.
+            if str(unit.get("qc") or "").strip().casefold() != "passed":
                 continue
             in_stock_added += quantity
-            if str(unit.get("serial") or "").strip() in sold_serials:
+            if str(unit.get("serial") or "").strip().casefold() in sold_serials:
                 in_stock_sold += quantity
         in_stock = max(0, in_stock_added - in_stock_sold)
         locations = defaultdict(float)
@@ -342,10 +365,14 @@ def get_dashboard():
             location_by_week[(_packed_period(sale.get("date"), weekly=True), location)] += quantity
             client = (sale.get("client") or "Unspecified").strip() or "Unspecified"
             client_by_day[(_packed_period(sale.get("date")), client)] += quantity
-            end_user_location = (sale.get("endUserLocation") or location).strip() or "Unspecified"
-            end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
-            end_user_client = (sale.get("endUserClient") or client).strip() or "Unspecified"
-            end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
+            # End-customer series only: a sale without end-customer details is
+            # left out rather than shown under the client's name or location.
+            end_user_location = str(sale.get("endUserLocation") or "").strip()
+            if end_user_location:
+                end_user_location_by_day[(_packed_period(sale.get("date")), end_user_location)] += quantity
+            end_user_client = str(sale.get("endUserClient") or "").strip()
+            if end_user_client:
+                end_user_client_by_day[(_packed_period(sale.get("date")), end_user_client)] += quantity
             period = _packed_period(sale.get("date"))
             sales_by_month[period[:7]] += quantity
 
@@ -376,8 +403,9 @@ def get_dashboard():
             qc_by_month_status_user[(month, qc_status, qc_user)] += quantity
             qc_by_day_status_user[(period, qc_status, qc_user)] += quantity
             if unit.get("qcBy") or unit.get("qcById"):
-                qc_by_day[(_packed_period(unit.get("date")), qc_user)] += quantity
-                qc_by_week[(_packed_period(unit.get("date"), weekly=True), qc_user)] += quantity
+                # Counted on the day QC was done (older units: assembly date).
+                qc_by_day[(_event_period(unit, "qcAt"), qc_user)] += quantity
+                qc_by_week[(_event_period(unit, "qcAt", weekly=True), qc_user)] += quantity
 
         for unit in packaging_activity_docs:
             period = _packed_period(unit.get("date"))
@@ -392,8 +420,11 @@ def get_dashboard():
             if unit.get("packagingStatus") == "Packed":
                 packed_by_day[( _packed_period(unit.get("date")), model)] += quantity
                 packed_by_week[(_packed_period(unit.get("date"), weekly=True), model)] += quantity
-                packaged_by_user_day[(_packed_period(unit.get("date")), packaged_user)] += quantity
-                packaged_by_user_week[(_packed_period(unit.get("date"), weekly=True), packaged_user)] += quantity
+                # Counted on the day it was packed. Units packed before
+                # `packagedAt` existed use their last update, which is what the
+                # Finished Goods "Packaged Date" shows, then the assembly date.
+                packaged_by_user_day[(_event_period(unit, "packagedAt", fallbacks=("updatedAt", "date")), packaged_user)] += quantity
+                packaged_by_user_week[(_event_period(unit, "packagedAt", weekly=True, fallbacks=("updatedAt", "date")), packaged_user)] += quantity
 
         parts = defaultdict(float)
         for defect in defect_docs:
@@ -436,7 +467,9 @@ def get_dashboard():
                 "reorder": reorder_count,
             },
             "qualityPassRate": quality_pass_rate,
-            "dispatchLocationCount": len(locations) + len({loc for (_, loc) in end_user_location_by_day.keys() if loc != "Unspecified"}),
+            # Distinct end-customer cities, ignoring case and spacing so
+            # "mumbai" and "Mumbai" count once (matches the dashboard card).
+            "dispatchLocationCount": len({" ".join(loc.split()).casefold() for (_, loc) in end_user_location_by_day.keys() if loc != "Unspecified"}),
             "modelNames": sorted({
                 (model.get("name") or "").strip()
                 for model in model_docs
