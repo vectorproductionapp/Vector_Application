@@ -277,6 +277,20 @@ function stagedObjectUrl(file) {
 
 // ---- Helpers for the Date Range filter ----
 
+// Normalizes any date-ish string to a comparable YYYY-MM-DD value.
+// Handles native <input type="date"> values (already YYYY-MM-DD) as well
+// as full ISO timestamps that might come back from the backend.
+function toComparableDate(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const parsed = new Date(str);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
 // ---------- Friendly error extraction for network/API failures ----------
 function extractErrorMessage(err, fallback) {
   if (err?.response?.data?.message) return err.response.data.message;
@@ -295,7 +309,7 @@ function getRowId(row) {
 
 export default function DefectiveUnits() {
   // One search box, rendered in the global header next to the profile menu.
-  const [query] = useHeaderSearch("defective-units", "Search Defective Units...");
+  const [query, setQuery] = useHeaderSearch("defective-units", "Search Defective Units...");
 
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
@@ -505,6 +519,9 @@ export default function DefectiveUnits() {
   // the server matched (e.g. a hit that lives in Observations, which is not one
   // of the displayed columns).  The server response is authoritative.
   const filteredRows = useMemo(() => rows, [rows]);
+
+  const showDateEmptyMessage =
+    !rowsLoading && !rowsError && isDateRangeActive && filteredRows.length === 0;
 
   const openAddModal = () => {
     setIsEditMode(false);

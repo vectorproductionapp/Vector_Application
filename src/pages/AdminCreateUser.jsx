@@ -233,7 +233,7 @@ function AdminCreateUser() {
 
   // Users are fetched in one unpaginated call, so filtering here covers the whole
   // list. The search text lives in the top header, next to the profile menu.
-  const [query] = useHeaderSearch("users", "Search name, email or role...");
+  const [query, setQuery] = useHeaderSearch("users", "Search name, email or role...");
 
   const searchedUsers = useMemo(() => {
     const q = query.trim().toLowerCase();

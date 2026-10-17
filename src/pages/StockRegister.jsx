@@ -4,7 +4,7 @@ import useDashboardDeepLink from "../components/useDashboardDeepLink";
 import ActiveFilterChips from "../components/ActiveFilterChips";
 import BackToDashboard from "../components/BackToDashboard";
 import { createPortal } from "react-dom";
-import { Loader2, RefreshCw, Table2, TriangleAlert, X, Package } from "lucide-react";
+import { Loader2, RefreshCw, Table2, TriangleAlert, X, Package, Truck } from "lucide-react";
 import { useHeaderSearch } from "../context/HeaderSearch";
 import api from "../components/Api";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
@@ -57,7 +57,7 @@ function errorMessage(error) {
 // real shape (see console log below), this can be simplified to `user?.role`.
 export default function StockRegister() {
   // One search box, rendered in the global header next to the profile menu.
-  const [query] = useHeaderSearch("stock-register", "Search Material Stock Register...");
+  const [query, setQuery] = useHeaderSearch("stock-register", "Search Material Stock Register...");
 
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
@@ -233,7 +233,7 @@ export default function StockRegister() {
       return;
     }
     fetchFinishedGoods({ targetPage: filtersChanged ? 1 : fgPage });
-  }, [fgPage, fgPageSize, fgFilterKey, fetchFinishedGoods]);
+  }, [fgPage, fgPageSize, fgFilterKey]);
 
   // Finished goods are derived from assembly_units + sales, so refresh on those writes
   useRealtime(["assembly_units", "sales"], () => fetchFinishedGoods({ silent: true }));

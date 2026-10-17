@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ListPagination from "./ListPagination";
 
 // Card grids are 4 / 3 / 2 / 1 columns wide depending on the screen, so page
@@ -15,7 +15,7 @@ export const CARD_PAGE_SIZE_OPTIONS = [12, 24, 48, 96];
 export function useCardPagination(items, resetKey) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(CARD_PAGE_SIZE_OPTIONS[0]);
-  const list = useMemo(() => (Array.isArray(items) ? items : []), [items]);
+  const list = Array.isArray(items) ? items : [];
   const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
 
   useEffect(() => { setPage(1); }, [resetKey]);
@@ -41,8 +41,33 @@ export function useCardPagination(items, resetKey) {
   };
 }
 
-// Footer for a card grid. Hidden when there are no cards to page.
+// Footer for a card grid. Hidden when there are no cards to page. It sticks to
+// the bottom of the screen, so with a long page of cards the pager stays in
+// reach while the cards scroll behind it.
+//
+// The bar sits at `bottom: -1px`: while it is pinned over cards one pixel is
+// off-screen, so the observer sees it as not fully visible and the band styling
+// turns on. Resting in its normal place below the grid it is fully visible and
+// looks like the plain footer it always was.
 export default function CardPagination(props) {
+  const ref = useRef(null);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => setStuck(entry.intersectionRatio < 1),
+      { threshold: [1] }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [props.totalCount]);
+
   if (!props.totalCount) return null;
-  return <ListPagination {...props} itemLabel="cards" pageSizeOptions={CARD_PAGE_SIZE_OPTIONS} />;
+  return (
+    <div ref={ref} className={`card-pager-sticky${stuck ? " is-stuck" : ""}`}>
+      <ListPagination {...props} itemLabel="cards" pageSizeOptions={CARD_PAGE_SIZE_OPTIONS} />
+    </div>
+  );
 }

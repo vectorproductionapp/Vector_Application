@@ -739,6 +739,16 @@
 }
 .chart-drill-back:hover { background: var(--accent-hover); color: var(--accent-contrast); }
 .chart-drill-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.chart-drill-title { display: inline-flex; align-items: center; gap: 6px; }
+/* The drilled user's colour, matching their bar in the by-user chart. */
+.chart-user-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.chart-drill-hint { margin: 6px 0 0; font-size: 11px; color: var(--text-secondary); text-align: center; }
+/* Recharts focuses the chart on click and the browser draws a black box
+   around it; the drill-down is the feedback, so the box is not needed. */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible { outline: none !important; }
 
 /* Month picker inside the three monthly production cards: one line, compact,
    and without the "View" caption so the card title keeps its room. */

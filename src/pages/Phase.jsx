@@ -599,7 +599,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
   // Phases arrive in one unpaginated call, so filtering the full list here is
   // complete - the search never misses a phase that is off-screen. The text
   // itself lives in the top header, next to the profile menu.
-  const [query] = useHeaderSearch("phases", "Search phases...", !activePhase);
+  const [query, setQuery] = useHeaderSearch("phases", "Search phases...", !activePhase);
 
   const visiblePhases = useMemo(() => {
     const q = query.trim().toLowerCase();

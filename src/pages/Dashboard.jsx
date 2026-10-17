@@ -98,6 +98,37 @@ function getContrastBarColor(index, chartTheme) {
   return palette[index % palette.length];
 }
 
+// A chart period is a day ("2026-10-16") or an ISO week ("2026-W42"); returns
+// the first and last day it covers as YYYY-MM-DD.
+function periodRange(period) {
+  const text = String(period || "");
+  const week = /^(\d{4})-W(\d{2})$/.exec(text);
+  if (!week) return [text.slice(0, 10), text.slice(0, 10)];
+  // Monday of ISO week 1 is the Monday on or before 4 January.
+  const jan4 = new Date(Date.UTC(Number(week[1]), 0, 4));
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7) + (Number(week[2]) - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return [monday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)];
+}
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "2026-10-16" -> "16 Oct"; with the year -> "16 Oct 2026".
+function formatDay(value, withYear = false) {
+  const [year, month, day] = String(value).split("-");
+  const label = `${Number(day)} ${SHORT_MONTHS[Number(month) - 1] || ""}`;
+  return withYear ? `${label} ${year}` : label;
+}
+
+const LONG_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+// "2026-10" -> "October 2026".
+function formatMonth(value) {
+  return `${LONG_MONTHS[Number(String(value).slice(5, 7)) - 1] || ""} ${String(value).slice(0, 4)}`;
+}
+
+const ACTIVITY_UNIT_LABELS = { assembled: "Assembled units", qc: "QC tested units", packaged: "Packaged units" };
+
 function getBarColorOpacity(index) {
   const intensity = [1, 0.76, 0.88];
   return intensity[Math.floor(index / 3) % intensity.length];
@@ -138,6 +169,32 @@ function StatCard({ className, to, icon, iconClass, label, value, note }) {
       {body}
     </Link>
   );
+}
+
+// Sums series items per name, treating names that differ only in case or
+// spacing ("mumbai", " Mumbai ") as one. The label shown is the first spelling
+// that has a capital letter, so a lower-case entry never wins over a proper one.
+function nameLabel(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ") || "Unspecified";
+}
+function nameMatchKey(value) {
+  return nameLabel(value).toLocaleLowerCase();
+}
+
+function mergeByName(items, nameKey) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const label = nameLabel(item[nameKey]);
+    const key = label.toLocaleLowerCase();
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, { name: label, units: Number(item.units || 0) });
+      return;
+    }
+    group.units += Number(item.units || 0);
+    if (group.name === group.name.toLocaleLowerCase() && label !== label.toLocaleLowerCase()) group.name = label;
+  });
+  return [...groups.values()];
 }
 
 export default function Dashboard() {
@@ -294,9 +351,11 @@ export default function Dashboard() {
     [dashboard, chartTheme]
   );
   const salesValue = salesDashboard?.kpis?.salesValue ?? 0;
+  // `period` is a day ("2026-10-16") or an ISO week ("2026-W42"). A week is in
+  // range when any of its days is, so the Weekly view honours From / To too.
   const isWithinDateRange = (period, fromDate, toDate) => {
-    const normalized = String(period || "").slice(0, 10);
-    return (!fromDate || normalized >= fromDate) && (!toDate || normalized <= toDate);
+    const [start, end] = periodRange(period);
+    return (!fromDate || end >= fromDate) && (!toDate || start <= toDate);
   };
   // Delivery chart grouping: "customer" (End Customer Name) or "location"
   // (End Customer Location). Both are read from the Sale Register.
@@ -305,7 +364,8 @@ export default function Dashboard() {
   // A backend without `endUserClientByDay` / `endUserLocationByDay` gets the
   // same series built here from the Sale Register lines, using the backend's
   // rule: dispatched or delivered sales, grouped by the end customer's name or
-  // location (falling back to the client's).
+  // location. Sales without end-customer details are left out, never shown
+  // under the client's name.
   const [fallbackDelivery, setFallbackDelivery] = useState(null);
   const needsDeliveryFallback = activeView === "sales" && Boolean(dashboard) && (
     !Array.isArray(dashboard?.endUserClientByDay) || !Array.isArray(dashboard?.endUserLocationByDay)
@@ -323,10 +383,10 @@ export default function Dashboard() {
           if (!["dispatched", "delivered"].includes(String(sale.dispatch || "").trim().toLowerCase())) return;
           const period = String(sale.date || sale.clientPoDate || "").slice(0, 10) || "Undated";
           const qty = Number(sale.qty) || 0;
-          const client = String(sale.endUserClient || sale.client || "").trim() || "Unspecified";
-          const location = String(sale.endUserLocation || sale.location || "").trim() || "Unspecified";
-          byClient[`${period}|${client}`] = (byClient[`${period}|${client}`] || 0) + qty;
-          byLocation[`${period}|${location}`] = (byLocation[`${period}|${location}`] || 0) + qty;
+          const client = String(sale.endUserClient || "").trim();
+          const location = String(sale.endUserLocation || "").trim();
+          if (client) byClient[`${period}|${client}`] = (byClient[`${period}|${client}`] || 0) + qty;
+          if (location) byLocation[`${period}|${location}`] = (byLocation[`${period}|${location}`] || 0) + qty;
         });
         const toSeries = (totals, nameKey) => Object.entries(totals).map(([key, units]) => {
           const [period, name] = key.split("|");
@@ -341,6 +401,63 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [needsDeliveryFallback, dashboard]);
 
+  // The delivery series for the current Customer / Location switch.
+  const deliverySource = useMemo(() => {
+    const seriesKey = deliveryGroupBy === "location" ? "endUserLocationByDay" : "endUserClientByDay";
+    const source = Array.isArray(salesDashboard?.[seriesKey])
+      ? salesDashboard[seriesKey]
+      : activeView === "sales" ? fallbackDelivery?.[seriesKey] : [];
+    return source || [];
+  }, [salesDashboard, fallbackDelivery, activeView, deliveryGroupBy]);
+  const deliveryNameKey = deliveryGroupBy === "location" ? "location" : "client";
+  // One fixed colour per customer / location (by name, ignoring case), so a bar
+  // keeps its colour when the filters change and in its own drill-down.
+  const deliveryKeys = useMemo(
+    () => Array.from(new Set(deliverySource.map((item) => nameMatchKey(item[deliveryNameKey])))).sort(),
+    [deliverySource, deliveryNameKey]
+  );
+  const deliveryColor = (name) => {
+    const palette = chartTheme.palette?.length ? chartTheme.palette : [chartTheme.accent];
+    return palette[Math.max(0, deliveryKeys.indexOf(nameMatchKey(name))) % palette.length];
+  };
+  // Click a customer / location: its deliveries month by month; click a month:
+  // that month day by day. Year / Month filters apply at every level.
+  const [deliveryDrill, setDeliveryDrill] = useState({ name: "", month: "" });
+  useEffect(() => { setDeliveryDrill({ name: "", month: "" }); }, [deliveryGroupBy]);
+  const deliveryDrillRows = useMemo(() => {
+    if (!deliveryDrill.name) return [];
+    const target = nameMatchKey(deliveryDrill.name);
+    const items = deliverySource.filter((item) => {
+      const period = String(item.period || "");
+      if (!/^\d{4}-\d{2}-\d{2}/.test(period)) return false;
+      if (nameMatchKey(item[deliveryNameKey]) !== target) return false;
+      if (locationYear !== "all" && !period.startsWith(locationYear)) return false;
+      return locationMonth === "all" || period.slice(5, 7) === locationMonth;
+    });
+    if (!deliveryDrill.month) {
+      const totals = {};
+      items.forEach((item) => {
+        const month = String(item.period).slice(0, 7);
+        totals[month] = (totals[month] || 0) + Number(item.units || 0);
+      });
+      return Object.keys(totals).sort().map((month) => ({
+        key: month, label: formatMonth(month), fullLabel: formatMonth(month), units: totals[month],
+      }));
+    }
+    const month = deliveryDrill.month;
+    const days = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+    const rows = Array.from({ length: days }, (_, index) => {
+      const date = `${month}-${String(index + 1).padStart(2, "0")}`;
+      return { key: date, label: String(index + 1), fullLabel: formatDay(date, true), units: 0 };
+    });
+    items.forEach((item) => {
+      if (!String(item.period).startsWith(`${month}-`)) return;
+      const row = rows[Number(String(item.period).slice(8, 10)) - 1];
+      if (row) row.units += Number(item.units || 0);
+    });
+    return rows;
+  }, [deliveryDrill, deliverySource, deliveryNameKey, locationYear, locationMonth]);
+
   // X axis: End Customer Name or End Customer Location. Y axis: quantity.
   const locationSales = useMemo(() => {
     const seriesKey = deliveryGroupBy === "location" ? "endUserLocationByDay" : "endUserClientByDay";
@@ -348,26 +465,23 @@ export default function Dashboard() {
     const source = Array.isArray(salesDashboard?.[seriesKey])
       ? salesDashboard[seriesKey]
       : activeView === "sales" ? fallbackDelivery?.[seriesKey] : [];
-    const totals = (source || []).reduce((result, item) => {
+    const items = (source || []).filter((item) => {
       const period = String(item.period || "");
-      if (locationYear !== "all" && !period.startsWith(locationYear)) return result;
-      if (locationMonth !== "all" && period.slice(5, 7) !== locationMonth) return result;
-      const group = item[nameKey] || "Unspecified";
-      result[group] = (result[group] || 0) + Number(item.units || 0);
-      return result;
-    }, {});
-    return Object.entries(totals)
-      .map(([group, units]) => ({ group, units }))
+      if (locationYear !== "all" && !period.startsWith(locationYear)) return false;
+      return locationMonth === "all" || period.slice(5, 7) === locationMonth;
+    });
+    return mergeByName(items, nameKey)
+      .map(({ name, units }) => ({ group: name, units }))
       .sort((a, b) => b.units - a.units || a.group.localeCompare(b.group));
   }, [salesDashboard, fallbackDelivery, activeView, deliveryGroupBy, locationYear, locationMonth]);
-  // "Dispatch network" counts cities, not customers, so it keeps reading the
-  // location series (end-user locations, or the client locations an older
-  // backend sends).
+  // "Dispatch network" counts the distinct end-customer cities, ignoring case
+  // and spacing so "mumbai" and "Mumbai" are one city. Only an older backend
+  // without the end-user series falls back to the client locations.
   const salesLocationCount = useMemo(() => {
     const source = Array.isArray(salesDashboard?.endUserLocationByDay)
       ? salesDashboard.endUserLocationByDay
       : salesDashboard?.locationSalesByDay || [];
-    return new Set(source.map((item) => item.location || "Unspecified")).size;
+    return mergeByName(source, "location").filter(({ name }) => name !== "Unspecified").length;
   }, [salesDashboard]);
   const locationYears = useMemo(() => {
     const periods = [
@@ -388,15 +502,13 @@ export default function Dashboard() {
     const source = activeView === "customerSales" && (salesDashboard?.endUserClientByDay || []).length
       ? salesDashboard.endUserClientByDay
       : salesDashboard?.clientSalesByDay;
-    const totals = (source || []).reduce((result, item) => {
+    const items = (source || []).filter((item) => {
       const period = String(item.period || "");
-      if (clientYear !== "all" && !period.startsWith(clientYear)) return result;
-      if (clientMonth !== "all" && period.slice(5, 7) !== clientMonth) return result;
-      result[item.client] = (result[item.client] || 0) + Number(item.units || 0);
-      return result;
-    }, {});
-    return Object.entries(totals)
-      .map(([client, units]) => ({ client: client || "Unspecified", units }))
+      if (clientYear !== "all" && !period.startsWith(clientYear)) return false;
+      return clientMonth === "all" || period.slice(5, 7) === clientMonth;
+    });
+    return mergeByName(items, "client")
+      .map(({ name, units }) => ({ client: name, units }))
       .sort((a, b) => b.units - a.units || a.client.localeCompare(b.client));
   }, [salesDashboard, clientYear, clientMonth, activeView]);
   const clientSalesTotal = clientSales.reduce((total, item) => total + item.units, 0);
@@ -497,6 +609,79 @@ export default function Dashboard() {
     ...(dashboard?.assembledByUserDay || []), ...(dashboard?.assembledByUserWeek || []),
     ...(dashboard?.packagedByUserDay || []), ...(dashboard?.packagedByUserWeek || []),
   ].map((item) => item.user).filter(Boolean))).sort(), [dashboard]);
+  // One fixed colour per user (by name, not by bar position), so a user keeps
+  // the same colour in the by-user chart and in their own date-wise chart.
+  const userColor = (user) => {
+    const palette = chartTheme.palette?.length ? chartTheme.palette : [chartTheme.accent];
+    const index = Math.max(0, qcUsers.indexOf(user));
+    return palette[index % palette.length];
+  };
+  // Clicking a user's bar drills into that user's activity month by month;
+  // clicking a month then shows its days (or weeks in Weekly mode). The From /
+  // To range applies at every level.
+  const [activityDrillUser, setActivityDrillUser] = useState("");
+  const [activityDrillMonth, setActivityDrillMonth] = useState("");
+  const openActivityUser = (user) => { setActivityDrillUser(user || ""); setActivityDrillMonth(""); };
+  const activityDrillRows = useMemo(() => {
+    if (!activityDrillUser) return [];
+    const pick = (daily) => ({
+      qc: daily ? dashboard?.qcByUserDay : dashboard?.qcByUserWeek,
+      assembled: daily ? dashboard?.assembledByUserDay : dashboard?.assembledByUserWeek,
+      packaged: daily ? dashboard?.packagedByUserDay : dashboard?.packagedByUserWeek,
+    }[userActivity] || []);
+    const mine = (items) => items.filter((item) => item.user === activityDrillUser
+      && item.period !== "Undated" && isWithinDateRange(item.period, qcFromDate, qcToDate));
+
+    if (!activityDrillMonth) {
+      // Month level always reads the daily series, so each unit lands in the
+      // month it really happened in.
+      const totals = {};
+      mine(pick(true)).forEach((item) => {
+        const month = String(item.period).slice(0, 7);
+        totals[month] = (totals[month] || 0) + Number(item.units || 0);
+      });
+      return Object.keys(totals).sort().map((month) => ({
+        key: month,
+        label: formatMonth(month),
+        fullLabel: formatMonth(month),
+        units: totals[month],
+      }));
+    }
+
+    if (qcRange === "daily") {
+      // Every day of the month, like the Assembly chart, so gaps are visible.
+      const days = new Date(Number(activityDrillMonth.slice(0, 4)), Number(activityDrillMonth.slice(5, 7)), 0).getDate();
+      const rows = Array.from({ length: days }, (_, index) => {
+        const date = `${activityDrillMonth}-${String(index + 1).padStart(2, "0")}`;
+        return { key: date, label: String(index + 1), fullLabel: formatDay(date, true), units: 0 };
+      });
+      mine(pick(true)).forEach((item) => {
+        if (!String(item.period).startsWith(`${activityDrillMonth}-`)) return;
+        const row = rows[Number(String(item.period).slice(8, 10)) - 1];
+        if (row) row.units += Number(item.units || 0);
+      });
+      return rows;
+    }
+
+    // Weekly: the weeks that touch the chosen month.
+    const totals = {};
+    mine(pick(false)).forEach((item) => {
+      const [weekStart, weekEnd] = periodRange(item.period);
+      if (weekEnd.slice(0, 7) < activityDrillMonth || weekStart.slice(0, 7) > activityDrillMonth) return;
+      totals[item.period] = (totals[item.period] || 0) + Number(item.units || 0);
+    });
+    return Object.keys(totals).sort().map((period) => {
+      const [weekStart, weekEnd] = periodRange(period);
+      return {
+        key: period,
+        label: `${formatDay(weekStart)} – ${formatDay(weekEnd)}`,
+        fullLabel: `${formatDay(weekStart, true)} – ${formatDay(weekEnd, true)}`,
+        units: totals[period],
+      };
+    });
+    // isWithinDateRange is a plain helpers over their arguments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityDrillUser, activityDrillMonth, dashboard, qcRange, userActivity, qcFromDate, qcToDate]);
   const formattedSalesValue = new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -846,7 +1031,8 @@ export default function Dashboard() {
         <div className="dashboard-tabs" data-active={activeView} data-single={isProductionOnly} role="tablist" aria-label="Dashboard views">
           <button className={`dashboard-tab${activeView === "production" ? " active" : ""}`} onClick={() => setActiveView("production")} role="tab" aria-selected={activeView === "production"}><Factory size={16} /> Production</button>
           {!isProductionOnly && <button className={`dashboard-tab${activeView === "sales" ? " active" : ""}`} onClick={() => setActiveView("sales")} role="tab" aria-selected={activeView === "sales"}><TrendingUp size={16} /> Vector Sales</button>}
-          {!isProductionOnly && <button className={`dashboard-tab${activeView === "customerSales" ? " active" : ""}`} onClick={() => setActiveView("customerSales")} role="tab" aria-selected={activeView === "customerSales"}><TrendingUp size={16} /> End User</button>}
+          {/* End User tab hidden for now - uncomment to bring it back.
+          {!isProductionOnly && <button className={`dashboard-tab${activeView === "customerSales" ? " active" : ""}`} onClick={() => setActiveView("customerSales")} role="tab" aria-selected={activeView === "customerSales"}><TrendingUp size={16} /> End User</button>} */}
         </div>
       </header>
       <section className="dashboard-summary" aria-labelledby="operations-summary-title">
@@ -883,24 +1069,48 @@ export default function Dashboard() {
         <div className={`chart-grid ${activeView !== "production" ? "sales-chart-grid" : "production-chart-grid"}`}>
           {!isRegularUser && !isProductionIncharge && <div ref={(node) => { chartRefs.current.workload = node; }} data-chart-key="workload" className={`panel chart-panel${expandedChart === "workload" ? " chart-panel-expanded" : ""}`}>
             <div className="chart-heading"><div><span>{activeView === "production" ? "User activity" : "Distribution"}</span><h3 className="panel-title">{activeView === "production" ? `${userActivity === "assembled" ? "Assembled" : userActivity === "packaged" ? "Packaged" : "QC tested"} by user` : "Units dispatched by location"}</h3></div><div className="chart-heading-actions">{activeView === "production" ? <><div className="dashboard-range-switch chart-range-switch"><button type="button" className={userActivity === "assembled" ? "active" : ""} onClick={() => setUserActivity("assembled")}>Assembled</button><button type="button" className={userActivity === "qc" ? "active" : ""} onClick={() => setUserActivity("qc")}>QC</button><button type="button" className={userActivity === "packaged" ? "active" : ""} onClick={() => setUserActivity("packaged")}>Packaged</button></div><div className="dashboard-range-switch chart-range-switch"><button type="button" className={qcRange === "daily" ? "active" : ""} onClick={() => setQcRange("daily")}>Daily</button><button type="button" className={qcRange === "weekly" ? "active" : ""} onClick={() => setQcRange("weekly")}>Weekly</button></div><Factory size={18} /></> : <MapPin size={18} />}<button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("workload")} aria-label={expandedChart === "workload" ? "Exit fullscreen" : "Expand chart"}>{expandedChart === "workload" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>
-            {activeView === "production" && <div className="chart-filter-row">{!isRegularUser && <DashboardFilterSelect label="User" value={qcUserFilter} onChange={setQcUserFilter} options={[{ value: "all", label: "All users" }, ...qcUsers.map((user) => ({ value: user, label: user }))]} />}<div className="chart-date-filter"><label>From <DatePicker value={qcFromDate} onChange={setQcFromDate} ariaLabel="Select filter start date" popoverZIndex={100000} /></label><label>To <DatePicker value={qcToDate} onChange={setQcToDate} ariaLabel="Select filter end date" popoverZIndex={100000} /></label></div><button type="button" className="chart-clear-filter" onClick={() => { setQcRange("daily"); setQcUserFilter("all"); setQcFromDate(""); setQcToDate(""); }}>Clear filters</button></div>}
+            {activeView === "production" && <div className="chart-filter-row">{!isRegularUser && <DashboardFilterSelect label="User" value={qcUserFilter} onChange={setQcUserFilter} options={[{ value: "all", label: "All users" }, ...qcUsers.map((user) => ({ value: user, label: user }))]} />}<div className="chart-date-filter"><label>From <DatePicker value={qcFromDate} onChange={setQcFromDate} ariaLabel="Select filter start date" popoverZIndex={100000} /></label><label>To <DatePicker value={qcToDate} onChange={setQcToDate} ariaLabel="Select filter end date" popoverZIndex={100000} /></label></div><button type="button" className="chart-clear-filter" onClick={() => { setQcRange("daily"); setQcUserFilter("all"); setQcFromDate(""); setQcToDate(""); openActivityUser(""); }}>Clear filters</button></div>}
+            {activeView === "production" && activityDrillUser ? <>
+              <div className="chart-drill-bar">
+                <button type="button" className="chart-drill-back" onClick={() => (activityDrillMonth ? setActivityDrillMonth("") : openActivityUser(""))}>
+                  <ChevronLeft size={14} /> {activityDrillMonth ? "All months" : "All users"}
+                </button>
+                <span className="chart-drill-title">
+                  <span className="chart-user-dot" style={{ background: userColor(activityDrillUser) }} aria-hidden="true" />
+                  {activityDrillUser} · {activityDrillMonth
+                    ? `${formatDrillMonth(activityDrillMonth)} · ${qcRange === "daily" ? "day wise" : "week wise"}`
+                    : "month wise"}
+                </span>
+              </div>
+              {activityDrillRows.some((row) => row.units > 0) ? <div className="chart-scroll"><div className="chart-scroll-inner" style={{ width: activityDrillMonth && qcRange !== "daily" && activityDrillRows.length > 6 ? `${activityDrillRows.length * 110}px` : !activityDrillMonth && activityDrillRows.length > 12 ? `${activityDrillRows.length * 70}px` : "100%" }}><ResponsiveContainer width="100%" height={expandedChart === "workload" ? 610 : 250}>
+                <BarChart data={activityDrillRows} margin={{ top: 12, right: 12, left: 4, bottom: 20 }} className={activityDrillMonth ? undefined : "chart-drillable"}>
+                  <CartesianGrid stroke={chartTheme.grid} vertical={false} />
+                  <XAxis dataKey="label" interval={activityDrillMonth && qcRange === "daily" && expandedChart !== "workload" ? "preserveStartEnd" : 0} label={{ value: !activityDrillMonth ? "Month" : qcRange === "daily" ? "Day" : "Week", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 10, fill: chartTheme.axis }} />
+                  <YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} />
+                  <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} labelFormatter={(label, payload) => payload?.[0]?.payload?.fullLabel || label} formatter={(value) => [value, ACTIVITY_UNIT_LABELS[userActivity]]} />
+                  <Bar dataKey="units" name={ACTIVITY_UNIT_LABELS[userActivity]} fill={userColor(activityDrillUser)} maxBarSize={activityDrillMonth ? 28 : 48} radius={[6, 6, 0, 0]} onClick={activityDrillMonth ? undefined : (entry) => setActivityDrillMonth(entry?.key ?? entry?.payload?.key ?? "")} />
+                </BarChart>
+              </ResponsiveContainer></div></div> : <div className="chart-empty-state" role="status"><span>No {ACTIVITY_UNIT_LABELS[userActivity].toLowerCase()} for {activityDrillUser} in this range.</span></div>}
+              {!activityDrillMonth && activityDrillRows.length > 0 && <p className="chart-drill-hint">Click a month to see its {qcRange === "daily" ? "day-wise" : "week-wise"} activity.</p>}
+            </> :
             <div className="chart-scroll"><div className="chart-scroll-inner" style={{ width: (activeView === "production" ? qcUserData : locationSales).length > 8 ? `${(activeView === "production" ? qcUserData : locationSales).length * 92}px` : "100%" }}><ResponsiveContainer width="100%" height={expandedChart === "workload" ? 650 : 280}>
-              <BarChart data={activeView === "production" ? qcUserData : locationSales} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <BarChart data={activeView === "production" ? qcUserData : locationSales} margin={{ top: 8, right: 8, left: -16, bottom: 0 }} className={activeView === "production" ? "chart-drillable" : undefined}>
                 <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                 <XAxis dataKey={activeView === "production" ? "user" : "location"} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} angle={qcUserData.length > 8 && activeView === "production" ? -35 : 0} textAnchor={qcUserData.length > 8 && activeView === "production" ? "end" : "middle"} height={qcUserData.length > 8 && activeView === "production" ? 70 : 30} />
                 <YAxis tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} />
                 <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
-                <Bar dataKey="units" radius={[7, 7, 0, 0]}>
+                <Bar dataKey="units" radius={[7, 7, 0, 0]} onClick={activeView === "production" ? (entry) => openActivityUser(entry?.user ?? entry?.payload?.user) : undefined}>
                   {(activeView === "production" ? qcUserData : locationSales).map((entry, index) => (
                     <Cell
                       key={`${activeView === "production" ? entry.user : entry.location}-${index}`}
-                      fill={getContrastBarColor(index, chartTheme)}
-                      fillOpacity={getBarColorOpacity(index)}
+                      fill={activeView === "production" ? userColor(entry.user) : getContrastBarColor(index, chartTheme)}
+                      fillOpacity={activeView === "production" ? 1 : getBarColorOpacity(index)}
                     />
                   ))}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer></div></div>
+            </ResponsiveContainer></div></div>}
+            {activeView === "production" && !activityDrillUser && qcUserData.length > 0 && <p className="chart-drill-hint">Click a user&apos;s bar to see their month-wise activity.</p>}
           </div>}
 
           {!isProductionIncharge && renderDefectiveItemsChart("quality")}
@@ -923,8 +1133,31 @@ export default function Dashboard() {
             {drillMonths.salesModelTrend ? renderSalesDayChart("salesModelTrend") : <ResponsiveContainer width="100%" height={expandedChart === "salesModelTrend" ? 650 : 280}>{modelTrendRealPointCount < 3 ? <BarChart data={salesTrend} margin={{ top: 12, right: 18, left: 0, bottom: 4 }} onClick={drillFromChart("salesModelTrend", salesTrend)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} /><Legend />{visibleSalesModels.map((model) => { const modelIndex = salesModels.indexOf(model); return <Bar key={model} dataKey={model} name={model} fill={chartTheme.palette[modelIndex % chartTheme.palette.length]} radius={[5, 5, 0, 0]} onClick={drillBar("salesModelTrend")} />; })}</BarChart> : <LineChart data={salesTrend} margin={{ top: 12, right: 18, left: 0, bottom: 4 }} onClick={drillFromChart("salesModelTrend", salesTrend)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} /><Legend />{visibleSalesModels.map((model) => { const modelIndex = salesModels.indexOf(model); const color = chartTheme.palette[modelIndex % chartTheme.palette.length]; return <Line key={model} type="linear" dataKey={model} name={model} stroke={color} strokeWidth={salesModel === "all" ? 2 : 3} connectNulls={false} dot={salesModel === "all" ? false : { r: 3, fill: color, strokeWidth: 0 }} activeDot={{ r: 6 }} />; })}</LineChart>}</ResponsiveContainer>}
           </div>}
         <div ref={(node) => { chartRefs.current.locationSales = node; }} data-chart-key="locationSales" className={`panel chart-panel${expandedChart === "locationSales" ? " chart-panel-expanded" : ""}`}>
-            <div className="chart-heading"><div><span>Delivery</span><h3 className="panel-title">Units dispatched by end customer{deliveryGroupBy === "location" ? " location" : ""}</h3></div><div className="chart-heading-actions"><div className="dashboard-range-switch chart-range-switch" role="group" aria-label="Group delivery chart by"><button type="button" className={deliveryGroupBy === "customer" ? "active" : ""} aria-pressed={deliveryGroupBy === "customer"} onClick={() => setDeliveryGroupBy("customer")}>Customer</button><button type="button" className={deliveryGroupBy === "location" ? "active" : ""} aria-pressed={deliveryGroupBy === "location"} onClick={() => setDeliveryGroupBy("location")}>Location</button></div><DashboardFilterSelect label="Year" value={locationYear} onChange={setLocationYear} options={[{ value: "all", label: "All years" }, ...locationYears.map((year) => ({ value: year, label: year }))]} /><DashboardFilterSelect label="Month" value={locationMonth} onChange={setLocationMonth} options={[{ value: "all", label: "All months" }, ...["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((month, index) => ({ value: String(index + 1).padStart(2, "0"), label: month }))]} /><button type="button" className="chart-clear-filter" onClick={() => { setLocationYear("all"); setLocationMonth("all"); }}>Clear filters</button><MapPin size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("locationSales")} aria-label={expandedChart === "locationSales" ? "Exit fullscreen" : "Expand chart"}>{expandedChart === "locationSales" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>
-            <ResponsiveContainer width="100%" height={expandedChart === "locationSales" ? 650 : 280}><BarChart data={locationSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="group" label={{ value: deliveryGroupBy === "location" ? "End Customer Location" : "End Customer Name", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Quantity"]} cursor={{ fill: chartTheme.cursor }} /><Bar dataKey="units" maxBarSize={72} radius={[7, 7, 0, 0]}>{locationSales.map((entry, index) => <Cell key={`${entry.group}-${index}`} fill={getContrastBarColor(index, chartTheme)} fillOpacity={getBarColorOpacity(index)} />)}</Bar></BarChart></ResponsiveContainer>
+            <div className="chart-heading"><div><span>Delivery</span><h3 className="panel-title">Units dispatched by end customer{deliveryGroupBy === "location" ? " location" : ""}</h3></div><div className="chart-heading-actions"><div className="dashboard-range-switch chart-range-switch" role="group" aria-label="Group delivery chart by"><button type="button" className={deliveryGroupBy === "customer" ? "active" : ""} aria-pressed={deliveryGroupBy === "customer"} onClick={() => setDeliveryGroupBy("customer")}>Customer</button><button type="button" className={deliveryGroupBy === "location" ? "active" : ""} aria-pressed={deliveryGroupBy === "location"} onClick={() => setDeliveryGroupBy("location")}>Location</button></div><DashboardFilterSelect label="Year" value={locationYear} onChange={setLocationYear} options={[{ value: "all", label: "All years" }, ...locationYears.map((year) => ({ value: year, label: year }))]} /><DashboardFilterSelect label="Month" value={locationMonth} onChange={setLocationMonth} options={[{ value: "all", label: "All months" }, ...["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((month, index) => ({ value: String(index + 1).padStart(2, "0"), label: month }))]} /><button type="button" className="chart-clear-filter" onClick={() => { setLocationYear("all"); setLocationMonth("all"); setDeliveryDrill({ name: "", month: "" }); }}>Clear filters</button><MapPin size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("locationSales")} aria-label={expandedChart === "locationSales" ? "Exit fullscreen" : "Expand chart"}>{expandedChart === "locationSales" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>
+            {deliveryDrill.name ? <>
+              <div className="chart-drill-bar">
+                <button type="button" className="chart-drill-back" onClick={() => setDeliveryDrill((prev) => (prev.month ? { ...prev, month: "" } : { name: "", month: "" }))}>
+                  <ChevronLeft size={14} /> {deliveryDrill.month ? "All months" : deliveryGroupBy === "location" ? "All locations" : "All customers"}
+                </button>
+                <span className="chart-drill-title">
+                  <span className="chart-user-dot" style={{ background: deliveryColor(deliveryDrill.name) }} aria-hidden="true" />
+                  {deliveryDrill.name} · {deliveryDrill.month ? `${formatMonth(deliveryDrill.month)} · day wise` : "month wise"}
+                </span>
+              </div>
+              {deliveryDrillRows.some((row) => row.units > 0) ? <ResponsiveContainer width="100%" height={expandedChart === "locationSales" ? 610 : 250}>
+                <BarChart data={deliveryDrillRows} margin={{ top: 12, right: 12, left: 4, bottom: 20 }} className={deliveryDrill.month ? undefined : "chart-drillable"}>
+                  <CartesianGrid stroke={chartTheme.grid} vertical={false} />
+                  <XAxis dataKey="label" interval={deliveryDrill.month && expandedChart !== "locationSales" ? "preserveStartEnd" : 0} label={{ value: deliveryDrill.month ? "Day" : "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 10, fill: chartTheme.axis }} />
+                  <YAxis label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} />
+                  <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} labelFormatter={(label, payload) => payload?.[0]?.payload?.fullLabel || label} formatter={(value) => [value, "Quantity"]} />
+                  <Bar dataKey="units" name="Quantity" fill={deliveryColor(deliveryDrill.name)} maxBarSize={deliveryDrill.month ? 28 : 56} radius={[6, 6, 0, 0]} onClick={deliveryDrill.month ? undefined : (entry) => setDeliveryDrill((prev) => ({ ...prev, month: entry?.key ?? entry?.payload?.key ?? "" }))} />
+                </BarChart>
+              </ResponsiveContainer> : <div className="chart-empty-state" role="status"><span>No deliveries for {deliveryDrill.name} in this period.</span></div>}
+              {!deliveryDrill.month && deliveryDrillRows.length > 0 && <p className="chart-drill-hint">Click a month to see its day-wise deliveries.</p>}
+            </> : <>
+            {locationSales.length === 0 ? <div className="dashboard-empty-chart dashboard-low-data"><span aria-hidden="true">▥</span><strong>No end customer details yet</strong><p>{deliveryGroupBy === "location" ? "Add an End Customer Location on a dispatched sale to see it here." : "Add an End Customer Name on a dispatched sale to see it here."}</p></div> : <ResponsiveContainer width="100%" height={expandedChart === "locationSales" ? 650 : 280}><BarChart data={locationSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="group" label={{ value: deliveryGroupBy === "location" ? "End Customer Location" : "End Customer Name", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Quantity"]} cursor={{ fill: chartTheme.cursor }} /><Bar dataKey="units" maxBarSize={72} radius={[7, 7, 0, 0]} onClick={(entry) => setDeliveryDrill({ name: entry?.group ?? entry?.payload?.group ?? "", month: "" })}>{locationSales.map((entry, index) => <Cell key={`${entry.group}-${index}`} fill={deliveryColor(entry.group)} />)}</Bar></BarChart></ResponsiveContainer>}
+            {!deliveryDrill.name && locationSales.length > 0 && <p className="chart-drill-hint">Click a {deliveryGroupBy === "location" ? "location" : "customer"}&apos;s bar to see their month-wise deliveries.</p>}
+            </>}
 </div>
         </div>
       </section>}

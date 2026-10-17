@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import BackToDashboard from "../components/BackToDashboard";
 
 import { createPortal } from "react-dom";
 import api from "../components/Api";
@@ -39,7 +40,7 @@ import {
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { SearchableSelect } from "../components/SearchBar";
+import SearchBar, { SearchableSelect } from "../components/SearchBar";
 import DateRangeFilter from "../components/DateRangeFilter";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
 
@@ -596,7 +597,7 @@ export default function DailyProduction() {
   const addActionLabel = isProductionIncharge ? "Assign Task" : "Add Assembly Unit";
 
   // One search box, rendered in the global header next to the profile menu.
-  const [query] = useHeaderSearch("daily-production", "Search Assembly Units...");
+  const [query, setQuery] = useHeaderSearch("daily-production", "Search Assembly Units...");
 
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
