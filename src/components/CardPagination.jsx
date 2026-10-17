@@ -15,7 +15,7 @@ export const CARD_PAGE_SIZE_OPTIONS = [12, 24, 48, 96];
 export function useCardPagination(items, resetKey) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(CARD_PAGE_SIZE_OPTIONS[0]);
-  const list = Array.isArray(items) ? items : [];
+  const list = useMemo(() => (Array.isArray(items) ? items : []), [items]);
   const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
 
   useEffect(() => { setPage(1); }, [resetKey]);

@@ -226,7 +226,7 @@ export default function Model() {
   // Cards are fetched in one unpaginated call, so filtering the whole list here
   // is complete - a search never misses a model that lives off-screen. The text
   // itself lives in the top header, next to the profile menu.
-  const [query, setQuery] = useHeaderSearch("models", "Search models...", !activeModel);
+  const [query] = useHeaderSearch("models", "Search models...", !activeModel);
 
   const visibleModels = useMemo(() => {
     const q = query.trim().toLowerCase();

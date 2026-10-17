@@ -43,10 +43,6 @@ function formatDate(value) {
   }
 }
 
-function errorMessage(error) {
-  return error?.response?.data?.message || error?.message || "Failed to load finished goods.";
-}
-
 export default function FinishedGoodsView({
   query,
   setQuery,
@@ -68,8 +64,8 @@ export default function FinishedGoodsView({
 }) {
   const [tableSort, setTableSort] = useState(null);
   const [detailsRow, setDetailsRow] = useState(null);
-  const activeFilters = filters || {};
-  const setFilters = onFiltersChange || (() => {});
+  const activeFilters = useMemo(() => filters || {}, [filters]);
+  const setFilters = useMemo(() => onFiltersChange || (() => {}), [onFiltersChange]);
 
   // Selecting a status the table is already narrowed to clears it, so the card
   // behaves as a toggle rather than stranding the user in a one-row table.
