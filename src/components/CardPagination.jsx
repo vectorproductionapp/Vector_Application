@@ -5,6 +5,11 @@ import ListPagination from "./ListPagination";
 // sizes are multiples of 12 to keep every full page's rows complete.
 export const CARD_PAGE_SIZE_OPTIONS = [12, 24, 48, 96];
 
+// Card lists are already fully loaded in the browser, so the first page can
+// afford to be generous. Starting at 48 means a grid only paginates once it is
+// genuinely long, instead of splitting a few dozen cards across several screens.
+export const CARD_PAGE_SIZE_DEFAULT = 48;
+
 /**
  * Pages an already-loaded list of cards in the browser.
  *
@@ -14,7 +19,7 @@ export const CARD_PAGE_SIZE_OPTIONS = [12, 24, 48, 96];
  */
 export function useCardPagination(items, resetKey) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(CARD_PAGE_SIZE_OPTIONS[0]);
+  const [pageSize, setPageSize] = useState(CARD_PAGE_SIZE_DEFAULT);
   const list = useMemo(() => (Array.isArray(items) ? items : []), [items]);
   const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
 

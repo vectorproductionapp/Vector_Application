@@ -407,6 +407,12 @@ def list_po_groups():
                 "totalGst": 0.0,
                 "totalValueExclGst": 0.0,
             })
+            # The lines of one PO can disagree about the supplier, so keep the
+            # first line that actually names one rather than freezing on the
+            # first line seen.  Rows stream createdAt DESC, so this ends up as
+            # the newest supplier recorded for the PO.
+            if not po["supplier"]:
+                po["supplier"] = _text(row.get("supplier"))
             po["rowCount"] += 1
             po["totalValue"] += value
             po["totalGst"] += gst
