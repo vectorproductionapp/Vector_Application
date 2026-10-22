@@ -214,6 +214,8 @@ export default function Dashboard() {
   // target page can offer a way back; `field`/`value` let it start on the
   // matching PageFilter selection.
   const kpiTarget = useCallback((key) => {
+    // A regular user's dashboard is read-only: every card is a plain figure.
+    if (role === "user") return null;
     const target = KPI_TARGETS[key];
     if (!target) return null;
     if (!(ROUTE_ROLES[target.path] || []).includes(role)) return null;
@@ -970,7 +972,10 @@ export default function Dashboard() {
   const inStockSold = Number(liveKpis.inStockSold ?? 0);
   const metricRelationships = inStockSold
     ? `${inStockAdded} added · ${inStockSold} already sold`
-    : `${inStockAdded} ready from ${liveKpis.qcPassed ?? 0} QC-passed units`;
+    // Stock is company-wide for every role, while a regular user's QC Passed
+    // card counts only their own inspections, so the note quotes the stock
+    // figure alone rather than pairing it with that card.
+    : `${inStockAdded} QC-passed units added · none sold yet`;
   const chartEmptyState = (label) => (
     <div className="chart-empty-state" role="status">
       <span className="chart-empty-state-icon" aria-hidden="true"><Boxes size={18} /></span>

@@ -297,6 +297,8 @@ const columns = [
 
   { key: "assembledBy", label: "Assembled By" },
 
+  { key: "qc", label: "QC Status" },
+
   { key: "packagingStatus", label: "Packaging Status" },
 
   { key: "packagedBy", label: "Packaged By" },
@@ -589,7 +591,7 @@ function getRowId(row) {
 
 
 export default function DailyProduction() {
-  const { role, name: currentUserName, userId: currentUserId } = useAuth();
+  const { role, name: currentUserName } = useAuth();
   const chartTheme = useThemeColors();
   const isRegularUser = role === "user";
   const isProductionIncharge = role === "production_incharge";
@@ -698,7 +700,6 @@ export default function DailyProduction() {
   const [qcInspectionSaving, setQcInspectionSaving] = useState(false);
 
   const [saving, setSaving] = useState(false);
-  const [updatingTask, setUpdatingTask] = useState("");
 
   // ---------- View modal (read-only detail popup, same shape as
 
@@ -1280,8 +1281,16 @@ export default function DailyProduction() {
     }, 50);
   };
 
-  const removeItemDraft = (index) =>
+  const removeItemDraft = async (index) => {
+    const draft = itemDrafts[index];
+    const result = await swalConfirm({
+      title: "Remove this item?",
+      text: `Item ${index + 1}${draft?.serial ? ` (${draft.serial})` : ""} will be removed from this form.`,
+      confirmText: "Remove item",
+    });
+    if (!result.isConfirmed) return;
     setItemDrafts((current) => current.filter((_, position) => position !== index));
+  };
 
   const handleItemField = (index, field, value) => {
     setFormError("");
@@ -1488,7 +1497,6 @@ export default function DailyProduction() {
     const row = qcInspectionTarget?.row;
     if (!row?.id) return;
     setQcInspectionSaving(true);
-    setUpdatingTask(`${row.id}:qc`);
     try {
       const response = failedItems.length
         ? await api.post(`${API_BASE_URL}/assembly/${row.id}/qc-failures`, {
@@ -1516,7 +1524,6 @@ export default function DailyProduction() {
       setQcInspectionError(extractErrorMessage(err, "The QC inspection could not be saved."));
     } finally {
       setQcInspectionSaving(false);
-      setUpdatingTask("");
     }
   };
 
@@ -1927,81 +1934,11 @@ export default function DailyProduction() {
 
   };
 
-  const isTaskAssignedToCurrentUser = useCallback((row, idField, nameField) => {
-    const assignedId = String(row?.[idField] || "").trim();
-    if (assignedId && currentUserId) return assignedId === currentUserId;
-    return Boolean(
-      currentUserName &&
-      String(row?.[nameField] || "").trim().toLocaleLowerCase() === currentUserName.trim().toLocaleLowerCase()
-    );
-  }, [currentUserId, currentUserName]);
-
-  const handleInlineTaskUpdate = useCallback(async (row, field, value) => {
-    if (!row?.id) return;
-    if (field === "qc" && (value === "Passed" || value === "Failed")) {
-      setQcInspectionDraft(normalizeQcInspection(row.qcInspection, row.qcBy || currentUserName));
-      setQcInspectionError("");
-      setQcInspectionTarget({ type: "row", row });
-      return;
-    }
-    if (row[field] === value) return;
-    const updateKey = `${row.id}:${field}`;
-    setUpdatingTask(updateKey);
-    try {
-      const response = await api.put(`${API_BASE_URL}/assembly/${row.id}`, { [field]: value });
-      if (!response.data.success) throw new Error(response.data.message || "Failed to update task");
-      const updatedRow = response.data.assemblyUnit;
-      setRows((current) => current.map((item) => item.id === row.id ? { ...item, ...updatedRow } : item));
-      await swalSuccess("Task Updated", "Your assigned production task was updated successfully.");
-    } catch (err) {
-      await swalError("Update failed", extractErrorMessage(err, "The task could not be updated."));
-    } finally {
-      setUpdatingTask("");
-    }
-  }, [currentUserName]);
-
   // ---------- Table columns: prepend a checkbox column while in select mode ----------
 
   const tableColumns = useMemo(() => {
-    const roleColumns = isRegularUser
-      ? columns.map((column) => {
-          const config = {
-            stage: { options: ASSEMBLY_STAGE_OPTIONS, idField: "assembledById", nameField: "assembledBy" },
-            qc: { options: QC_STATUS_OPTIONS, idField: "qcById", nameField: "qcBy" },
-            packagingStatus: { options: PACKAGING_STATUS_OPTIONS, idField: "packagedById", nameField: "packagedBy" },
-          }[column.key];
-          if (!config) return column;
-          return {
-            ...column,
-            render: (row) => {
-              if (!isTaskAssignedToCurrentUser(row, config.idField, config.nameField)) {
-                return row[column.key] || "Not assigned";
-              }
-              const prerequisiteMissing =
-                (column.key === "qc" && row.stage !== "Completed") ||
-                (column.key === "packagingStatus" && (
-                  row.qc !== "Passed" || !isQcInspectionComplete(row.qcInspection)
-                ));
-              const updateKey = `${row.id}:${column.key}`;
-              return (
-                <div
-                  className="production-inline-status"
-                  title={prerequisiteMissing ? (column.key === "qc" ? "Complete assembly first" : "Complete the QC inspection first") : "Update your assigned task"}
-                >
-                  <StatusDropdown
-                    name={column.key}
-                    value={row[column.key] || ""}
-                    options={config.options}
-                    onChange={(event) => handleInlineTaskUpdate(row, column.key, event.target.value)}
-                    placeholder="Select status"
-                    disabled={prerequisiteMissing || updatingTask === updateKey}
-                  />
-                </div>
-              );
-            },
-          };
-        })
-      : columns;
+    // Every role sees statuses as plain text; the table is for reading only.
+    const roleColumns = columns;
 
     if (!selectMode) return roleColumns;
 
@@ -2043,7 +1980,7 @@ export default function DailyProduction() {
 
     return [selectColumn, ...roleColumns];
 
-  }, [selectMode, selectedIds, isRegularUser, isTaskAssignedToCurrentUser, handleInlineTaskUpdate, updatingTask]);
+  }, [selectMode, selectedIds]);
 
   const phaseDisabled = !formValues.modelId;
   const qcEnabled = formValues.stage === "Completed";
@@ -2257,9 +2194,11 @@ export default function DailyProduction() {
 
 {/* Status cards double as the drill-down for the dashboard KPI row: clicking one
             applies the same filter the deep link uses, so both routes agree. */}
+        {/* Hidden for the User role: their list holds only units assigned to
+            them, so the counts read as company figures that are mostly 0. */}
         {dashboardHeading ? (
           <h2 className="dp-focus-heading">{dashboardHeading}</h2>
-        ) : (
+        ) : isRegularUser ? null : (
         <div className="dp-status-cards">
           {STATUS_CARDS.map((card) => {
             const active = rowFilters[card.field] === card.value;

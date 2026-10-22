@@ -328,7 +328,15 @@ def _matches(row, search, filters):
     if search and not any(search in _text(row.get(key)).lower() for key in _SEARCH_KEYS):
         return False
     for field, value in filters:
-        if _text(row.get(field)).lower() != value.lower():
+        cell = _text(row.get(field)).lower()
+        # "Under Inspection" is the "awaiting a QC decision" bucket: the status
+        # cards and dashboard KPI count Pending units in it too, so the list a
+        # card opens has to include them or it shows fewer units than the card.
+        if field == "qc" and value.lower() == "under inspection":
+            if cell not in ("under inspection", "pending"):
+                return False
+            continue
+        if cell != value.lower():
             return False
     return True
 
