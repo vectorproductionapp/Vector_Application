@@ -225,18 +225,20 @@ def _sales_dashboard_data(sales_docs, model_names, include_all_active_sales=Fals
 def get_dashboard():
     """Return the dashboard's operational snapshot from live Firestore data."""
     try:
-        # Production incharges only need production and quality data.  Avoid
-        # loading the large sales/stock collections for their dashboard.
+        # Production roles only need production and quality data, so the large
+        # purchase/BOQ collections are skipped for them.  Sales are still loaded
+        # for every role: the In Stock and Sold Units cards every role sees are
+        # wrong without them (nothing sold, nothing subtracted from stock).
         production_scoped = request.user.get("role") in {"user", "production_incharge"}
         user_scoped = request.user.get("role") == "user"
         with ThreadPoolExecutor(max_workers=7) as executor:
             assembly_future = executor.submit(_stream_collection, "assembly_units")
             defect_future = executor.submit(_stream_collection, "defective_units")
+            sale_future = executor.submit(_stream_collection, "sale_register")
             if production_scoped:
-                model_future = sale_future = customer_sale_future = invoice_future = po_future = boq_future = None
+                model_future = customer_sale_future = invoice_future = po_future = boq_future = None
             else:
                 model_future = executor.submit(_stream_collection, "models")
-                sale_future = executor.submit(_stream_collection, "sale_register")
                 customer_sale_future = executor.submit(_stream_collection, "customer_sales")
                 invoice_future = executor.submit(_stream_collection, "invoices")
                 po_future = executor.submit(_stream_collection, "po_details")
@@ -250,11 +252,26 @@ def get_dashboard():
             po_docs = po_future.result() if po_future else []
             boq_docs = boq_future.result() if boq_future else []
         if production_scoped:
-            model_docs = sale_docs = customer_sale_docs = invoice_docs = po_docs = boq_docs = []
+            model_docs = customer_sale_docs = invoice_docs = po_docs = boq_docs = []
 
         assembly_activity_docs = _activity_docs(assembly_docs, "assembly", user_scoped)
         qc_activity_docs = _activity_docs(assembly_docs, "qc", user_scoped)
         packaging_activity_docs = _activity_docs(assembly_docs, "packaging", user_scoped)
+
+        # The KPI cards open Daily Production filtered to their bucket, so they
+        # must count the same units that page lists.  For a regular user that is
+        # every unit they assembled, QC'd or packed - one set for all cards,
+        # rather than "assembled" for stage cards and "QC'd" for QC cards, which
+        # never matched the list.  Managers see the whole register.  (The charts
+        # below keep the per-activity split: they chart who did which work.)
+        if user_scoped:
+            kpi_docs = [
+                unit for unit in assembly_docs
+                if any(_assigned_to_current_user(unit, id_field, name_field)
+                       for id_field, name_field in USER_ACTIVITY_FIELDS.values())
+            ]
+        else:
+            kpi_docs = assembly_docs
 
         stage_totals = defaultdict(float)
         qc_passed = 0
@@ -262,12 +279,12 @@ def get_dashboard():
         qc_inspection = 0
         packed = 0
 
-        for unit in assembly_activity_docs:
+        for unit in kpi_docs:
             quantity = _number(unit.get("qty"))
             stage_totals[unit.get("stage", "")] += quantity
         semi_finished = stage_totals["Semi Finished"]
 
-        for unit in qc_activity_docs:
+        for unit in kpi_docs:
             quantity = _number(unit.get("qty"))
             qc = unit.get("qc", "")
             if qc == "Passed":
@@ -277,12 +294,15 @@ def get_dashboard():
             elif qc in ("Under Inspection", "Pending"):
                 qc_inspection += quantity
 
-        for unit in packaging_activity_docs:
+        for unit in kpi_docs:
             quantity = _number(unit.get("qty"))
             if unit.get("packagingStatus") == "Packed":
                 packed += quantity
 
-        sales_value = _unit_value_total(sale_docs)
+        # Sales are loaded for every role (stock needs them), but the money
+        # figure stays with admin / coadmin - the page shows "Restricted" to
+        # the others, so the number is not sent to them at all.
+        sales_value = 0 if production_scoped else _unit_value_total(sale_docs)
         dispatched_sales = [sale for sale in sale_docs if sale.get("dispatch") in DISPATCHED_STATUSES]
         # "Total qty delivered" counts a sale once it has actually been
         # delivered, not while it is only marked dispatched. Compared with
@@ -306,9 +326,16 @@ def get_dashboard():
         # the ones already delivered. Counting the whole `qty` and not just the
         # document keeps a multi-unit record honest, and the floor at zero stops
         # a sale that was entered before its unit existed from showing negative.
+        # Managers see stock company-wide.  A regular user's In Stock / Sold
+        # cards open their own Daily Production list (Stock Status filter), so
+        # they count the same units that list holds: every unit they assembled,
+        # QC'd or packed - and "sold" there means dispatched or delivered.
+        if user_scoped:
+            for sale in dispatched_sales:
+                sold_serials |= {serial.casefold() for serial in _sale_serials(sale)}
         in_stock_added = 0
         in_stock_sold = 0
-        for unit in assembly_activity_docs:
+        for unit in kpi_docs:
             quantity = _number(unit.get("qty"))
             # Same rule as Daily Production and Finished Goods: a unit is stock
             # once it passes QC, packed or not.
@@ -318,6 +345,8 @@ def get_dashboard():
             if str(unit.get("serial") or "").strip().casefold() in sold_serials:
                 in_stock_sold += quantity
         in_stock = max(0, in_stock_added - in_stock_sold)
+        if user_scoped:
+            units_sold = in_stock_sold
         locations = defaultdict(float)
         location_by_day = defaultdict(float)
         location_by_week = defaultdict(float)
