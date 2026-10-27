@@ -51,12 +51,9 @@ const KPI_TARGETS = {
   // "In Stock" is the status the finished-goods endpoint gives an undelivered unit.
   // The In Stock card counts only packed units, so the list is narrowed to
   // Packed as well; otherwise it opened on every QC-passed unit.
-  inStock: {
-    path: "/stock", view: "finishedgoods", field: "status", value: "In Stock",
-    extraFilters: [["packagingStatus", "Packed"]],
-  },
-  // QC Passed Stock is every unsold QC-passed unit, packed or pending.
-  qcStock: { path: "/stock", view: "finishedgoods", field: "status", value: "In Stock" },
+  inStock: { path: "/stock", view: "finishedgoods", field: "status", value: "In Stock" },
+  // Waiting for Packing: QC passed, not packed, not sold.
+  qcStock: { path: "/stock", view: "finishedgoods", field: "status", value: "Awaiting Packing" },
   inProduction: { path: "/production", field: "stage", value: "In Production" },
   semiFinished: { path: "/production", field: "stage", value: "Semi Finished" },
   qcPassed: { path: "/production", field: "qc", value: "Passed" },
@@ -980,13 +977,13 @@ export default function Dashboard() {
       </>
     );
   };
-  // Unsold stock, matched to sales by serial, shown two ways: "In Stock" is
-  // what has finished packing, "QC Passed Stock" is every unit that passed QC
-  // whether packing is done or still pending. Like the other cards, the notes
-  // describe what is counted rather than repeating numbers.
+  // Unsold stock, matched to sales by serial, split by packing: "In Stock" is
+  // packed and ready, "Waiting for Packing" passed QC but is not packed yet.
+  // Like the other cards, the notes describe what is counted.
   const inStockPacked = Number(liveKpis.inStockPacked ?? 0);
+  const waitingForPacking = Number(liveKpis.inStockPackingPending ?? 0);
   const packedStockNote = "Packing completed, ready to dispatch";
-  const qcStockNote = "QC passed, packed + awaiting packing";
+  const qcStockNote = "QC passed, packing not done yet";
   // "1 unit", not "1 units".
   const unitsLabel = (value) => `${value ?? 0} unit${Number(value ?? 0) === 1 ? "" : "s"}`;
   const chartEmptyState = (label) => (
@@ -1059,7 +1056,7 @@ export default function Dashboard() {
           {activeView === "production" ? <>
             <StatCard className="summary-card summary-card--neutral" to={kpiTarget("total")} iconClass="summary-card-icon" icon={<Factory size={19} />} label="Total Unit" value={unitsLabel(liveKpis.total)} note="In production + semi finished + QC" />
             <StatCard className="summary-card summary-card--success" to={kpiTarget("inStock")} iconClass="summary-card-icon" icon={<Boxes size={19} />} label="In Stock" value={unitsLabel(inStockPacked)} note={packedStockNote} />
-            <StatCard className="summary-card summary-card--success" to={kpiTarget("qcStock")} iconClass="summary-card-icon" icon={<ShieldCheck size={19} />} label="QC Passed Stock" value={unitsLabel(liveKpis.inStock)} note={qcStockNote} />
+            <StatCard className="summary-card summary-card--success" to={kpiTarget("qcStock")} iconClass="summary-card-icon" icon={<ShieldCheck size={19} />} label="Waiting for Packing" value={unitsLabel(waitingForPacking)} note={qcStockNote} />
             <StatCard className="summary-card summary-card--success" to={kpiTarget("sold")} iconClass="summary-card-icon" icon={<Truck size={19} />} label="Sold Units" value={unitsLabel(liveKpis.sold)} note="Dispatch status delivered" />
           </> : <>
             <StatCard className="dashboard-hero-stat" to={kpiTarget("sold")} iconClass="dashboard-stat-icon" icon={<TrendingUp size={18} />} label="Total qty delivered" value={unitsLabel(salesKpis.sold)} note="Delivered sales" />

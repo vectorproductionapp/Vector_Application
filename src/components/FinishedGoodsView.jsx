@@ -30,18 +30,20 @@ export const FG_FILTER_FIELDS = FG_COLUMNS.filter((column) => ["model", "phase",
 // (`stockregister.py`). Reused verbatim so the card cannot ask for a value the
 // filter would reject. Sold units are still selectable in the Status dropdown.
 const STATUS_IN_STOCK = "In Stock";
+// QC passed but not packed yet - Daily Production's "Awaiting Packing".
+const STATUS_AWAITING_PACKING = "Awaiting Packing";
 
-// The two stock cards, matching the dashboard: "In Stock" is the packed part,
-// "QC Passed Stock" every unsold QC-passed unit, packed or pending. `filters`
-// is exactly what each card applies, and what the dashboard links send.
+// The two stock cards, matching the dashboard: "In Stock" is packed and ready
+// to dispatch, "Waiting for Packing" passed QC but is not packed yet.
+// `filters` is exactly what each card applies, and what the dashboard links send.
 const CARD_PRESETS = {
   packed: {
-    filters: { status: STATUS_IN_STOCK, packagingStatus: "Packed" },
-    empty: "No packed units in stock yet. Units still pending packing are under QC Passed Stock.",
+    filters: { status: STATUS_IN_STOCK },
+    empty: "No packed units in stock yet. Units still to be packed are under Waiting for Packing.",
   },
   qcStock: {
-    filters: { status: STATUS_IN_STOCK },
-    empty: "No QC-passed units in stock.",
+    filters: { status: STATUS_AWAITING_PACKING },
+    empty: "No units are waiting for packing.",
   },
 };
 
@@ -90,10 +92,10 @@ export default function FinishedGoodsView({
   // highlighted only when the rows are its units, so it never claims "showing
   // these units" over a table that a different filter has emptied.
   const activeCard = useMemo(() => {
-    if (activeFilters.status !== STATUS_IN_STOCK) return null;
     const packaging = String(activeFilters.packagingStatus ?? "").trim().toLowerCase();
-    if (packaging === "packed") return CARD_PRESETS.packed;
-    if (packaging === "") return CARD_PRESETS.qcStock;
+    // Older dashboard links also sent packagingStatus=Packed with In Stock.
+    if (activeFilters.status === STATUS_IN_STOCK && (packaging === "" || packaging === "packed")) return CARD_PRESETS.packed;
+    if (activeFilters.status === STATUS_AWAITING_PACKING && packaging === "") return CARD_PRESETS.qcStock;
     return null;
   }, [activeFilters]);
 
@@ -131,8 +133,8 @@ export default function FinishedGoodsView({
     [activeCard, setFilters]
   );
 
-  const inStockTotal = Number(summary.inStock ?? 0);
   const inStockPacked = Number(summary.inStockPacked ?? 0);
+  const awaitingPacking = Number(summary.awaitingPacking ?? Math.max(0, (summary.inStock ?? 0) - inStockPacked));
   const allSummaryCards = [
     {
       card: CARD_PRESETS.packed,
@@ -144,9 +146,9 @@ export default function FinishedGoodsView({
     {
       card: CARD_PRESETS.qcStock,
       Icon: ShieldCheck,
-      label: "QC Passed Stock",
-      value: inStockTotal,
-      detail: "QC passed, packed + awaiting packing",
+      label: "Waiting for Packing",
+      value: awaitingPacking,
+      detail: "QC passed, packing not done yet",
     },
   ];
   // Opened from a dashboard card: show just the card that was clicked, so the
