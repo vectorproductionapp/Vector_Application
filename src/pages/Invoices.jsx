@@ -26,6 +26,9 @@ import ListPagination from "../components/ListPagination";
 import CardPagination, { useCardPagination } from "../components/CardPagination";
 import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
 import ImageStrip from "../components/ImageStrip";
+import CardDownloadButton from "../components/CardDownloadButton";
+import GlobalSearchResults from "../components/GlobalSearchResults";
+import { inPhaseNamed, isReference } from "../utils/downloadCardDocuments";
 import "../components/ImageAttachment.css";
 import { formatDate } from "../utils/date";
 import { sortRows } from "../utils/tableSort";
@@ -846,7 +849,15 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
     }, 50);
   };
 
-  const removeItemDraft = (index) => {
+  const removeItemDraft = async (index) => {
+    const draft = itemDrafts[index];
+    const label = [draft?.code, draft?.desc].filter(Boolean).join(" - ");
+    const result = await swalConfirm({
+      title: "Remove this item?",
+      text: `Item ${index + 1}${label ? ` (${label})` : ""} will be removed from this form.`,
+      confirmText: "Remove item",
+    });
+    if (!result.isConfirmed) return;
     setItemDrafts((previous) => previous.filter((_, position) => position !== index));
   };
 
@@ -1384,6 +1395,13 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                 className="model-card invoices-card"
                 onClick={() => openPhase(card.phase)}
               >
+                <CardDownloadButton
+                  category="Invoice"
+                  match={(item) => inPhaseNamed(item, card.phase)}
+                  label={`Download ${card.phase} invoice files`}
+                  emptyText={`No invoice files have been uploaded in ${card.phase}.`}
+                  folderName={`${card.phase} invoices`}
+                />
                 <div className="model-card-heading-row">
                   <div className="model-card-icon">
                     <GitBranch size={18} />
@@ -1417,6 +1435,13 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                 className="model-card invoices-card"
                 onClick={() => openInvoice(invoice.invoice)}
               >
+                <CardDownloadButton
+                  category="Invoice"
+                  match={(item) => isReference(item, invoice.invoice, selectedPhase)}
+                  label={`Download invoice ${invoice.invoice} files`}
+                  emptyText={`No files have been uploaded for invoice ${invoice.invoice}.`}
+                  folderName={`Invoice ${invoice.invoice}`}
+                />
                 <div className="model-card-heading-row">
                   <div className="model-card-icon">
                     <FileText size={18} />
@@ -1540,6 +1565,32 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       </>
       )}
  
+      {/* Search from the card screens also lists every matching invoice line
+          (item code, description, PO no...): all phases on the first screen,
+          the open phase on its invoice cards. View opens the invoice. */}
+      {!selectedInvoice && (
+        <GlobalSearchResults
+          key={selectedPhase || "all-phases"}
+          query={query}
+          noun="invoice lines"
+          columns={columns}
+          load={async (q) => {
+            const params = new URLSearchParams({ q, page: "1", limit: "100" });
+            if (selectedPhase) {
+              params.append("filterField", "phase");
+              params.append("filterValue", selectedPhase);
+            }
+            const res = await api.get(`${API_BASE_URL}/invoices?${params.toString()}`, { __vectorNoCache: true });
+            if (!res.data.success) throw new Error(res.data.message || "Search failed");
+            return { rows: res.data.invoices || [], total: res.data.pagination?.totalCount };
+          }}
+          onOpen={(row) => {
+            if (!selectedPhase) openPhase(row.phase);
+            openInvoice(row.invoice);
+          }}
+        />
+      )}
+
       {/* ---------- Add/Edit Invoice Modal ---------- */}
       {modalOpen && createPortal(
         <div
@@ -1700,9 +1751,9 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                         <label className="invoices-field">
                           <span>Qty Invoiced <span className="invoices-required-asterisk">*</span></span>
                           <input
+                            name={`qtyInv-${index}`}
                             type="number"
                             min="0"
-                            name={`qtyInv-${index}`}
                             value={draft.qtyInv}
                             onChange={(event) => handleItemChange(index, "qtyInv", event.target.value)}
                             placeholder="e.g. 100"
@@ -1712,9 +1763,9 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                         <label className="invoices-field">
                           <span>Qty Received <span className="invoices-required-asterisk">*</span></span>
                           <input
+                            name={`qtyRecv-${index}`}
                             type="number"
                             min="0"
-                            name={`qtyRecv-${index}`}
                             value={draft.qtyRecv}
                             onChange={(event) => handleItemChange(index, "qtyRecv", event.target.value)}
                             placeholder="e.g. 100"

@@ -151,6 +151,8 @@ import DailyProduction from "./pages/DailyProduction";
 import SaleRegister from "./pages/SaleRegister";
 import DefectiveUnits from "./pages/DefectiveUnits";
 import AdminCreateUser from "./pages/AdminCreateUser";
+import Alerts from "./pages/Alerts";
+import DocumentsCenter from "./pages/DocumentsCenter";
 import "./App.css";
 import "./styles/global.css";
 
@@ -380,6 +382,22 @@ function AppShell() {
               element={
                 <ProtectedRoute allowedRoles={["admin", "coadmin", "production_incharge"]}>
                   <DefectiveUnits />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/documents"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "coadmin", "production_incharge"]}>
+                  <DocumentsCenter />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/alerts"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "coadmin"]}>
+                  <Alerts />
                 </ProtectedRoute>
               }
             />

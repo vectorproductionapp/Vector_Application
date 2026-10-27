@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import confirmRemove from "../utils/confirmRemove";
 import {
   AlertTriangle,
   Check,
@@ -442,7 +443,13 @@ const inputRef = useRef(null);
     );
   };
 
-  const deleteEntry = (line) => {
+  const deleteEntry = async (line) => {
+    const confirmed = await confirmRemove({
+      title: "Remove this row?",
+      text: `Row ${line} will not be uploaded.`,
+      confirmText: "Remove row",
+    });
+    if (!confirmed) return;
     setEntries((previous) => previous.filter((entry) => entry.line !== line));
     setEditingLine((current) => (current === line ? null : current));
   };

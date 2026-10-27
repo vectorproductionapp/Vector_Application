@@ -4,10 +4,13 @@ import { Search, X, ChevronDown, Loader2, Pencil, Trash2 } from "lucide-react";
 import "./SearchBar.css";
  
 // ---- Plain text search bar (used in toolbars, tables, etc.) ----
-export default function SearchBar({ value, onChange, placeholder = "Search..." }) {
+// `busy` swaps the magnifier for a spinner while a search is on its way.
+export default function SearchBar({ value, onChange, placeholder = "Search...", busy = false }) {
   return (
-    <div className="search-bar">
-      <Search size={15} className="search-bar-icon" />
+    <div className={`search-bar${busy ? " is-busy" : ""}`} aria-busy={busy || undefined}>
+      {busy
+        ? <Loader2 size={15} className="search-bar-icon search-bar-spinner spin" aria-label="Searching" />
+        : <Search size={15} className="search-bar-icon" />}
       <input
         type="text"
         value={value}

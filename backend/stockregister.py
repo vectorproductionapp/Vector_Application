@@ -146,13 +146,16 @@ def _get_delivered_serials():
         dispatch = str(data.get("dispatch") or "").strip().casefold()
         if dispatch != "delivered":
             continue
+        # Both shapes are merged, exactly like the dashboard's `_sale_serials`:
+        # newer records list `serialNumbers`, older ones keep a comma-joined
+        # `serial`, and some carry both. Reading only one made this page and
+        # the dashboard's In Stock card disagree.
+        serials = []
         numbers = data.get("serialNumbers")
         if isinstance(numbers, list):
-            serials = [str(value).strip() for value in numbers if str(value).strip()]
-        else:
-            # Older records keep one comma-joined `serial`.
-            single = str(data.get("serial") or "").strip()
-            serials = [part.strip() for part in single.split(",") if part.strip()]
+            serials.extend(str(value).strip() for value in numbers if str(value).strip())
+        single = str(data.get("serial") or "").strip()
+        serials.extend(part.strip() for part in single.split(",") if part.strip())
         delivered_serials.update(serial.casefold() for serial in serials)
  
     return delivered_serials
@@ -358,8 +361,10 @@ def list_stock_register():
  
 # ---- Finished Goods Stock (Packed units vs Delivered units) ----
  
-_FG_SEARCH_KEYS = ("model", "serial", "phase", "packagedBy", "packagedDate", "status")
-_FG_FILTER_FIELDS = frozenset({"model", "phase", "status"})
+_FG_SEARCH_KEYS = ("model", "serial", "phase", "packagedBy", "packagedDate", "qcBy", "qc", "status")
+# packagingStatus lets the dashboard's In Stock card (packed units only) land on
+# exactly the rows it counts.
+_FG_FILTER_FIELDS = frozenset({"model", "phase", "status", "packagingStatus"})
  
  
 def _fg_row_matches_filters(row, search, filters):
@@ -428,6 +433,8 @@ def list_finished_goods_stock():
                 "assembledBy": data.get("assembledBy", ""),
                 "assembledDate": data.get("date", ""),
                 "qcBy": data.get("qcBy", ""),
+                # The unit's own QC status, shown next to QC By.
+                "qc": str(data.get("qc", "")).strip(),
                 "status": status,
                 "isDelivered": is_delivered,
             })
@@ -471,6 +478,10 @@ def list_finished_goods_stock():
             "filterOptions": filter_options,
             "summary": {
                 "inStock": sum(1 for u in packed_units if u["status"] == "In Stock"),
+                "inStockPacked": sum(
+                    1 for u in packed_units
+                    if u["status"] == "In Stock" and u["packagingStatus"].casefold() == "packed"
+                ),
                 "sold": sum(1 for u in packed_units if u["status"] == "Sold"),
                 "total": len(packed_units),
             },

@@ -136,6 +136,8 @@
 .fg-summary-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
 .fg-summary-value { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
 .fg-summary-detail { font-size: 12px; color: var(--text-secondary); }
+.fg-summary-hint { margin-top: 2px; font-weight: 600; }
+.fg-summary-card.is-active .fg-summary-hint { color: var(--accent); }
 
 /* Reachable only when a filter matches nothing, and the summary cards that set
    that filter are replaced by the empty state, so the reset lives here. */

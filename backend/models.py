@@ -6,6 +6,7 @@ from firebase_config import db
 from firebase_admin import firestore
 from auth_utils import roles_required
 from read_cache import cached_read, invalidate_read_cache
+from record_files import drop_orphaned_headers, release_line_files
 
 models_bp = Blueprint("models", __name__)
 models_collection = db.collection("models")
@@ -35,14 +36,28 @@ def _delete_linked_transactions(model_id, phase_ids=None):
 
     deleted_po_details = 0
     deleted_invoices = 0
+    removed_po_lines = []
+    removed_invoice_lines = []
     for doc in db.collection("po_details").stream():
-        if belongs_to_deleted_scope(doc.to_dict() or {}):
+        data = doc.to_dict() or {}
+        if belongs_to_deleted_scope(data):
+            release_line_files(data)
             doc.reference.delete()
+            removed_po_lines.append(data)
             deleted_po_details += 1
     for doc in db.collection("invoices").stream():
-        if belongs_to_deleted_scope(doc.to_dict() or {}):
+        data = doc.to_dict() or {}
+        if belongs_to_deleted_scope(data):
+            # Not release_line_files: an invoice line's files may be the same
+            # stored objects as its header's, which drop_orphaned_headers
+            # removes once the invoice has no lines left.
             doc.reference.delete()
+            removed_invoice_lines.append(data)
             deleted_invoices += 1
+
+    # The lines are gone; an invoice / PO left with no lines takes its files
+    # with it instead of lingering in Stock Register > Documents.
+    drop_orphaned_headers(removed_invoice_lines, removed_po_lines)
 
     return deleted_po_details, deleted_invoices
 
@@ -777,9 +792,14 @@ def _purge_item_code_everywhere(codes):
 
         # 3. Delete invoice lines carrying the code. One document per line, so
         #    the documents themselves are what go.
+        removed_invoice_lines = []
         for invoice_doc in db.collection("invoices").where("code", "==", code).stream():
+            data = invoice_doc.to_dict() or {}
+            # Files go with the header once the invoice has no lines left.
             invoice_doc.reference.delete()
+            removed_invoice_lines.append(data)
             removed["invoices"] += 1
+        drop_orphaned_headers(removed_invoice_lines)
 
         # 4. Delete the catalogue entry so the number starts clean next time.
         try:
@@ -1068,6 +1088,62 @@ def delete_boq(model_id, phase_id, boq_id):
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to delete BOQ: {exc}"}), 500
     
+# Fields a BOQ search looks at (the BOQ table's text columns).
+_BOQ_SEARCH_KEYS = ("code", "desc", "make", "model", "uom", "vendor", "remarks")
+MAX_BOQ_SEARCH_RESULTS = 500
+
+
+@models_bp.route("/boq/search", methods=["GET"])
+@roles_required("admin", "coadmin", "production_incharge", "user")
+def search_boq_items():
+    """BOQ items across every model and phase that match `q`.
+
+    Lets the Models page's search find an item code, description, make or
+    supplier without first opening the right model and phase. Each row carries
+    its model / phase ids and names so the page can open it directly.
+    """
+    search = (request.args.get("q") or "").strip().lower()
+    # Optional: only this model's phases (the Phases screen of one model).
+    only_model = (request.args.get("modelId") or "").strip()
+    if not search:
+        return jsonify({"success": True, "rows": [], "totalCount": 0}), 200
+    try:
+        model_names = {doc.id: (doc.to_dict() or {}).get("name", "") for doc in models_collection.stream()}
+        if only_model:
+            model_names = {key: value for key, value in model_names.items() if key == only_model}
+        phase_names = {}
+        rows = []
+        total = 0
+        for boq_doc in db.collection_group("boqs").stream():
+            # models/{modelId}/phases/{phaseId}/boqs/{boqId}
+            phase_ref = boq_doc.reference.parent.parent
+            model_ref = phase_ref.parent.parent if phase_ref else None
+            if not phase_ref or not model_ref or model_ref.id not in model_names:
+                continue
+            for row in (boq_doc.to_dict() or {}).get("rows", []) or []:
+                if not any(search in str(row.get(key) or "").lower() for key in _BOQ_SEARCH_KEYS):
+                    continue
+                total += 1
+                if len(rows) >= MAX_BOQ_SEARCH_RESULTS:
+                    continue
+                if phase_ref.id not in phase_names:
+                    snapshot = phase_ref.get()
+                    phase_names[phase_ref.id] = (snapshot.to_dict() or {}).get("name", "") if snapshot.exists else ""
+                rows.append({
+                    **{key: row.get(key, "") for key in (
+                        "code", "desc", "make", "model", "uom", "reqQty", "minStock",
+                        "minStockQty", "vendor", "rate", "gstRate", "materialCost", "remarks")},
+                    "modelId": model_ref.id,
+                    "modelName": model_names.get(model_ref.id, ""),
+                    "phaseId": phase_ref.id,
+                    "phaseName": phase_names[phase_ref.id] or row.get("phase", ""),
+                })
+        rows.sort(key=lambda item: (str(item["modelName"]).lower(), str(item["phaseName"]).lower(), str(item["code"]).lower()))
+        return jsonify({"success": True, "rows": rows, "totalCount": total}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to search BOQ items: {exc}"}), 500
+
+
 @models_bp.route("/boq/phases", methods=["GET"])
 # The Invoices form renders this same dropdown and its page allows the
 # production in-charge, so that role must pass here too — otherwise the

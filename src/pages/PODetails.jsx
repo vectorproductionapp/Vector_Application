@@ -5,6 +5,9 @@ import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
 import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
+import CardDownloadButton from "../components/CardDownloadButton";
+import GlobalSearchResults from "../components/GlobalSearchResults";
+import { inPhaseNamed, isReference } from "../utils/downloadCardDocuments";
 import { SearchableSelect } from "../components/SearchBar";
 import { useHeaderSearch } from "../context/HeaderSearch";
 import FilterModal from "../components/FilterModal";
@@ -1410,7 +1413,15 @@ export default function PODetails() {
     }, 50);
   };
 
-  const removeItemDraft = (index) => {
+  const removeItemDraft = async (index) => {
+    const draft = itemDrafts[index];
+    const label = [draft?.code, draft?.desc].filter(Boolean).join(" - ");
+    const result = await swalConfirm({
+      title: "Remove this item?",
+      text: `Item ${index + 1}${label ? ` (${label})` : ""} will be removed from this form.`,
+      confirmText: "Remove item",
+    });
+    if (!result.isConfirmed) return;
     setItemDrafts((previous) => previous.filter((_, position) => position !== index));
   };
 
@@ -1623,7 +1634,13 @@ export default function PODetails() {
 
   // Delete in the preview. Editing is handled by the page's own Edit dialog, so
   // a row is either dropped here or corrected there - never half-edited.
-  const deleteUploadEntry = (line) => {
+  const deleteUploadEntry = async (line) => {
+    const result = await swalConfirm({
+      title: "Remove this row?",
+      text: `Row ${line} will not be uploaded.`,
+      confirmText: "Remove row",
+    });
+    if (!result.isConfirmed) return;
     setUploadEntries((previous) => previous.filter((entry) => entry.line !== line));
   };
 
@@ -1906,7 +1923,15 @@ export default function PODetails() {
     });
   };
 
-  const removeDetailsItemDraft = (index) => {
+  const removeDetailsItemDraft = async (index) => {
+    const draft = detailsItemDrafts[index];
+    const label = [draft?.code, draft?.desc].filter(Boolean).join(" - ");
+    const result = await swalConfirm({
+      title: "Remove this item?",
+      text: `Item ${index + 1}${label ? ` (${label})` : ""} will be removed from this PO when you save.`,
+      confirmText: "Remove item",
+    });
+    if (!result.isConfirmed) return;
     setDetailsItemDrafts((previous) => previous.filter((_, position) => position !== index));
   };
 
@@ -2481,6 +2506,13 @@ export default function PODetails() {
                 className="model-card po-card"
                 onClick={() => openPhase(card.phase)}
               >
+                <CardDownloadButton
+                  category="PO"
+                  match={(item) => inPhaseNamed(item, card.phase)}
+                  label={`Download ${card.phase} PO files`}
+                  emptyText={`No PO files have been uploaded in ${card.phase}.`}
+                  folderName={`${card.phase} PO files`}
+                />
                 <div className="model-card-heading-row">
                   <div className="model-card-icon">
                     <GitBranch size={18} />
@@ -2528,6 +2560,13 @@ export default function PODetails() {
                 className="model-card po-card"
                 onClick={() => openPo(po.po)}
               >
+                <CardDownloadButton
+                  category="PO"
+                  match={(item) => isReference(item, po.po, selectedPhase)}
+                  label={`Download PO ${po.po} files`}
+                  emptyText={`No files have been uploaded for PO ${po.po}.`}
+                  folderName={`PO ${po.po}`}
+                />
                 <div className="model-card-heading-row">
                   <div className="model-card-icon">
                     <FileText size={18} />
@@ -2689,6 +2728,32 @@ export default function PODetails() {
         </>
       )}
 
+      {/* Search from the card screens also lists every matching PO line
+          (item code, description, supplier...): all phases on the first
+          screen, the open phase on its PO cards. View opens the PO. */}
+      {!selectedPo && (
+        <GlobalSearchResults
+          key={selectedPhase || "all-phases"}
+          query={query}
+          noun="PO lines"
+          columns={columns}
+          load={async (q) => {
+            const params = new URLSearchParams({ q, page: "1", limit: "100" });
+            if (selectedPhase) {
+              params.append("filterField", "phase");
+              params.append("filterValue", selectedPhase);
+            }
+            const res = await api.get(`${API_BASE_URL}/po-details?${params.toString()}`, { __vectorNoCache: true });
+            if (!res.data.success) throw new Error(res.data.message || "Search failed");
+            return { rows: res.data.poDetails || [], total: res.data.pagination?.totalCount };
+          }}
+          onOpen={(row) => {
+            if (!selectedPhase) openPhase(row.phase);
+            openPo(row.po);
+          }}
+        />
+      )}
+
       {/* ---- Add PO Modal ---- */}
       {modalOpen && createPortal(
         <div className={`modal-overlay${closing ? " closing" : ""}`} onClick={requestClose}>
@@ -2841,9 +2906,9 @@ export default function PODetails() {
                       <label className="po-field">
                         <span>Qty Ordered <span className="po-required-asterisk">*</span></span>
                         <input
+                          name={`qty-${index}`}
                           type="number"
                           min="0"
-                          name={`qty-${index}`}
                           value={draft.qty}
                           onChange={(event) => handleItemChange(index, "qty", event.target.value)}
                           placeholder="e.g. 10"
@@ -2853,8 +2918,8 @@ export default function PODetails() {
                       <label className="po-field">
                         <span>Unit Rate <span className="po-required-asterisk">*</span></span>
                         <input
-                          type="number"
                           name={`rate-${index}`}
+                          type="number"
                           value={draft.rate}
                           readOnly
                           disabled={!draft.code}
@@ -2865,11 +2930,11 @@ export default function PODetails() {
                       <label className="po-field">
                         <span>GST %</span>
                         <input
+                          name={`gstRate-${index}`}
                           type="number"
                           min="0"
                           max="100"
                           step="any"
-                          name={`gstRate-${index}`}
                           value={draft.gstRate}
                           onChange={(event) => handleItemChange(index, "gstRate", event.target.value)}
                           placeholder="e.g. 18"
@@ -3310,9 +3375,9 @@ export default function PODetails() {
                           <label className="po-field">
                             <span>Qty Ordered <span className="po-required-asterisk">*</span></span>
                             <input
+                              name={`qty-${index}`}
                               type="number"
                               min="0"
-                              name={`qty-${index}`}
                               value={draft.qty}
                               onChange={(event) => handleDetailsItemChange(index, "qty", event.target.value)}
                               placeholder="e.g. 10"
@@ -3322,8 +3387,8 @@ export default function PODetails() {
                           <label className="po-field">
                             <span>Unit Rate <span className="po-required-asterisk">*</span></span>
                             <input
-                              type="number"
                               name={`rate-${index}`}
+                              type="number"
                               value={draft.rate}
                               readOnly
                               disabled={!draft.code}
@@ -3334,11 +3399,11 @@ export default function PODetails() {
                           <label className="po-field">
                             <span>GST %</span>
                             <input
+                              name={`gstRate-${index}`}
                               type="number"
                               min="0"
                               max="100"
                               step="any"
-                              name={`gstRate-${index}`}
                               value={draft.gstRate}
                               onChange={(event) => handleDetailsItemChange(index, "gstRate", event.target.value)}
                               placeholder="e.g. 18"

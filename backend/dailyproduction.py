@@ -95,12 +95,16 @@ def _stock_status(data, sale_status_by_serial=None):
     if data.get("qc") != "Passed":
         return ""
 
-    dispatch_status = str((sale_status_by_serial or {}).get(data.get("serial", ""), "")).strip().casefold()
+    dispatch_status = str((sale_status_by_serial or {}).get(_serial_key(data.get("serial")), "")).strip().casefold()
     if dispatch_status in {"dispatched", "delivered"}:
         return "Dispatched"
     if dispatch_status == "demo":
         return "Demo"
-    return "In Stock"
+    # A unit is In Stock once it is packed, matching the dashboard's In Stock
+    # card; a QC-passed unit still waiting to be packed says so instead.
+    if str(data.get("packagingStatus") or "").strip().casefold() == "packed":
+        return "In Stock"
+    return "Awaiting Packing"
 
 
 def _qc_inspection_is_complete(report):
@@ -154,8 +158,17 @@ def _serialize_qc_failure_history(history):
     return serialized
 
 
+def _serial_key(value):
+    """Serials compare trimmed and case-insensitively (`2610cha293 ` is 2610CHA293)."""
+    return str(value or "").strip().casefold()
+
+
 def _sale_statuses_by_serial(docs):
-    """Choose the most advanced sale state when legacy duplicate records exist."""
+    """Choose the most advanced sale state when legacy duplicate records exist.
+
+    Keyed by `_serial_key`, so a sale finds its unit even when the serial was
+    typed with different case or a stray space.
+    """
     priority = {"": 0, "cancelled": 0, "pending": 1, "processing": 2, "demo": 3,
                 "dispatched": 4, "delivered": 5}
     statuses = {}
@@ -164,8 +177,11 @@ def _sale_statuses_by_serial(docs):
         serials = data.get("serialNumbers")
         if not isinstance(serials, list):
             serials = [value.strip() for value in str(data.get("serial", "")).split(",") if value.strip()]
+        # Both shapes count: newer records list `serialNumbers`, older ones
+        # keep a comma-joined `serial`, and some carry both.
+        legacy = [value.strip() for value in str(data.get("serial", "")).split(",") if value.strip()]
         status = str(data.get("dispatch", "")).strip()
-        for serial in serials:
+        for serial in {_serial_key(value) for value in [*serials, *legacy] if _serial_key(value)}:
             current = statuses.get(serial, "")
             if priority.get(status.casefold(), 0) >= priority.get(str(current).casefold(), 0):
                 statuses[serial] = status
@@ -180,7 +196,13 @@ def _sale_statuses_for_serials(serials):
     these queries, so chunk the page's serials and merge legacy ``serial`` and
     current ``serialNumbers`` records.
     """
-    serials = list({str(serial or "").strip() for serial in serials if str(serial or "").strip()})
+    # Firestore matches exact text, so ask for the common spellings too.
+    variants = set()
+    for serial in serials:
+        text = str(serial or "").strip()
+        if text:
+            variants.update({text, text.upper(), text.lower()})
+    serials = list(variants)
     if not serials:
         return {}
 
@@ -481,10 +503,12 @@ def create_assembly_unit():
             # can be filtered by that day rather than the assembly date.
             record["qcAt"] = created_at if record.get("qc") else None
             record["packagedAt"] = created_at if record.get("packagingStatus") == "Packed" else None
+            # When the unit reached its current stage, for the daily report.
+            record["stageAt"] = created_at if record.get("stage") else None
             doc_ref.set(record)
             created_units.append({
                 "id": doc_ref.id,
-                **{k: record[k] for k in record if k not in ("createdAt", "updatedAt", "qcAt", "packagedAt")},
+                **{k: record[k] for k in record if k not in ("createdAt", "updatedAt", "qcAt", "packagedAt", "stageAt")},
                 "createdAt": created_at.isoformat(),
                 "updatedAt": created_at.isoformat(),
             })
@@ -621,9 +645,8 @@ def get_assembly_unit(unit_id):
         data = doc.to_dict() or {}
         if request.user.get("role") == "user" and not _is_visible_to_current_user(data):
             return jsonify({"success": False, "message": "This task is not assigned to you"}), 403
-        sale_status_by_serial = _sale_statuses_by_serial(
-            sales_collection.where("serial", "==", data.get("serial", "")).stream()
-        )
+        # Same lookup as the table, so the View pop-up agrees with it.
+        sale_status_by_serial = _sale_statuses_for_serials([data.get("serial", "")])
         return jsonify({"success": True, "assemblyUnit": _serialize(doc, sale_status_by_serial)}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to fetch Assembly Unit: {exc}"}), 500
@@ -727,6 +750,15 @@ def update_assembly_unit(unit_id):
             update_fields["qcAt"] = None
         elif new_qc != str(existing_data.get("qc") or "").strip():
             update_fields["qcAt"] = now
+    # Same for the production stage, so the daily report can tell which day a
+    # unit moved to Semi Finished / Completed instead of guessing from the
+    # assembly date.
+    if "stage" in update_fields:
+        new_stage = str(update_fields["stage"] or "").strip()
+        if not new_stage:
+            update_fields["stageAt"] = None
+        elif new_stage != str(existing_data.get("stage") or "").strip():
+            update_fields["stageAt"] = now
     if "packagingStatus" in update_fields:
         if update_fields["packagingStatus"] != "Packed":
             update_fields["packagedAt"] = None

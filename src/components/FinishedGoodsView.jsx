@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Loader2, RefreshCw, X, Package } from "lucide-react";
-import SearchBar from "./SearchBar";
+import { ChevronRight, Loader2, RefreshCw, X, Package, ShieldCheck } from "lucide-react";
 import FilterModal from "./FilterModal";
 import ActiveFilterChips from "./ActiveFilterChips";
 import ExportPdfButton from "./ExportPdfButton";
@@ -19,17 +18,36 @@ const FG_COLUMNS = [
   { key: "assembledBy", label: "Assembled By" },
   { key: "assembledDate", label: "Assembled Date", isDate: true },
   { key: "qcBy", label: "QC By" },
+  { key: "qc", label: "QC Status" },
   { key: "status", label: "Status" },
 ];
 
 // Exported because the page owns the request: it has to send these fields to the
 // endpoint for the dropdowns and the summary cards to change the rows at all.
-export const FG_FILTER_FIELDS = FG_COLUMNS.filter((column) => ["model", "phase", "status"].includes(column.key));
+export const FG_FILTER_FIELDS = FG_COLUMNS.filter((column) => ["model", "phase", "packagingStatus", "status"].includes(column.key));
 
 // The status the endpoint assigns to a packed unit that has not been delivered
 // (`stockregister.py`). Reused verbatim so the card cannot ask for a value the
 // filter would reject. Sold units are still selectable in the Status dropdown.
 const STATUS_IN_STOCK = "In Stock";
+
+// The two stock cards, matching the dashboard: "In Stock" is the packed part,
+// "QC Passed Stock" every unsold QC-passed unit, packed or pending. `filters`
+// is exactly what each card applies, and what the dashboard links send.
+const CARD_PRESETS = {
+  packed: {
+    filters: { status: STATUS_IN_STOCK, packagingStatus: "Packed" },
+    empty: "No packed units in stock yet. Units still pending packing are under QC Passed Stock.",
+  },
+  qcStock: {
+    filters: { status: STATUS_IN_STOCK },
+    empty: "No QC-passed units in stock.",
+  },
+};
+
+function unitCount(value) {
+  return `${value} unit${Number(value) === 1 ? "" : "s"}`;
+}
 
 const FG_DETAIL_FIELDS = FG_COLUMNS;
 
@@ -61,42 +79,82 @@ export default function FinishedGoodsView({
   onPageSizeChange,
   onRetry,
   onViewDetails,
+  fromDashboard = false,
 }) {
   const [tableSort, setTableSort] = useState(null);
   const [detailsRow, setDetailsRow] = useState(null);
   const activeFilters = useMemo(() => filters || {}, [filters]);
   const setFilters = useMemo(() => onFiltersChange || (() => {}), [onFiltersChange]);
 
-  // Selecting a status the table is already narrowed to clears it, so the card
-  // behaves as a toggle rather than stranding the user in a one-row table.
-  const toggleStatus = useCallback(
-    (status) => {
-      const next = { ...activeFilters };
-      if (next.status === status) delete next.status;
-      else next.status = status;
-      setFilters(next);
+  // The card whose filters the table is narrowed to exactly, if any. A card is
+  // highlighted only when the rows are its units, so it never claims "showing
+  // these units" over a table that a different filter has emptied.
+  const activeCard = useMemo(() => {
+    if (activeFilters.status !== STATUS_IN_STOCK) return null;
+    const packaging = String(activeFilters.packagingStatus ?? "").trim().toLowerCase();
+    if (packaging === "packed") return CARD_PRESETS.packed;
+    if (packaging === "") return CARD_PRESETS.qcStock;
+    return null;
+  }, [activeFilters]);
+
+  // Clicking the highlighted card clears its filters, so it behaves as a
+  // toggle; clicking the other card switches the table straight to it.
+  const toggleCard = useCallback(
+    (card) => {
+      const { status, packagingStatus, ...rest } = activeFilters;
+      setFilters(activeCard === card ? rest : { ...rest, ...card.filters });
     },
-    [activeFilters, setFilters]
+    [activeCard, activeFilters, setFilters]
   );
 
-  // "In Stock" belongs to the card: the highlighted card already says the table
-  // is narrowed, so that status is kept out of the Filter count and the chips.
-  // A status picked in the Filter dialog (e.g. Sold) still shows there as usual.
-  const cardOwnsStatus = activeFilters.status === STATUS_IN_STOCK;
+  // The highlighted card already says how the table is narrowed, so its
+  // filters are kept out of the Filter count and the chips. Anything else
+  // (e.g. a Model, or Status = Sold) still shows there as usual.
   const panelFilters = useMemo(() => {
-    if (!cardOwnsStatus) return activeFilters;
-    const { status, ...rest } = activeFilters;
+    if (!activeCard) return activeFilters;
+    const rest = { ...activeFilters };
+    Object.keys(activeCard.filters).forEach((key) => delete rest[key]);
     return rest;
-  }, [activeFilters, cardOwnsStatus]);
-  // The dialog and chips never see the card's status, so put it back on their
-  // changes unless they chose a status of their own.
+  }, [activeFilters, activeCard]);
+  // The dialog and chips never see the card's filters, so put them back on
+  // their changes unless they chose a value of their own for that field.
   const setPanelFilters = useCallback(
     (next) => {
-      const value = next || {};
-      setFilters(cardOwnsStatus && !value.status ? { ...value, status: STATUS_IN_STOCK } : value);
+      const value = { ...(next || {}) };
+      if (activeCard) {
+        Object.entries(activeCard.filters).forEach(([key, cardValue]) => {
+          if (String(value[key] ?? "") === "") value[key] = cardValue;
+        });
+      }
+      setFilters(value);
     },
-    [cardOwnsStatus, setFilters]
+    [activeCard, setFilters]
   );
+
+  const inStockTotal = Number(summary.inStock ?? 0);
+  const inStockPacked = Number(summary.inStockPacked ?? 0);
+  const allSummaryCards = [
+    {
+      card: CARD_PRESETS.packed,
+      Icon: Package,
+      label: "In Stock",
+      value: inStockPacked,
+      detail: "Packing completed, ready to dispatch",
+    },
+    {
+      card: CARD_PRESETS.qcStock,
+      Icon: ShieldCheck,
+      label: "QC Passed Stock",
+      value: inStockTotal,
+      detail: "QC passed, packed + awaiting packing",
+    },
+  ];
+  // Opened from a dashboard card: show just the card that was clicked, so the
+  // page answers that one figure. Clearing it brings both cards back, and
+  // opening the tab directly always shows both.
+  const summaryCards = fromDashboard && activeCard
+    ? allSummaryCards.filter(({ card }) => card === activeCard)
+    : allSummaryCards;
 
   const openDetails = useCallback((row) => setDetailsRow(row), []);
   const closeDetails = useCallback(() => setDetailsRow(null), []);
@@ -114,10 +172,19 @@ export default function FinishedGoodsView({
     [rows, tableSort]
   );
 
-  const statusFilter = activeFilters.status || "";
+  const searchActive = Boolean(query.trim());
+  const onlyCardFilters = Boolean(activeCard) && !searchActive
+    && !Object.values(panelFilters).some((value) => String(value ?? "").trim() !== "");
   const filtersActive =
-    Boolean(query.trim()) ||
+    searchActive ||
     Object.values(activeFilters).some((value) => String(value ?? "").trim() !== "");
+
+  // An unmatched search is as much a dead end as an unmatched filter, so the
+  // button resets both.
+  const clearSearchAndFilters = () => {
+    if (setQuery) setQuery("");
+    setFilters({});
+  };
 
   if (loading) {
     return (
@@ -141,25 +208,24 @@ export default function FinishedGoodsView({
     );
   }
 
-  if (rows.length === 0) {
-    return (
-      <div className="fg-empty-state">
-        {filtersActive ? (
-          <>
-            <span>No finished goods match the current search or filter.</span>
-            {/* This branch replaces the whole panel, summary cards included, so the
-                status card that caused it is gone too. Clearing has to live here
-                or a filter that matches nothing becomes a dead end. */}
-            <button type="button" className="fg-clear-filters" onClick={() => setFilters({})}>
-              Clear filters
-            </button>
-          </>
-        ) : (
-          "No finished goods records found."
-        )}
-      </div>
-    );
-  }
+  // Rendered inside the panel rather than in place of it, so the summary card,
+  // Filter button and chips stay on screen and the search can still be edited.
+  const emptyState = (
+    <div className="fg-empty-state">
+      {filtersActive ? (
+        <>
+          {/* A card that counts zero gets its own explanation rather than the
+              generic "no match", which read like an error. */}
+          <span>{onlyCardFilters ? activeCard.empty : "No finished goods match the current search or filter."}</span>
+          <button type="button" className="fg-clear-filters" onClick={clearSearchAndFilters}>
+            {onlyCardFilters ? "Show all finished goods" : searchActive ? "Clear search & filters" : "Clear filters"}
+          </button>
+        </>
+      ) : (
+        "No finished goods records found."
+      )}
+    </div>
+  );
 
   const detailsModal = detailsRow && createPortal(
     <div className="fg-details-overlay" onClick={closeDetails}>
@@ -201,49 +267,56 @@ export default function FinishedGoodsView({
 
   return (
     <div className="fg-page">
-      {/* The In Stock card is the drill-down: clicking it narrows the table to those
-          units using the `status` filter the endpoint already applies, so no
-          new server behaviour is involved. Sold units stay reachable through
-          the Status dropdown rather than a second tile. It sits above the table
-          panel, like the Min Stock cards, rather than inside it. */}
+      {/* The stock cards are the drill-down: each one narrows the table to the
+          units it counts, using filters the endpoint already applies. Sold
+          units stay reachable through the Status dropdown. They sit above the
+          table panel, like the Min Stock cards, rather than inside it. */}
       <div className="fg-summary-row">
-          <button
-            type="button"
-            className={`fg-summary-card in-stock${statusFilter === STATUS_IN_STOCK ? " is-active" : ""}`}
-            onClick={() => toggleStatus(STATUS_IN_STOCK)}
-            aria-pressed={statusFilter === STATUS_IN_STOCK}
-          >
-            <div className="fg-summary-icon">
-              <Package size={20} />
-            </div>
-            <div className="fg-summary-content">
-              <span className="fg-summary-label">In Stock</span>
-              <span className="fg-summary-value">{summary.inStock ?? 0} units</span>
-              <span className="fg-summary-detail">
-                {statusFilter === STATUS_IN_STOCK ? "Showing these units · click to clear" : "Click to list these units"}
-              </span>
-            </div>
-            <ChevronRight size={18} className="fg-summary-chevron" aria-hidden="true" />
-          </button>
+        {summaryCards.map(({ card, Icon, label, value, detail }) => {
+          const isActive = activeCard === card;
+          return (
+            <button
+              key={label}
+              type="button"
+              className={`fg-summary-card in-stock${isActive ? " is-active" : ""}`}
+              onClick={() => toggleCard(card)}
+              aria-pressed={isActive}
+            >
+              <div className="fg-summary-icon">
+                <Icon size={20} />
+              </div>
+              <div className="fg-summary-content">
+                <span className="fg-summary-label">{label}</span>
+                <span className="fg-summary-value">{unitCount(value)}</span>
+                <span className="fg-summary-detail">{detail}</span>
+                <span className="fg-summary-detail fg-summary-hint">
+                  {isActive ? "Showing these units · click to clear" : "Click to list these units"}
+                </span>
+              </div>
+              <ChevronRight size={18} className="fg-summary-chevron" aria-hidden="true" />
+            </button>
+          );
+        })}
       </div>
 
       <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
-            <SearchBar value={query} onChange={setQuery} placeholder="Search Finished Goods..." />
             <FilterModal rows={rows} options={filterOptions} fields={FG_FILTER_FIELDS} value={panelFilters} onChange={setPanelFilters} />
             <ActiveFilterChips fields={FG_FILTER_FIELDS} value={panelFilters} onChange={setPanelFilters} />
           </div>
           <ExportPdfButton mode="table" title="Finished Goods Inventory" columns={FG_COLUMNS} rows={exportTableRows} />
         </div>
 
-        <DataTable
-          columns={FG_COLUMNS}
-          rows={rows}
-          onSortChange={setTableSort}
-          onViewDetails={openDetails}
-          rowClassName={(row) => row.status === "Sold" ? "fg-row-sold" : "fg-row-in-stock"}
-        />
+        {rows.length === 0 ? emptyState : (
+          <DataTable
+            columns={FG_COLUMNS}
+            rows={rows}
+            onSortChange={setTableSort}
+            onViewDetails={openDetails}
+            rowClassName={(row) => row.status === "Sold" ? "fg-row-sold" : "fg-row-in-stock"}
+          />
+        )}
       </div>
 
       {!loading && !loadError && rows.length > 0 && (

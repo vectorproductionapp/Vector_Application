@@ -49,7 +49,14 @@ const KPI_TARGETS = {
   // In Stock is finished goods, so it belongs on the Stock Register's Finished
   // Goods tab rather than the production log.
   // "In Stock" is the status the finished-goods endpoint gives an undelivered unit.
-  inStock: { path: "/stock", view: "finishedgoods", field: "status", value: "In Stock" },
+  // The In Stock card counts only packed units, so the list is narrowed to
+  // Packed as well; otherwise it opened on every QC-passed unit.
+  inStock: {
+    path: "/stock", view: "finishedgoods", field: "status", value: "In Stock",
+    extraFilters: [["packagingStatus", "Packed"]],
+  },
+  // QC Passed Stock is every unsold QC-passed unit, packed or pending.
+  qcStock: { path: "/stock", view: "finishedgoods", field: "status", value: "In Stock" },
   inProduction: { path: "/production", field: "stage", value: "In Production" },
   semiFinished: { path: "/production", field: "stage", value: "Semi Finished" },
   qcPassed: { path: "/production", field: "qc", value: "Passed" },
@@ -77,6 +84,7 @@ const STOCK_VIEWS = { finishedgoods: "finishedgoods", minstock: "minstock" };
 const EMPTY_KPIS = {
   inProduction: 0, semiFinished: 0, qcInspection: 0, qcFailed: 0,
   qcPassed: 0, packed: 0, inStock: 0, inStockAdded: 0, inStockSold: 0,
+  inStockPacked: 0, inStockPackingPending: 0,
   total: 0, sold: 0, salesValue: 0, defects: 0, reorder: 0,
 };
 
@@ -225,6 +233,10 @@ export default function Dashboard() {
       params.set("field", target.field);
       params.set("value", target.value);
     }
+    (target.extraFilters || []).forEach(([field, value]) => {
+      params.append("field", field);
+      params.append("value", value);
+    });
     const view = target.view && STOCK_VIEWS[target.view];
     if (view) params.set("view", view);
     return `${target.path}?${params.toString()}`;
@@ -725,13 +737,13 @@ export default function Dashboard() {
         setAssemblyDayFallback({
           qcByDayStatusUser: units.map((unit) => ({
             period: day(unit),
-            status: String(unit.qc || "").trim() || "Pending",
+            status: String(unit.qc || "").trim(),
             user: String(unit.qcBy || "").trim() || "Unassigned",
             units: Number(unit.qty) || 0,
           })),
           packagedByDayStatusUser: units.map((unit) => ({
             period: day(unit),
-            status: String(unit.packagingStatus || "").trim() || "Pending",
+            status: String(unit.packagingStatus || "").trim(),
             user: String(unit.packagedBy || "").trim() || "Unassigned",
             units: Number(unit.qty) || 0,
           })),
@@ -915,16 +927,19 @@ export default function Dashboard() {
   // QC and packaging, with a way back to the monthly view.
   const DAY_CHART_SERIES = {
     monthlyAssembled: [{ key: "units", name: "Assembled units", color: chartTheme.accent }],
+    // Bar / hover order: Passed, Failed, Under Inspection, Pending. Recharts 3
+    // sorts the hover list by name unless a Tooltip passes `itemSorter`.
     monthlyQc: [
       { key: "Passed", color: chartTheme.success },
+      { key: "Failed", color: chartTheme.danger },
       { key: "Under Inspection", color: chartTheme.accent },
       { key: "Pending", color: chartTheme.muted },
-      { key: "Failed", color: chartTheme.danger },
     ],
+    // Bar / hover order: Packed, Pending, In Progress.
     monthlyPackaging: [
+      { key: "Packed", color: chartTheme.success },
       { key: "Pending", color: chartTheme.muted },
       { key: "In Progress", color: chartTheme.warning },
-      { key: "Packed", color: chartTheme.success },
     ],
   };
   const renderDayChart = (chartKey, override = {}) => {
@@ -948,7 +963,7 @@ export default function Dashboard() {
               <CartesianGrid stroke={chartTheme.grid} vertical={false} />
               <XAxis dataKey="day" interval={expandedChart === chartKey ? 0 : "preserveStartEnd"} label={{ value: "Day", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 10, fill: chartTheme.axis }} />
               <YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} />
-              <Tooltip contentStyle={chartTheme.tooltip} labelFormatter={(day) => `${day} ${formatDrillMonth(drillMonths[chartKey])}`} cursor={{ fill: chartTheme.cursor }} />
+              <Tooltip contentStyle={chartTheme.tooltip} labelFormatter={(day) => `${day} ${formatDrillMonth(drillMonths[chartKey])}`} cursor={{ fill: chartTheme.cursor }} itemSorter={(item) => series.findIndex((entry) => entry.key === item.dataKey)} />
               {/* Above the plot, so it cannot sit on the "Day" axis label. */}
               {override.legend && <Legend verticalAlign="top" align="right" height={28} />}
               {series.map(({ key, name, color }, index) => (
@@ -965,17 +980,15 @@ export default function Dashboard() {
       </>
     );
   };
-  // In Stock is stock that exists minus what has already been delivered, both
-  // sides matched by serial. Showing the split keeps the figure explainable:
-  // "2 added, 2 already sold" reads very differently from a bare 0.
-  const inStockAdded = Number(liveKpis.inStockAdded ?? 0);
-  const inStockSold = Number(liveKpis.inStockSold ?? 0);
-  const metricRelationships = inStockSold
-    ? `${inStockAdded} added · ${inStockSold} already sold`
-    // Stock is company-wide for every role, while a regular user's QC Passed
-    // card counts only their own inspections, so the note quotes the stock
-    // figure alone rather than pairing it with that card.
-    : `${inStockAdded} QC-passed units added · none sold yet`;
+  // Unsold stock, matched to sales by serial, shown two ways: "In Stock" is
+  // what has finished packing, "QC Passed Stock" is every unit that passed QC
+  // whether packing is done or still pending. Like the other cards, the notes
+  // describe what is counted rather than repeating numbers.
+  const inStockPacked = Number(liveKpis.inStockPacked ?? 0);
+  const packedStockNote = "Packing completed, ready to dispatch";
+  const qcStockNote = "QC passed, packed + awaiting packing";
+  // "1 unit", not "1 units".
+  const unitsLabel = (value) => `${value ?? 0} unit${Number(value ?? 0) === 1 ? "" : "s"}`;
   const chartEmptyState = (label) => (
     <div className="chart-empty-state" role="status">
       <span className="chart-empty-state-icon" aria-hidden="true"><Boxes size={18} /></span>
@@ -1044,11 +1057,12 @@ export default function Dashboard() {
         <h2 id="operations-summary-title" className="sr-only">Operations summary</h2>
         <div className={`dashboard-summary-grid${activeView === "production" ? " dashboard-summary-grid--production" : ""}`} aria-label="Operations highlights">
           {activeView === "production" ? <>
-            <StatCard className="summary-card summary-card--neutral" to={kpiTarget("total")} iconClass="summary-card-icon" icon={<Factory size={19} />} label="Total Unit" value={`${liveKpis.total ?? 0} units`} note="In production + semi finished + QC" />
-            <StatCard className="summary-card summary-card--success" to={kpiTarget("inStock")} iconClass="summary-card-icon" icon={<Boxes size={19} />} label="In Stock" value={`${liveKpis.inStock ?? 0} units`} note={metricRelationships} />
-            <StatCard className="summary-card summary-card--success" to={kpiTarget("sold")} iconClass="summary-card-icon" icon={<Truck size={19} />} label="Sold Units" value={`${liveKpis.sold ?? 0} units`} note="Dispatch status delivered" />
+            <StatCard className="summary-card summary-card--neutral" to={kpiTarget("total")} iconClass="summary-card-icon" icon={<Factory size={19} />} label="Total Unit" value={unitsLabel(liveKpis.total)} note="In production + semi finished + QC" />
+            <StatCard className="summary-card summary-card--success" to={kpiTarget("inStock")} iconClass="summary-card-icon" icon={<Boxes size={19} />} label="In Stock" value={unitsLabel(inStockPacked)} note={packedStockNote} />
+            <StatCard className="summary-card summary-card--success" to={kpiTarget("qcStock")} iconClass="summary-card-icon" icon={<ShieldCheck size={19} />} label="QC Passed Stock" value={unitsLabel(liveKpis.inStock)} note={qcStockNote} />
+            <StatCard className="summary-card summary-card--success" to={kpiTarget("sold")} iconClass="summary-card-icon" icon={<Truck size={19} />} label="Sold Units" value={unitsLabel(liveKpis.sold)} note="Dispatch status delivered" />
           </> : <>
-            <StatCard className="dashboard-hero-stat" to={kpiTarget("sold")} iconClass="dashboard-stat-icon" icon={<TrendingUp size={18} />} label="Total qty delivered" value={`${salesKpis.sold ?? 0} units`} note="Delivered sales" />
+            <StatCard className="dashboard-hero-stat" to={kpiTarget("sold")} iconClass="dashboard-stat-icon" icon={<TrendingUp size={18} />} label="Total qty delivered" value={unitsLabel(salesKpis.sold)} note="Delivered sales" />
             <StatCard className="dashboard-hero-stat" to={kpiTarget("salesValue")} iconClass="dashboard-stat-icon gold" icon={<ArrowUpRight size={18} />} label="Sales value" value={canViewSalesValue ? formattedSalesValue : "Restricted"} note="Total unit value (cost × qty)" />
             <StatCard className="dashboard-hero-stat" to={kpiTarget("sold")} iconClass="dashboard-stat-icon" icon={<MapPin size={18} />} label="Dispatch network" value={`${salesLocationCount} cities`} note="Currently receiving shipments" />
           </>}
@@ -1067,8 +1081,8 @@ export default function Dashboard() {
         <div className="production-analytics-header"><div><p className="dashboard-eyebrow-label">Live reporting</p><h2 id="production-analytics-title" className="dashboard-section-title">Production analytics</h2></div><div className="dashboard-filter-bar">{productionFilterControls}</div></div>
         <div className={`chart-grid production-monthly-chart-grid${isProductionIncharge ? " production-incharge-chart-grid" : ""}`}>
           <div ref={(node) => { chartRefs.current.monthlyAssembled = node; }} data-chart-key="monthlyAssembled" className={`panel chart-panel${expandedChart === "monthlyAssembled" ? " chart-panel-expanded" : ""}`}><div className="chart-heading"><div><span>Assembly output</span><h3 className="panel-title">{drillMonths.monthlyAssembled ? "Daily units assembled" : "Monthly units assembled"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("monthlyAssembled")}<Factory size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("monthlyAssembled")} aria-label={expandedChart === "monthlyAssembled" ? "Exit fullscreen" : "Expand assembly chart"}>{expandedChart === "monthlyAssembled" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>{drillMonths.monthlyAssembled ? renderDayChart("monthlyAssembled") : hasAssemblyData ? <ResponsiveContainer width="100%" height={expandedChart === "monthlyAssembled" ? 650 : 280}>{assemblyDataPoints.length < 3 ? <BarChart data={assemblyDataPoints} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyAssembled", assemblyDataPoints)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Assembled units"]} /><Bar dataKey="units" name="Assembled units" fill={chartTheme.accent} radius={[7, 7, 0, 0]} onClick={drillBar("monthlyAssembled")} /></BarChart> : <LineChart data={assemblyDataPoints} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyAssembled", assemblyDataPoints)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Assembled units"]} /><Line type="monotone" dataKey="units" name="Assembled units" stroke={chartTheme.accent} strokeWidth={3} dot={{ r: 3, fill: chartTheme.accentHover }} activeDot={{ r: 6 }} /></LineChart>}</ResponsiveContainer> : chartEmptyState("assembly output")}</div>
-          <div ref={(node) => { chartRefs.current.monthlyQc = node; }} data-chart-key="monthlyQc" className={`panel chart-panel${expandedChart === "monthlyQc" ? " chart-panel-expanded" : ""}`}><div className="chart-heading"><div><span>Quality control</span><h3 className="panel-title">{drillMonths.monthlyQc ? "Daily QC status" : "Monthly QC status"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("monthlyQc")}<ShieldCheck size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("monthlyQc")} aria-label={expandedChart === "monthlyQc" ? "Exit fullscreen" : "Expand quality control chart"}>{expandedChart === "monthlyQc" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>{drillMonths.monthlyQc ? renderDayChart("monthlyQc") : hasQcData ? <ResponsiveContainer width="100%" height={expandedChart === "monthlyQc" ? 650 : 280}><BarChart data={productionMonthCharts.qc} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyQc", productionMonthCharts.qc)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} /><Bar dataKey="Passed" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.success} /><Bar dataKey="Under Inspection" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.accent} /><Bar dataKey="Pending" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.muted} /><Bar dataKey="Failed" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.danger} /></BarChart></ResponsiveContainer> : chartEmptyState("quality control")}</div>
-          <div ref={(node) => { chartRefs.current.monthlyPackaging = node; }} data-chart-key="monthlyPackaging" className={`panel chart-panel${expandedChart === "monthlyPackaging" ? " chart-panel-expanded" : ""}`}><div className="chart-heading"><div><span>Packaging</span><h3 className="panel-title">{drillMonths.monthlyPackaging ? "Daily packaging status" : "Monthly packaging status"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("monthlyPackaging")}<Boxes size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("monthlyPackaging")} aria-label={expandedChart === "monthlyPackaging" ? "Exit fullscreen" : "Expand packaging chart"}>{expandedChart === "monthlyPackaging" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>{drillMonths.monthlyPackaging ? renderDayChart("monthlyPackaging") : hasPackagingData ? <ResponsiveContainer width="100%" height={expandedChart === "monthlyPackaging" ? 650 : 280}><BarChart data={productionMonthCharts.packaged} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyPackaging", productionMonthCharts.packaged)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} /><Bar dataKey="Pending" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.muted} /><Bar dataKey="In Progress" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.warning} /><Bar dataKey="Packed" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.success} /></BarChart></ResponsiveContainer> : chartEmptyState("packaging")}</div>
+          <div ref={(node) => { chartRefs.current.monthlyQc = node; }} data-chart-key="monthlyQc" className={`panel chart-panel${expandedChart === "monthlyQc" ? " chart-panel-expanded" : ""}`}><div className="chart-heading"><div><span>Quality control</span><h3 className="panel-title">{drillMonths.monthlyQc ? "Daily QC status" : "Monthly QC status"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("monthlyQc")}<ShieldCheck size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("monthlyQc")} aria-label={expandedChart === "monthlyQc" ? "Exit fullscreen" : "Expand quality control chart"}>{expandedChart === "monthlyQc" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>{drillMonths.monthlyQc ? renderDayChart("monthlyQc") : hasQcData ? <ResponsiveContainer width="100%" height={expandedChart === "monthlyQc" ? 650 : 280}><BarChart data={productionMonthCharts.qc} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyQc", productionMonthCharts.qc)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} itemSorter={(item) => ["Passed", "Failed", "Under Inspection", "Pending"].indexOf(item.dataKey)} /><Bar dataKey="Passed" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.success} /><Bar dataKey="Failed" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.danger} /><Bar dataKey="Under Inspection" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.accent} /><Bar dataKey="Pending" stackId="qc" onClick={drillBar("monthlyQc")} fill={chartTheme.muted} /></BarChart></ResponsiveContainer> : chartEmptyState("quality control")}</div>
+          <div ref={(node) => { chartRefs.current.monthlyPackaging = node; }} data-chart-key="monthlyPackaging" className={`panel chart-panel${expandedChart === "monthlyPackaging" ? " chart-panel-expanded" : ""}`}><div className="chart-heading"><div><span>Packaging</span><h3 className="panel-title">{drillMonths.monthlyPackaging ? "Daily packaging status" : "Monthly packaging status"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("monthlyPackaging")}<Boxes size={18} /><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("monthlyPackaging")} aria-label={expandedChart === "monthlyPackaging" ? "Exit fullscreen" : "Expand packaging chart"}>{expandedChart === "monthlyPackaging" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>{drillMonths.monthlyPackaging ? renderDayChart("monthlyPackaging") : hasPackagingData ? <ResponsiveContainer width="100%" height={expandedChart === "monthlyPackaging" ? 650 : 280}><BarChart data={productionMonthCharts.packaged} margin={{ top: 16, right: 16, left: 8, bottom: 20 }} onClick={drillFromChart("monthlyPackaging", productionMonthCharts.packaged)} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -12, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} allowDecimals={false} tick={{ fontSize: 11, fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} itemSorter={(item) => ["Packed", "Pending", "In Progress"].indexOf(item.dataKey)} /><Bar dataKey="Packed" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.success} /><Bar dataKey="Pending" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.muted} /><Bar dataKey="In Progress" stackId="pack" onClick={drillBar("monthlyPackaging")} fill={chartTheme.warning} /></BarChart></ResponsiveContainer> : chartEmptyState("packaging")}</div>
           {isProductionIncharge && renderDefectiveItemsChart("quality")}
         </div>
         <div className={`chart-grid ${activeView !== "production" ? "sales-chart-grid" : "production-chart-grid"}`}>

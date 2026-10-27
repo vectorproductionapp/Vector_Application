@@ -30,6 +30,11 @@ def _display_number(value):
     return int(value) if float(value).is_integer() else value
 
 
+def _has_recorded_status(value):
+    """Ignore blank/dash placeholders rather than counting them as a status."""
+    return str(value or "").strip().casefold() not in {"", "-", "–", "—"}
+
+
 def _unit_value_total(sales):
     """Total of Unit Cost x Qty across sales, ignoring the GST-inclusive value.
 
@@ -335,6 +340,10 @@ def get_dashboard():
                 sold_serials |= {serial.casefold() for serial in _sale_serials(sale)}
         in_stock_added = 0
         in_stock_sold = 0
+        # Unsold QC-passed units split by packaging, so the dashboard can show
+        # packed stock and QC-passed stock (packed or still pending) apart.
+        in_stock_packed = 0
+        in_stock_packing_pending = 0
         for unit in kpi_docs:
             quantity = _number(unit.get("qty"))
             # Same rule as Daily Production and Finished Goods: a unit is stock
@@ -344,6 +353,10 @@ def get_dashboard():
             in_stock_added += quantity
             if str(unit.get("serial") or "").strip().casefold() in sold_serials:
                 in_stock_sold += quantity
+            elif str(unit.get("packagingStatus") or "").strip().casefold() == "packed":
+                in_stock_packed += quantity
+            else:
+                in_stock_packing_pending += quantity
         in_stock = max(0, in_stock_added - in_stock_sold)
         if user_scoped:
             units_sold = in_stock_sold
@@ -426,7 +439,9 @@ def get_dashboard():
             period = _packed_period(unit.get("date"))
             month = period[:7] if period != "Undated" else period
             quantity = _number(unit.get("qty"))
-            qc_status = (unit.get("qc") or "Pending").strip() or "Pending"
+            qc_status = str(unit.get("qc") or "").strip()
+            if not _has_recorded_status(qc_status):
+                continue
             qc_by_month_status[(month, qc_status)] += quantity
             qc_user = scoped_user_name or (unit.get("qcBy") or "Unassigned").strip() or "Unassigned"
             qc_by_month_status_user[(month, qc_status, qc_user)] += quantity
@@ -441,7 +456,9 @@ def get_dashboard():
             month = period[:7] if period != "Undated" else period
             quantity = _number(unit.get("qty"))
             model = (unit.get("model") or "Unspecified").strip() or "Unspecified"
-            packaging_status = (unit.get("packagingStatus") or "Pending").strip() or "Pending"
+            packaging_status = str(unit.get("packagingStatus") or "").strip()
+            if not _has_recorded_status(packaging_status):
+                continue
             packaged_by_month_status[(month, packaging_status)] += quantity
             packaged_user = scoped_user_name or (unit.get("packagedBy") or "Unassigned").strip() or "Unassigned"
             packaged_by_month_status_user[(month, packaging_status, packaged_user)] += quantity
@@ -490,6 +507,8 @@ def get_dashboard():
                 "inStock": _display_number(in_stock),
                 "inStockAdded": _display_number(in_stock_added),
                 "inStockSold": _display_number(in_stock_sold),
+                "inStockPacked": _display_number(in_stock_packed),
+                "inStockPackingPending": _display_number(in_stock_packing_pending),
                 "sold": _display_number(units_sold),
                 "salesValue": sales_value,
                 "defects": len(defect_docs),

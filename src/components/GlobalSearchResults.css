@@ -1,0 +1,11 @@
+.global-search-panel { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.global-search-head { display: flex; align-items: flex-start; gap: 10px; }
+.global-search-head > div { flex: 1; min-width: 0; }
+.global-search-head h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
+.global-search-head p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+.global-search-icon {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: var(--r-md);
+  border: 1px solid var(--accent-soft-border); background: var(--accent-soft-bg); color: var(--accent);
+}
+.global-search-spinner { color: var(--accent); flex-shrink: 0; }

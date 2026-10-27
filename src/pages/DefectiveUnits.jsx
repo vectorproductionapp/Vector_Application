@@ -538,7 +538,14 @@ export default function DefectiveUnits() {
     ));
   };
 
-  const removeStagedFile = (index) => {
+  const removeStagedFile = async (index) => {
+    const file = formValues.attachment?.[index];
+    const result = await swalConfirm({
+      title: "Remove this photo?",
+      text: `${file?.name || "This photo"} will not be uploaded with the record.`,
+      confirmText: "Remove photo",
+    });
+    if (!result.isConfirmed) return;
     setFormValues((prev) => ({
       ...prev,
       attachment: prev.attachment.filter((_, i) => i !== index),

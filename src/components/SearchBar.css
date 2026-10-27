@@ -378,3 +378,6 @@
     animation: none;
   }
 }
+
+/* Spinner shown in place of the magnifier while a search runs. */
+.search-bar .search-bar-spinner { color: var(--accent); }

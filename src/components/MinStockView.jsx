@@ -78,8 +78,20 @@ function statusTone(row) {
   return isLowStock(row) ? "warn" : "ok";
 }
 
-export default function MinStockView({ onSelectRow }) {
-  const [rows, setRows] = useState([]);
+// Free-text search runs in the browser: this view already holds every row.
+const SEARCH_KEYS = ["phase", "code", "desc", "make", "model", "status"];
+
+function matchesSearch(row, search) {
+  return SEARCH_KEYS.some((key) => String(row[key] ?? "").toLowerCase().includes(search));
+}
+
+export default function MinStockView({ onSelectRow, query = "" }) {
+  const [allRows, setRows] = useState([]);
+  const search = query.trim().toLowerCase();
+  const rows = useMemo(
+    () => (search ? allRows.filter((row) => matchesSearch(row, search)) : allRows),
+    [allRows, search]
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [openCard, setOpenCard] = useState(null);
@@ -122,16 +134,18 @@ export default function MinStockView({ onSelectRow }) {
     };
   }, [closeCard, openCard]);
 
+  // The cards always count the whole register; the search narrows only the
+  // lists below them, so typing never changes the totals.
   const stats = useMemo(() => {
     // Count of materials that came in on an invoice, not the summed quantity.
     let itemsPurchased = 0, lowCount = 0, outCount = 0;
-    rows.forEach((row) => {
+    allRows.forEach((row) => {
       if ((Number(row.purchased) || 0) > 0) itemsPurchased += 1;
       if (isOutOfStock(row)) outCount += 1;
       else if (isLowStock(row)) lowCount += 1;
     });
     return { itemsPurchased, lowCount, outCount };
-  }, [rows]);
+  }, [allRows]);
 
   const byClosing = (a, b) => (Number(a.closing) || 0) - (Number(b.closing) || 0);
 
@@ -175,7 +189,7 @@ export default function MinStockView({ onSelectRow }) {
     [lowRows, outRows, purchasedRows]
   );
 
-  const { pageItems: pagedAlerts, pagerProps: alertPager } = useClientPagination(lowStockRows);
+  const { pageItems: pagedAlerts, pagerProps: alertPager } = useClientPagination(lowStockRows, search);
   const { pageItems: pagedDetailRows, pagerProps: detailPager } = useClientPagination(
     openCard ? cardDetails[openCard].items : [],
     openCard
@@ -252,7 +266,9 @@ export default function MinStockView({ onSelectRow }) {
       <div className="minstock-panel">
         <h3 className="minstock-panel-title">Low Stock Alerts</h3>
         {lowStockRows.length === 0 ? (
-          <p className="minstock-hint">Everything is comfortably stocked.</p>
+          <p className="minstock-hint">
+            {search ? "No low stock alerts match the current search." : "Everything is comfortably stocked."}
+          </p>
         ) : (
           <div className="minstock-alert-scroll">
           <ul className="minstock-alert-list">

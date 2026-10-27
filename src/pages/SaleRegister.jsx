@@ -7,6 +7,7 @@ import { Plus, X, Save, Loader2, Pencil, Trash2, MoreVertical, Check, FileText, 
 import { SearchableSelect } from "../components/SearchBar";
 import DateRangeFilter from "../components/DateRangeFilter";
 import { useHeaderSearch } from "../context/HeaderSearch";
+import GlobalSearchResults from "../components/GlobalSearchResults";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
 import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
@@ -1581,6 +1582,22 @@ const [totalCount, setTotalCount] = useState(0);
         <CardPagination {...poCardPager} />
         </>
       ) : null}
+
+      {/* Search from the PO cards also lists every matching sale line
+          (serial, invoice no, model...); View opens its Client PO. */}
+      {!selectedPoNo && (
+        <GlobalSearchResults
+          query={query}
+          noun="sale lines"
+          columns={columns}
+          load={async (q) => {
+            const res = await api.get(`${API_BASE_URL}/sales`, { params: { q, page: 1, limit: 100 }, __vectorNoCache: true });
+            if (!res.data.success) throw new Error(res.data.message || "Search failed");
+            return { rows: res.data.sales || [], total: res.data.pagination?.totalCount };
+          }}
+          onOpen={(row) => { if (row.poNo) setSelectedPoNo(String(row.poNo)); }}
+        />
+      )}
 
       {/* The card grid is the first level, so the table only appears once a PO is
           opened. PO Details swaps between the two the same way. */}

@@ -484,6 +484,47 @@ def create_po_detail():
 
 
 # ----------------------------------------------------------------------
+# Attachment lookup for the PO table's file strip
+# ----------------------------------------------------------------------
+@podetails_bp.route("/po-details/images", methods=["GET"])
+@roles_required("admin", "coadmin", "production_incharge", "user")
+def list_po_detail_images():
+    """Full files (inline bytes included) for a set of line ids.
+
+    The list endpoint strips inline bytes to stay small, so the strip asks for
+    them here. This route was missing: the request fell through to
+    `/po-details/<detail_id>` with the id "images" and came back 404 whenever a
+    line held an inline file (e.g. one saved while Storage was unavailable).
+    Mirrors `/invoices/images`.
+    """
+    ids = [value.strip() for value in (request.args.get("ids") or "").split(",") if value.strip()]
+    ids = ids[:MAX_IMAGE_IDS]
+    if not ids:
+        return jsonify({"success": True, "attachments": {}}), 200
+
+    try:
+        # Same precedence as the list endpoint: a PO's header files, when it
+        # has any, stand for every line; otherwise the line's own files.
+        header_files = _header_files_map()
+        files = {}
+        for detail_id in ids:
+            doc = po_details_collection.document(detail_id).get()
+            if not doc.exists:
+                continue
+            data = doc.to_dict() or {}
+            attachments = header_files.get(_header_doc_id(
+                data.get("modelId", ""), data.get("phaseId", ""), data.get("phase", ""), data.get("po", "")
+            ))
+            if attachments is None:
+                attachments = _attachment_files(data)
+            if attachments:
+                files[detail_id] = attachments
+        return jsonify({"success": True, "attachments": files}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to fetch PO attachments: {exc}"}), 500
+
+
+# ----------------------------------------------------------------------
 # GET SINGLE PO Detail
 # ----------------------------------------------------------------------
 @podetails_bp.route("/po-details/<detail_id>", methods=["GET"])
