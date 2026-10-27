@@ -72,9 +72,12 @@
 
 .model-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* minmax(0, 1fr): a card can never grow past its column, however long its
+     text (plain 1fr lets a long client name stretch the card off the grid). */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
+.model-grid > .model-card { min-width: 0; }
 
 .model-card {
   background: var(--bg-surface);
@@ -103,6 +106,11 @@
   width: 100%;
   min-width: 0;
 }
+/* Keep a long name clear of the download + edit icons in the corner. */
+.model-card:has(.model-card-edit):has(.model-card-download) .model-card-heading-row { padding-right: 64px; }
+.model-card:not(.model-card-select-mode) .model-card-heading-row { padding-right: 32px; }
+.model-card:not(:has(.model-card-edit)):not(:has(.model-card-download)) .model-card-heading-row { padding-right: 0; }
+.model-readonly .model-card:not(.model-card-select-mode) .model-card-heading-row { padding-right: 32px; }
 
 .model-card-icon {
   width: 32px;
@@ -175,8 +183,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
 }
+.model-card-total-amount, .model-card-total-value { margin-left: auto; white-space: nowrap; }
 
 .model-card-total-amount {
   color: var(--text-primary);
@@ -243,6 +254,28 @@
 }
 
 .model-card:hover .model-card-edit { opacity: 1; }
+/* Download sits left of the edit pencil and, like the pencil, only appears
+   while the card is hovered or focused. It stays visible while a download
+   runs, and always on touch screens, which have no hover. */
+.model-card-download {
+  position: absolute; top: 8px; right: 40px; z-index: 2;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm); color: var(--text-secondary); cursor: pointer;
+  opacity: 0;
+  transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+.model-card:hover .model-card-download,
+.model-card:focus-within .model-card-download,
+.model-card-download.is-busy { opacity: 1; }
+@media (hover: none) {
+  .model-card-download { opacity: 1; }
+}
+.model-card-download:hover, .model-card-download:focus-visible { background: var(--accent-soft-bg); color: var(--accent); outline: none; }
+.model-card-download.is-busy { color: var(--accent); cursor: wait; }
+.model-card-select-mode .model-card-download { display: none; }
+.model-readonly .model-card-download { right: 8px; }
+/* Cards without an edit pencil (Invoices, PO Details) put it in the corner. */
+.model-card:not(:has(.model-card-edit)) .model-card-download { right: 8px; }
 .model-card-select-mode .model-card-edit { display: none; }
 .model-card-edit:hover { background: var(--accent-soft-bg); color: var(--accent); }
 
@@ -329,8 +362,8 @@
   }
 }
 
-@media (max-width: 1024px) { .model-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 520px) { .model-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1024px) { .model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .model-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .model-readonly .model-toolbar-actions,
 .model-readonly .boq-toolbar-actions,

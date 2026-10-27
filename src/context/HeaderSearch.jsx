@@ -13,9 +13,25 @@ import SearchBar from "../components/SearchBar";
  */
 const HeaderSearchContext = createContext(null);
 
+// How long typing must pause before a page searches. Pages fetch from the
+// server (and read the whole collection) on every search change, so searching
+// per keystroke multiplied requests: "dell" meant four searches.
+export const SEARCH_DEBOUNCE_MS = 400;
+
 export function HeaderSearchProvider({ children }) {
   const [slot, setSlot] = useState({ owner: null, placeholder: "", enabled: false });
   const [value, setValue] = useState("");
+  // What pages search with: `value` once typing has paused. Clearing the box
+  // applies at once, so "show everything again" never waits.
+  const [settled, setSettled] = useState("");
+  useEffect(() => {
+    if (!String(value).trim()) {
+      setSettled(value);
+      return undefined;
+    }
+    const timer = setTimeout(() => setSettled(value), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [value]);
   const ownerRef = useRef(null);
 
   const register = useCallback((owner, placeholder, enabled) => {
@@ -40,7 +56,7 @@ export function HeaderSearchProvider({ children }) {
   }, []);
 
   return (
-    <HeaderSearchContext.Provider value={{ slot, value, setValue, register }}>
+    <HeaderSearchContext.Provider value={{ slot, value, settled, setValue, register }}>
       {children}
     </HeaderSearchContext.Provider>
   );
@@ -52,7 +68,8 @@ export function HeaderSearchProvider({ children }) {
  * @param {string} owner   Stable id for this page, e.g. "models".
  * @param {string} placeholder
  * @param {boolean} enabled  False to hide the box (e.g. while drilled into a PO).
- * @returns {[string, (value: string) => void]} The shared text and its setter.
+ * @returns {[string, (value: string) => void]} The search text once typing has
+ *   paused (see SEARCH_DEBOUNCE_MS), and the setter for the box.
  */
 export function useHeaderSearch(owner, placeholder, enabled = true) {
   const context = useContext(HeaderSearchContext);
@@ -70,7 +87,9 @@ export function useHeaderSearch(owner, placeholder, enabled = true) {
     return () => register(null, "", false);
   }, [register, owner, enabled, placeholder]);
 
-  return [enabled ? context.value : "", setValue];
+  // Pages get the settled text; the box itself (HeaderSearchField) shows every
+  // keystroke immediately.
+  return [enabled ? context.settled : "", setValue];
 }
 
 /**
@@ -79,11 +98,21 @@ export function useHeaderSearch(owner, placeholder, enabled = true) {
  */
 export function HeaderSearchField() {
   const context = useContext(HeaderSearchContext);
+  // Page data loading, as announced by the API helper (components/Api.js).
+  const [loadingData, setLoadingData] = useState(false);
+  useEffect(() => {
+    const update = (event) => setLoadingData(Boolean(event.detail?.loading));
+    window.addEventListener("vector:api-loading", update);
+    return () => window.removeEventListener("vector:api-loading", update);
+  }, []);
   if (!context || !context.slot.enabled) return null;
-  const { slot, value, setValue } = context;
+  const { slot, value, settled, setValue } = context;
+  // Spinner while the box waits for typing to pause, then while the page
+  // fetches the results - so a search never looks like it did nothing.
+  const searching = Boolean(String(value).trim()) && (value !== settled || loadingData);
   return (
     <div className="app-topbar-search">
-      <SearchBar value={value} onChange={setValue} placeholder={slot.placeholder} />
+      <SearchBar value={value} onChange={setValue} placeholder={slot.placeholder} busy={searching} />
     </div>
   );
 }

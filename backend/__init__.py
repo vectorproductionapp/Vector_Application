@@ -22,6 +22,8 @@ from invoice import invoice_bp
 from stockregister import stockregister_bp
 from dashboard import dashboard_bp
 from forgot_password import forgot_password_bp
+from documents import documents_bp
+from daily_report import daily_report_bp, start_scheduler
 
 
 def create_app():
@@ -124,6 +126,10 @@ def create_app():
     app.register_blueprint(stockregister_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(forgot_password_bp)
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(daily_report_bp)
+    # Daily director report: checks once a minute, sends once per working day.
+    start_scheduler()
 
     # Live updates: a WebSocket at /ws that pushes "something changed" notices,
     # so open pages refresh only their own view instead of polling or reloading.

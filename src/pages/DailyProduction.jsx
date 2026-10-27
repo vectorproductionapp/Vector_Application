@@ -46,6 +46,7 @@ import FilterModal, { countActiveFilters, toFilterParams } from "../components/F
 
 import ExportPdfButton from "../components/ExportPdfButton";
 import { exportQcReportToPdf, prepareQcReportPdf } from "../utils/exportPdf";
+import { QC_INSPECTION_ITEMS, VECTOR_PDF_LOGO_URL, isQcInspectionComplete } from "../utils/qcInspection";
 
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
@@ -58,7 +59,6 @@ import "./DailyProduction.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
 const VECTOR_LOGO_URL = `${process.env.PUBLIC_URL || ""}/images/vector.png`;
-const VECTOR_PDF_LOGO_URL = `${process.env.PUBLIC_URL || ""}/images/vector-pdf.png`;
 const PAGE_SIZE = 10;
 
 // The QC report dialog is raised to z-index 120000 (.production-qc-overlay),
@@ -74,26 +74,6 @@ const QC_STATUS_OPTIONS = ["Passed", "Under Inspection", "Pending", "Failed"];
 
 const PACKAGING_STATUS_OPTIONS = ["Pending", "In Progress", "Packed"];
 
-const QC_INSPECTION_ITEMS = [
-  { key: "acVoltage230V", number: "1", description: "AC Voltage 230V", method: "Multimeter" },
-  { key: "outputLow170V", number: "2", description: "Output low 170V", method: "Multimeter + Variac" },
-  { key: "outputHigh250V", number: "3", description: "Output high 250V", method: "Multimeter + Variac" },
-  { key: "frequency50Hz", number: "4", description: "Frequency 50Hz", method: "Multimeter" },
-  { key: "ledInputOn", number: "5a", description: "LED indication — Input on", method: "Visual Inspection" },
-  { key: "ledOutputOn", number: "5b", description: "LED indication — Output on", method: "Visual Inspection" },
-  { key: "ledOutputLow", number: "5c", description: "LED indication — Output low", method: "Visual Inspection" },
-  { key: "ledOutputHigh", number: "5d", description: "LED indication — Output high", method: "Visual Inspection" },
-  { key: "inputFuse10A", number: "6", description: "Input Fuse - 15 A", method: "Visual + Continuity test" },
-  { key: "frontPanelLcd", number: "7", description: "Front Panel LCD Display", method: "Visual Inspection" },
-  { key: "parameterLeds", number: "8", description: "Ensure all parameter LEDs are glowing", method: "Visual Inspection" },
-  { key: "loadRun", number: "9", description: "Run machine for 4 hrs without load and 1 hr with load", method: "Input Load Source" },
-  { key: "individualPort", number: "10", description: "Individual Port ON/OFF", method: "Visual + Physical Inspection" },
-  { key: "schedulingOutlets", number: "11", description: "Scheduling Outlets", method: "Visual + Physical Inspection" },
-  { key: "cutoffAlert", number: "12", description: "High/Low Cut-off Alert", method: "Visual Inspection" },
-  { key: "temperatureAlert", number: "13", description: "Temperature Alert", method: "Visual Inspection" },
-  { key: "wattageLogs", number: "14", description: "Overall Wattage Reading / logs", method: "Visual Inspection" },
-  { key: "deviceDiscovery", number: "15", description: "Device discovery tool test", method: "Visual Inspection" },
-];
 
 const createEmptyQcInspection = (verifiedBy = "") => ({
   // Left blank on purpose. Units are inspected long after they are built, so the
@@ -131,13 +111,6 @@ function syncQcVerifiedBy(record, qcBy) {
   return { ...record, qcInspection: { ...report, verifiedBy: qcBy || "" } };
 }
 
-function isQcInspectionComplete(report) {
-  if (!report || typeof report !== "object") return false;
-  if (!["inspectionDate", "checkedBy", "verifiedBy"].every((field) => String(report[field] || "").trim())) {
-    return false;
-  }
-  return QC_INSPECTION_ITEMS.every((item) => report.checks?.[item.key] === "Passed");
-}
 
 function validateQcInspection(report) {
   const missingFields = [
@@ -284,29 +257,21 @@ const swalError = (title, text) =>
   });
 
 const columns = [
-
   { key: "date", label: "Date", isDate: true },
-
   { key: "phase", label: "Phase" },
-
   { key: "model", label: "Model" },
-
   { key: "qty", label: "Quantity" },
-
   { key: "serial", label: "Serial Number", mono: true },
-
+  // In Production / Semi Finished / Completed - the unit's assembly stage.
+  { key: "stage", label: "Assembly Status" },
   { key: "assembledBy", label: "Assembled By" },
-
   { key: "qc", label: "QC Status" },
-
   { key: "packagingStatus", label: "Packaging Status" },
-
-  { key: "packagedBy", label: "Packaged By" },
-
-  { key: "remarks", label: "Remarks" },
-
+  // Packaged By hidden from the table (and so from Export Excel) on request;
+  // it stays in the View popup and the Filter dialog. Uncomment to show it.
+  // { key: "packagedBy", label: "Packaged By" },
   { key: "stockStatus", label: "Stock Status" },
-
+  { key: "remarks", label: "Remarks" },
 ];
 // Fields the PageFilter dropdown offers and the dashboard deep link may set.
 // Listed explicitly instead of being derived from `columns`, because the
@@ -318,7 +283,7 @@ const columns = [
 const PRODUCTION_FILTER_FIELDS = [
   { key: "model", label: "Model" },
   { key: "phase", label: "Phase" },
-  { key: "stage", label: "Assembly Stage" },
+  { key: "stage", label: "Assembly Status" },
   { key: "assembledBy", label: "Assembled By" },
   { key: "qc", label: "QC Status" },
   { key: "qcBy", label: "QC Done By" },
@@ -349,7 +314,7 @@ const DETAIL_FIELDS = [
 
   { key: "phase", label: "Phase" },
 
-  { key: "stage", label: "Assembly Stage" },
+  { key: "stage", label: "Assembly Status" },
 
   { key: "assembledBy", label: "Assembled By" },
 
@@ -469,7 +434,7 @@ const REQUIRED_FIELDS = [
 
   { name: "phaseId", label: "Phase" },
 
-  { name: "stage", label: "Assembly Stage" },
+  { name: "stage", label: "Assembly Status" },
 
   { name: "assembledBy", label: "Assembled By" },
 
@@ -591,7 +556,7 @@ function getRowId(row) {
 
 
 export default function DailyProduction() {
-  const { role, name: currentUserName } = useAuth();
+  const { role, name: currentUserName, userId: currentUserId } = useAuth();
   const chartTheme = useThemeColors();
   const isRegularUser = role === "user";
   const isProductionIncharge = role === "production_incharge";
@@ -875,10 +840,10 @@ export default function DailyProduction() {
     }
   }, []);
 
-  // Assembly writes arrive as a WebSocket notice, so an open table refreshes
-  // itself instead of polling.  Skipped while a form, QC inspection, or bulk
-  // delete is running - those flows do their own refresh when they finish.
-  useRealtime(["assembly_units"], () => fetchAssemblyUnits({ silent: true }), {
+  // Assembly and sale writes can both change the derived stock status, so an
+  // open table refreshes itself instead of polling. Skipped while a form, QC
+  // inspection, or bulk delete is running - those flows refresh when finished.
+  useRealtime(["assembly_units", "sales"], () => fetchAssemblyUnits({ silent: true }), {
     guard: () => !(modalOpen || saving || qcInspectionSaving || bulkDeleting),
   });
 
@@ -999,10 +964,20 @@ export default function DailyProduction() {
 
   );
 
-  const userOptions = useMemo(
-    () => productionUsers.map((user) => ({ value: user.id, label: user.name })),
-    [productionUsers]
-  );
+  const userOptions = useMemo(() => {
+    const options = productionUsers.map((user) => ({ value: user.id, label: user.name }));
+    // A regular user cannot load the user list, so the edit form would show
+    // "Select User" for Assembled / QC Done / Packaged By. Offer the people
+    // already on the unit, so their names are shown (the fields stay locked).
+    if (isRegularUser) {
+      [["assembledById", "assembledBy"], ["qcById", "qcBy"], ["packagedById", "packagedBy"]].forEach(([idField, nameField]) => {
+        const id = formValues[idField];
+        const name = formValues[nameField];
+        if (id && name && !options.some((option) => option.value === id)) options.push({ value: id, label: name });
+      });
+    }
+    return options;
+  }, [productionUsers, isRegularUser, formValues]);
 
   const handleUserSelect = (field) => (value) => {
     const selectedUser = productionUsers.find((user) => user.id === value);
@@ -1102,6 +1077,13 @@ export default function DailyProduction() {
   const openEditModal = (row) => {
 
     setIsEditMode(true);
+    if (isRegularUser) {
+      const editable = new Set();
+      if (isAssignedToMe(row, "assembledById", "assembledBy")) editable.add("stage");
+      if (isAssignedToMe(row, "qcById", "qcBy")) editable.add("qc");
+      if (isAssignedToMe(row, "packagedById", "packagedBy")) editable.add("packagingStatus");
+      setUserEditableFields(editable);
+    }
 
     const nextFormValues = {
 
@@ -1550,6 +1532,22 @@ export default function DailyProduction() {
     }
   };
 
+  // ---------- Regular users: edit only their own statuses ----------
+  // A regular user opens the same View -> Edit form as everyone else, but may
+  // change only the statuses of the unit they are assigned to: Assembly
+  // Status as its Assembled By, QC Status as its QC Done By, Packaging Status
+  // as its Packaged By. Every other field is locked, and saving sends only
+  // those fields; the backend enforces the same rule (USER_STATUS_FIELDS).
+  const isAssignedToMe = useCallback((row, idField, nameField) => {
+    const assignedId = String(row?.[idField] || "").trim();
+    if (assignedId) return Boolean(currentUserId) && assignedId === String(currentUserId);
+    const assignedName = String(row?.[nameField] || "").trim().toLowerCase();
+    return Boolean(assignedName) && assignedName === String(currentUserName || "").trim().toLowerCase();
+  }, [currentUserId, currentUserName]);
+
+  const [userEditableFields, setUserEditableFields] = useState(() => new Set());
+  const userEditable = (field) => !isRegularUser || userEditableFields.has(field);
+
   // ---------- View modal open/close ----------
 
   const openView = (row) => {
@@ -1728,7 +1726,15 @@ export default function DailyProduction() {
       let res;
 
       if (isEditMode) {
-        const payload = buildAssemblyUpdatePayload(formValues, editOriginalValues);
+        let payload = buildAssemblyUpdatePayload(formValues, editOriginalValues);
+        if (isRegularUser) {
+          // Only the statuses assigned to this user (plus the QC report that
+          // must accompany a Passed QC) are sent; anything else is dropped.
+          payload = Object.fromEntries(Object.entries(payload).filter(([field]) => (
+            userEditableFields.has(field)
+            || (field === "qcInspection" && userEditableFields.has("qc") && formValues.qc === "Passed")
+          )));
+        }
         if (Object.keys(payload).length === 0) {
           setSaving(false);
           setFormError("No changes to update.");
@@ -2089,8 +2095,8 @@ export default function DailyProduction() {
 <div className={`production-page${isRegularUser ? " production-user-view" : ""}`}>
 <section className="production-graphs">
   <div className={`production-graph${expandedGraph === "assembled" ? " production-graph-expanded" : ""}`}><div className="production-graph-heading"><h3>Monthly Units Assembled</h3><div>{graphFilters}<button className="production-graph-expand" type="button" onClick={() => setExpandedGraph(expandedGraph === "assembled" ? null : "assembled")} aria-label="Expand assembled units graph">{expandedGraph === "assembled" ? <Minimize2 size={16} /> : <Expand size={16} />}</button></div></div><ResponsiveContainer width="100%" height={expandedGraph === "assembled" ? 620 : 220}><LineChart data={productionMonths.assembled}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fill: chartTheme.axis }} /><YAxis allowDecimals={false} tick={{ fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} /><Line dataKey="units" name="Assembled units" stroke={chartTheme.accent} strokeWidth={3} /></LineChart></ResponsiveContainer></div>
-  <div className={`production-graph${expandedGraph === "qc" ? " production-graph-expanded" : ""}`}><div className="production-graph-heading"><h3>Monthly QC Status</h3><div>{graphFilters}<button className="production-graph-expand" type="button" onClick={() => setExpandedGraph(expandedGraph === "qc" ? null : "qc")} aria-label="Expand QC graph">{expandedGraph === "qc" ? <Minimize2 size={16} /> : <Expand size={16} />}</button></div></div><ResponsiveContainer width="100%" height={expandedGraph === "qc" ? 620 : 220}><BarChart data={productionMonths.qc}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fill: chartTheme.axis }} /><YAxis allowDecimals={false} tick={{ fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} /><Legend /><Bar dataKey="Passed" stackId="qc" fill={chartTheme.success} /><Bar dataKey="Pending" stackId="qc" fill={chartTheme.muted} /><Bar dataKey="Under Inspection" stackId="qc" fill={chartTheme.warning} /><Bar dataKey="Failed" stackId="qc" fill={chartTheme.danger} /></BarChart></ResponsiveContainer></div>
-  <div className={`production-graph${expandedGraph === "packaged" ? " production-graph-expanded" : ""}`}><div className="production-graph-heading"><h3>Monthly Packaging Status</h3><div>{graphFilters}<button className="production-graph-expand" type="button" onClick={() => setExpandedGraph(expandedGraph === "packaged" ? null : "packaged")} aria-label="Expand packaging graph">{expandedGraph === "packaged" ? <Minimize2 size={16} /> : <Expand size={16} />}</button></div></div><ResponsiveContainer width="100%" height={expandedGraph === "packaged" ? 620 : 220}><BarChart data={productionMonths.packaged}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fill: chartTheme.axis }} /><YAxis allowDecimals={false} tick={{ fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} /><Legend /><Bar dataKey="Pending" stackId="pack" fill={chartTheme.muted} /><Bar dataKey="In Progress" stackId="pack" fill={chartTheme.warning} /><Bar dataKey="Packed" stackId="pack" fill={chartTheme.success} /></BarChart></ResponsiveContainer></div>
+  <div className={`production-graph${expandedGraph === "qc" ? " production-graph-expanded" : ""}`}><div className="production-graph-heading"><h3>Monthly QC Status</h3><div>{graphFilters}<button className="production-graph-expand" type="button" onClick={() => setExpandedGraph(expandedGraph === "qc" ? null : "qc")} aria-label="Expand QC graph">{expandedGraph === "qc" ? <Minimize2 size={16} /> : <Expand size={16} />}</button></div></div><ResponsiveContainer width="100%" height={expandedGraph === "qc" ? 620 : 220}><BarChart data={productionMonths.qc}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fill: chartTheme.axis }} /><YAxis allowDecimals={false} tick={{ fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} itemSorter={(item) => ["Passed", "Failed", "Under Inspection", "Pending"].indexOf(item.dataKey)} /><Legend /><Bar dataKey="Passed" stackId="qc" fill={chartTheme.success} /><Bar dataKey="Failed" stackId="qc" fill={chartTheme.danger} /><Bar dataKey="Under Inspection" stackId="qc" fill={chartTheme.warning} /><Bar dataKey="Pending" stackId="qc" fill={chartTheme.muted} /></BarChart></ResponsiveContainer></div>
+  <div className={`production-graph${expandedGraph === "packaged" ? " production-graph-expanded" : ""}`}><div className="production-graph-heading"><h3>Monthly Packaging Status</h3><div>{graphFilters}<button className="production-graph-expand" type="button" onClick={() => setExpandedGraph(expandedGraph === "packaged" ? null : "packaged")} aria-label="Expand packaging graph">{expandedGraph === "packaged" ? <Minimize2 size={16} /> : <Expand size={16} />}</button></div></div><ResponsiveContainer width="100%" height={expandedGraph === "packaged" ? 620 : 220}><BarChart data={productionMonths.packaged}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="month" tick={{ fill: chartTheme.axis }} /><YAxis allowDecimals={false} tick={{ fill: chartTheme.axis }} /><Tooltip contentStyle={chartTheme.tooltip} itemSorter={(item) => ["Packed", "Pending", "In Progress"].indexOf(item.dataKey)} /><Legend /><Bar dataKey="Packed" stackId="pack" fill={chartTheme.success} /><Bar dataKey="Pending" stackId="pack" fill={chartTheme.muted} /><Bar dataKey="In Progress" stackId="pack" fill={chartTheme.warning} /></BarChart></ResponsiveContainer></div>
 </section>
 <div className="production-toolbar">
         <div className="production-toolbar-actions">
@@ -2304,7 +2310,7 @@ export default function DailyProduction() {
 
             onSortChange={setTableSort}
 
-            onViewDetails={selectMode || isRegularUser ? undefined : openView}
+            onViewDetails={selectMode ? undefined : openView}
 
             onEdit={selectMode ? undefined : openEditModal}
 
@@ -2376,7 +2382,7 @@ export default function DailyProduction() {
 
             <form
               ref={formRef}
-              className="production-form"
+              className={`production-form${isEditMode && isRegularUser ? " production-form-user-limited" : ""}`}
 
               onSubmit={(e) => {
 
@@ -2448,8 +2454,8 @@ export default function DailyProduction() {
                   unit blocks that share the header above. */}
               {isEditMode ? (
                 <div className="production-form-grid">
-                  <label className="production-field">
-<span>Assembly Stage <span className="production-required-asterisk">*</span></span>
+                  <label className={`production-field${userEditable("stage") ? " is-user-editable" : ""}`}>
+<span>Assembly Status <span className="production-required-asterisk">*</span></span>
 <StatusDropdown
 
                     name="stage"
@@ -2512,7 +2518,7 @@ export default function DailyProduction() {
                   <small className="production-field-helper">Quantity is fixed once the unit is recorded.</small>
                 </label>
 
-                <label className="production-field">
+                <label className={`production-field${userEditable("qc") ? " is-user-editable" : ""}`}>
 <span>QC Status</span>
 <StatusDropdown
 
@@ -2563,7 +2569,7 @@ export default function DailyProduction() {
                   />
 </label>
 
-                <label className="production-field">
+                <label className={`production-field${userEditable("packagingStatus") ? " is-user-editable" : ""}`}>
 <span>Packaging Status</span>
 <StatusDropdown
 
@@ -2660,7 +2666,7 @@ export default function DailyProduction() {
 
                         <div className="production-form-grid">
                           <label className="production-field">
-                            <span>Assembly Stage <span className="production-required-asterisk">*</span></span>
+                            <span>Assembly Status <span className="production-required-asterisk">*</span></span>
                             <StatusDropdown
                               name={`stage-${index}`}
                               value={draft.stage}
@@ -3039,7 +3045,7 @@ export default function DailyProduction() {
 <div className="production-details-header">
 <h2>Assembly Unit Details</h2>
 <div className="production-details-header-actions">
-{canManageProduction && <button
+{(canManageProduction || isRegularUser) && <button
 
                   type="button"
 
@@ -3121,6 +3127,5 @@ export default function DailyProduction() {
   );
 
 }
-
 
 

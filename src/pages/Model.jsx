@@ -7,6 +7,7 @@ import CardPagination, { useCardPagination } from "../components/CardPagination"
 import { useHeaderSearch } from "../context/HeaderSearch";
 import { useRealtime } from "../components/RealtimeProvider";
 import Phase from "./Phase";
+import GlobalSearchResults from "../components/GlobalSearchResults";
 import { useAuth } from "../context/Auth";
 import "./Model.css";
 
@@ -14,6 +15,24 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
 
 // The model this tab was drilled into, kept across a browser refresh.
 const DRILL_KEY = "vector_active_model";
+// The Phase screen's own drill key: writing it before opening a model makes
+// that model open straight into the phase's BOQ (used by search results).
+const PHASE_DRILL_KEY = "vector_active_phase";
+
+// Columns of the "Matching BOQ items" search results.
+const BOQ_SEARCH_COLUMNS = [
+  { key: "modelName", label: "Model" },
+  { key: "phaseName", label: "Phase" },
+  { key: "code", label: "Item Code", mono: true },
+  { key: "desc", label: "Item Description" },
+  { key: "make", label: "Make" },
+  { key: "model", label: "Linked Model" },
+  { key: "uom", label: "UOM" },
+  { key: "reqQty", label: "Req. Qty / Unit" },
+  { key: "vendor", label: "Supplier Name" },
+  { key: "rate", label: "Unit Rate (INR)" },
+  { key: "gstRate", label: "GST %", format: (value) => (String(value ?? "").trim() === "" ? "18%" : `${value}%`) },
+];
 const readDrill = (key) => {
   try {
     return JSON.parse(sessionStorage.getItem(key) || "null") || null;
@@ -447,6 +466,25 @@ export default function Model() {
         ))}
       </div>
       <CardPagination {...modelPager} />
+
+      {/* Search also finds BOQ items in every model and phase (item code,
+          description, make, supplier); View opens that phase's BOQ. */}
+      <GlobalSearchResults
+        query={query}
+        noun="BOQ items"
+        columns={BOQ_SEARCH_COLUMNS}
+        load={async (q) => {
+          const res = await api.get(`${API_BASE_URL}/boq/search`, { params: { q }, __vectorNoCache: true });
+          if (!res.data.success) throw new Error(res.data.message || "Search failed");
+          return { rows: res.data.rows || [], total: res.data.totalCount };
+        }}
+        onOpen={(row) => {
+          const target = models.find((m) => m.id === row.modelId);
+          if (!target) return;
+          writeDrill(PHASE_DRILL_KEY, { modelId: target.id, phase: { id: row.phaseId, name: row.phaseName } });
+          setActiveModel(target);
+        }}
+      />
 
       {showModal && (
         <CreateEntityModal

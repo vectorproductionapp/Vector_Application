@@ -210,13 +210,13 @@
 /* Same alignment as the BOQ form: stretch instead of `start`, so a label that
    wraps to two lines never pushes its control out of line with the fields
    beside it. */
-.invoices-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: stretch; width: 100%; }
+.invoices-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 20px; align-items: stretch; width: 100%; }
 
 /* Invoice header: only Invoice No / Date / Phase, the items follow below. */
-.invoices-header-grid { grid-template-columns: repeat(3, 1fr); }
+.invoices-header-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 @media (max-width: 900px) {
-  .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, 1fr); }
+  .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* Same height for the select and date-picker controls as the plain inputs, so
    a header row never looks ragged. */
@@ -256,7 +256,7 @@
 .invoices-field-helper.error { color: var(--accent); }
 .invoices-field input:disabled, .invoices-field input[readonly] { background: var(--bg-table-stripe); color: var(--text-secondary); cursor: not-allowed; }
 
-@media (max-width: 900px) { .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .invoices-form-grid, .invoices-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .invoices-form-grid, .invoices-header-grid { grid-template-columns: 1fr; } .invoices-field-span2 { grid-column: 1 / -1; } }
 
 /* Item blocks match the compact sizing used in the PO modal. */

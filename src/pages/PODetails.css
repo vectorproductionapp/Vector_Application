@@ -1026,11 +1026,12 @@
 
 .po-card-detail-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
   width: 100%;
+  min-width: 0;
 }
 
 .po-card-detail-label {
@@ -1039,19 +1040,23 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  max-width: 50%;
+  line-height: 1.5;
 }
 
+/* A long value (client / customer name, PO number) wraps onto a second line
+   inside the card instead of running past its edge. */
 .po-card-detail-value {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: right;
   margin-left: auto;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 /* Responsive: smaller gap on small screens */
@@ -1084,8 +1089,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
 }
+.po-card-total-row .po-card-total-amount, .po-card-total-row .po-card-total-value { margin-left: auto; white-space: nowrap; }
 
 .po-card-total-amount {
   color: var(--text-primary);

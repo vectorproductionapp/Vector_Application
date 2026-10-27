@@ -35,6 +35,8 @@ backend.err
 
 # Tests stub out Firebase on purpose; they are not part of the runtime image.
 tests/
+# Old sample-data seed script (fully commented out, imported by nothing).
+test.py
 
 # Build plumbing
 .git/

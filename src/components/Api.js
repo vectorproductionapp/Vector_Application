@@ -85,17 +85,23 @@ api.interceptors.request.use((config) => {
     }
     // The global loader represents page data loading only. Saves already use
     // their own busy state and must not leave the page loader visible.
-    const key = cacheKey(config);
-    const cached = getCache.get(key);
-    if (cached && Date.now() - cached.savedAt < GET_CACHE_TTL_MS) {
-      config.adapter = () => Promise.resolve({
-        data: copyData(cached.data), status: 200, statusText: "OK",
-        headers: { "x-vector-cache": "hit" }, config, request: null,
-      });
-    } else if (cached) {
-      getCache.delete(key);
+    // File downloads (blobs) are never cached: they can be large, and each
+    // click should fetch the file as it is now.
+    // `__vectorNoCache` skips the cache but still merges identical requests in
+    // flight, for reads that must always be current (e.g. alert status).
+    if (config.responseType !== "blob" && !config.__vectorNoCache) {
+      const key = cacheKey(config);
+      const cached = getCache.get(key);
+      if (cached && Date.now() - cached.savedAt < GET_CACHE_TTL_MS) {
+        config.adapter = () => Promise.resolve({
+          data: copyData(cached.data), status: 200, statusText: "OK",
+          headers: { "x-vector-cache": "hit" }, config, request: null,
+        });
+      } else if (cached) {
+        getCache.delete(key);
+      }
+      config.__vectorCacheKey = key;
     }
-    config.__vectorCacheKey = key;
   } else if (!["head", "options"].includes(method)) {
     // A successful save can affect dashboard totals and every table, so do
     // not show stale data after any create, edit, or deletion.

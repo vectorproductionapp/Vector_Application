@@ -112,7 +112,7 @@
 .defect-form { padding: 22px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; }
 .defect-form-error { background: var(--accent-soft-bg); border: 1px solid var(--danger); color: var(--accent); padding: 10px 14px; border-radius: var(--r-md); font-size: 13px; font-weight: 600; margin-bottom: 16px; }
 .defect-form-grid, .defect-form-grid * { box-sizing: border-box; }
-.defect-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 20px; align-items: start; width: 100%; }
+.defect-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 20px; align-items: start; width: 100%; }
 .defect-field-span2 { grid-column: span 2; }
 .defect-field-span4 { grid-column: span 4; }
 
@@ -193,7 +193,7 @@
 @keyframes defect-dropdown-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes defect-dropdown-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
 
-@media (max-width: 900px) { .defect-form-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .defect-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .defect-form-grid { grid-template-columns: 1fr; } .defect-field-span2, .defect-field-span4, .image-preview { grid-column: 1 / -1; } }
 
 /* VIEW DETAILS POPUP */

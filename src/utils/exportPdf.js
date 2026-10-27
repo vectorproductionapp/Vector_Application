@@ -167,7 +167,8 @@ export function exportTableToExcel({ title, columns, rows, fileName }) {
 }
 
 /** Generate the completed Daily Production QC inspection as a printable PDF. */
-export async function exportQcReportToPdf({ model, serial, inspection, logoUrl }) {
+/** With `asBlob`, returns the PDF as a Blob instead of saving it (for zips). */
+export async function exportQcReportToPdf({ model, serial, inspection, logoUrl, asBlob = false }) {
   if (!inspection || !Array.isArray(inspection.items) || inspection.items.length === 0) {
     throw new Error("A completed QC inspection is required to generate the report.");
   }
@@ -278,7 +279,9 @@ export async function exportQcReportToPdf({ model, serial, inspection, logoUrl }
     doc.text(String(value), x, signoffY + 10);
   });
 
+  if (asBlob) return doc.output("blob");
   const safeSerial = sanitizeFileName(serial || "assembly-unit");
   doc.save(`qc-report-${safeSerial}.pdf`);
+  return null;
 }
  

@@ -14,10 +14,25 @@ import { fmtINR } from "../data/mockData";
 // relying on the Models page having already pulled it in.
 import "./Model.css";
 import "./Phase.css";
+import GlobalSearchResults from "../components/GlobalSearchResults";
 
 // An empty base URL uses the development proxy. This keeps the Item Code
 // catalogue available even when REACT_APP_API_BASE_URL is not configured.
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
+
+// Columns of the "Matching BOQ items" search results on a model's phases.
+const PHASE_BOQ_SEARCH_COLUMNS = [
+  { key: "phaseName", label: "Phase" },
+  { key: "code", label: "Item Code", mono: true },
+  { key: "desc", label: "Item Description" },
+  { key: "make", label: "Make" },
+  { key: "model", label: "Linked Model" },
+  { key: "uom", label: "UOM" },
+  { key: "reqQty", label: "Req. Qty / Unit" },
+  { key: "vendor", label: "Supplier Name" },
+  { key: "rate", label: "Unit Rate (INR)" },
+  { key: "gstRate", label: "GST %", format: (value) => (String(value ?? "").trim() === "" ? "18%" : `${value}%`) },
+];
 
 // The phase this tab was drilled into, kept across a browser refresh.
 const DRILL_KEY = "vector_active_phase";
@@ -318,6 +333,15 @@ export default function Phase({ model, onBack, readOnly = false }) {
   useEffect(() => {
     writeDrill(DRILL_KEY, activePhase ? { modelId: model?.id, phase: activePhase } : null);
   }, [activePhase, model?.id]);
+
+  // A phase opened from a stored drill or a search result may carry only its
+  // id and name; once the phase list loads, use the full record (item code...).
+  useEffect(() => {
+    if (!activePhase) return;
+    const full = phases.find((p) => p.id === activePhase.id);
+    if (full && JSON.stringify(full) !== JSON.stringify(activePhase)) setActivePhase(full);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phases]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [itemCodes, setItemCodes] = useState([]);
@@ -849,6 +873,20 @@ export default function Phase({ model, onBack, readOnly = false }) {
         ))}
       </div>
       <CardPagination {...phasePager} />
+
+      {/* Search also finds BOQ items in this model's phases (item code,
+          description, make, supplier); View opens that phase's BOQ. */}
+      <GlobalSearchResults
+        query={query}
+        noun="BOQ items"
+        columns={PHASE_BOQ_SEARCH_COLUMNS}
+        load={async (q) => {
+          const res = await api.get(`${API_BASE_URL}/boq/search`, { params: { q, modelId: model.id }, __vectorNoCache: true });
+          if (!res.data.success) throw new Error(res.data.message || "Search failed");
+          return { rows: res.data.rows || [], total: res.data.totalCount };
+        }}
+        onOpen={(row) => setActivePhase(phases.find((p) => p.id === row.phaseId) || { id: row.phaseId, name: row.phaseName })}
+      />
 
       {showModal && (
       <CreateEntityModal

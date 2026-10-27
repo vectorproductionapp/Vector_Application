@@ -35,15 +35,20 @@ export default function useDashboardDeepLink(fields, applyFilters, applyView, vi
 
   useEffect(() => {
     if (appliedRef.current) return;
-    const field = searchParams.get("field");
-    const value = searchParams.get("value");
+    // A card may narrow by more than one field (e.g. In Stock + Packed), sent
+    // as repeated `field`/`value` pairs in the same order.
+    const fieldList = searchParams.getAll("field");
+    const valueList = searchParams.getAll("value");
+    const field = fieldList[0];
     const view = searchParams.get("view");
     const from = searchParams.get("from");
 
-    const fieldAccepted = field
-      && value
-      && fields.some((option) => option.key === field);
-    if (fieldAccepted) applyFilters({ [field]: value });
+    const patch = {};
+    fieldList.forEach((name, index) => {
+      const value = valueList[index];
+      if (name && value && fields.some((option) => option.key === name)) patch[name] = value;
+    });
+    if (Object.keys(patch).length) applyFilters(patch);
 
     if (view && views?.includes(view)) applyView?.(view);
 

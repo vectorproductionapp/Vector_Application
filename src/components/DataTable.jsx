@@ -20,7 +20,12 @@ const cellContent = (column, row) => {
   return isBlankValue(value) ? EMPTY_CELL : value;
 };
 
-export default function DataTable({ columns, rows, onViewDetails, onSortChange, highlightCode }) {
+// `actionLabel` / `actionHeader` / `actionIcon` rename the row button (default
+// "View" under "Details"), e.g. "Update" for a page where the row is edited.
+export default function DataTable({
+  columns, rows, onViewDetails, onSortChange, highlightCode,
+  actionLabel = "View", actionHeader = "Details", actionIcon = null,
+}) {
   const [sort, setSort] = useState({ key: null, direction: null });
   const sortedRows = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
 
@@ -72,7 +77,7 @@ export default function DataTable({ columns, rows, onViewDetails, onSortChange, 
                 </th>
               );
             })}
-            {onViewDetails && <th className="data-table-actions-col">Details</th>}
+            {onViewDetails && <th className="data-table-actions-col">{actionHeader}</th>}
           </tr>
         </thead>
         <tbody>
@@ -103,9 +108,9 @@ export default function DataTable({ columns, rows, onViewDetails, onSortChange, 
                       type="button"
                       className="data-table-view-btn"
                       onClick={() => onViewDetails(r)}
-                      aria-label="View Details"
+                      aria-label={actionLabel === "View" ? "View Details" : actionLabel}
                     >
-                      <Eye size={16} /> View
+                      {actionIcon || <Eye size={16} />} {actionLabel}
                     </button>
                   </td>
                 )}

@@ -1,4 +1,5 @@
 import math
+import re
 import uuid
 from datetime import datetime, timezone
  
@@ -194,11 +195,27 @@ def _reserved_serials(exclude_sale_id=None):
     return reserved
 
 
+def _serial_sort_key(serial):
+    """Natural order: 2609CHA2 before 2609CHA10, case-insensitive."""
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", serial.casefold())]
+
+
 def _available_assembly_units(model_id="", model_name="", exclude_sale_id=None):
-    """Return QC-passed production units that are not reserved by another sale."""
+    """Units that can go on a sale: In Stock in Daily Production terms.
+
+    That is QC passed, packed, and not on another (non-cancelled) sale - the
+    same rule as Daily Production's Stock Status "In Stock". When an existing
+    sale is edited, its own serials stay selectable even if they were never
+    packed, so older sales can still be saved.
+    """
     model_id = str(model_id or "").strip()
     model_name = str(model_name or "").strip().casefold()
     reserved = _reserved_serials(exclude_sale_id)
+    own_serials = set()
+    if exclude_sale_id:
+        own = sales_collection.document(exclude_sale_id).get()
+        if own.exists:
+            own_serials = {serial.casefold() for serial in _record_serials(own.to_dict() or {})}
     available = []
     seen_serials = set()
 
@@ -207,6 +224,9 @@ def _available_assembly_units(model_id="", model_name="", exclude_sale_id=None):
         serial = str(data.get("serial", "")).strip()
         normalized_serial = serial.casefold()
         if not serial or str(data.get("qc", "")).strip().casefold() != "passed":
+            continue
+        packed = str(data.get("packagingStatus", "")).strip().casefold() == "packed"
+        if not packed and normalized_serial not in own_serials:
             continue
         unit_model_id = str(data.get("modelId", "")).strip()
         if model_id:
@@ -227,7 +247,7 @@ def _available_assembly_units(model_id="", model_name="", exclude_sale_id=None):
             "stockStatus": "In Stock",
         })
 
-    available.sort(key=lambda item: item["serial"].casefold())
+    available.sort(key=lambda item: _serial_sort_key(item["serial"]))
     return available
 
 
@@ -241,7 +261,7 @@ def _validate_available_serials(data, serial_numbers, exclude_sale_id=None):
     unavailable = [serial for serial in serial_numbers if serial.casefold() not in available_serials]
     if unavailable:
         raise ValueError(
-            "These serial numbers are not in stock for the selected model: "
+            "These serial numbers are not in stock (QC passed and packed) for the selected model: "
             + ", ".join(unavailable)
         )
 
@@ -385,6 +405,9 @@ def create_sale():
             record["warrantyPeriod"] = warranty_period
             record["createdAt"] = created_at
             record["updatedAt"] = created_at
+            # When the sale was delivered, for the daily report's "Sold" figure.
+            if str(record.get("dispatch") or "").strip().casefold() == "delivered":
+                record["deliveredAt"] = created_at
             batch.set(doc_ref, record)
             created_records.append((doc_ref.id, record))
 
@@ -614,6 +637,15 @@ def update_sale(sale_id):
             batch.commit()
  
         update_fields["updatedAt"] = datetime.now(timezone.utc)
+        # Record the moment a sale becomes Delivered (the daily report's
+        # "Sold" figure); moving it off Delivered clears the stamp.
+        if "dispatch" in update_fields:
+            was_delivered = str(existing_data.get("dispatch") or "").strip().casefold() == "delivered"
+            now_delivered = str(update_fields.get("dispatch") or "").strip().casefold() == "delivered"
+            if now_delivered and not was_delivered:
+                update_fields["deliveredAt"] = update_fields["updatedAt"]
+            elif was_delivered and not now_delivered:
+                update_fields["deliveredAt"] = None
         doc_ref.update(update_fields)
         updated_doc = doc_ref.get()
         return jsonify({"success": True, "message": "Sale updated", **_serialize(updated_doc)}), 200

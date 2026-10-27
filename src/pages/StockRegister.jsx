@@ -47,6 +47,16 @@ const STOCK_FILTER_FIELDS = columns.filter((column) => ["phase", "make", "model"
 
 const DETAIL_FIELDS = columns;
 
+// Documents moved to its own sidebar page (Documents Center).
+const STOCK_VIEWS = ["table", "minstock", "finishedgoods"];
+const VIEW_STORAGE_KEY = "stock-register-view";
+
+const SEARCH_PLACEHOLDERS = {
+  table: "Search Material Stock Register...",
+  minstock: "Search Min Stock materials...",
+  finishedgoods: "Search Finished Goods...",
+};
+
 // Add every string your backend might send for an admin-tier role.
 
 function errorMessage(error) {
@@ -56,9 +66,6 @@ function errorMessage(error) {
 // Tries several common places a role might live. Once you've confirmed the
 // real shape (see console log below), this can be simplified to `user?.role`.
 export default function StockRegister() {
-  // One search box, rendered in the global header next to the profile menu.
-  const [query] = useHeaderSearch("stock-register", "Search Material Stock Register...");
-
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
   const [rows, setRows] = useState([]);
@@ -71,8 +78,38 @@ export default function StockRegister() {
   const [loadError, setLoadError] = useState("");
   const [detailsRow, setDetailsRow] = useState(null);
   const [highlightCode, setHighlightCode] = useState("");
-  const [view, setView] = useState("table");
-  const [fgQuery, setFgQuery] = useState("");
+  // The open tab survives a page refresh: it is kept for this browser session.
+  // A dashboard deep link still wins, because it sets the view after mount.
+  const [view, setView] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      return STOCK_VIEWS.includes(saved) ? saved : "table";
+    } catch {
+      return "table";
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch {
+      // Storage blocked (private mode): the tab just resets on refresh.
+    }
+  }, [view]);
+  // One search box, rendered in the global header next to the profile menu,
+  // drives whichever tab is open. It used to feed only the Table View, so on
+  // Min Stock it did nothing and Finished Goods had a second box of its own.
+  // The owner is per tab, so switching tabs starts with an empty search.
+  const [headerQuery, setHeaderQuery] = useHeaderSearch(
+    `stock-register-${view}`,
+    SEARCH_PLACEHOLDERS[view] || SEARCH_PLACEHOLDERS.table
+  );
+  const query = view === "table" ? headerQuery : "";
+  const fgQuery = view === "finishedgoods" ? headerQuery : "";
+  const minStockQuery = view === "minstock" ? headerQuery : "";
+  // Only the newest request may write the table; a slower earlier response
+  // (e.g. for a shorter search term) would otherwise overwrite fresh results.
+  const stockRequestRef = useRef(0);
+  const fgRequestRef = useRef(0);
   const [fgRows, setFgRows] = useState([]);
   const [fgFilterOptions, setFgFilterOptions] = useState({});
   const [fgPage, setFgPage] = useState(1);
@@ -101,13 +138,15 @@ export default function StockRegister() {
     deepLinkToFg ? FG_FILTER_FIELDS : STOCK_FILTER_FIELDS,
     (patch) => (deepLinkToFg ? setFgRowFilters : setRowFilters)((prev) => ({ ...prev, ...patch })),
     setView,
-    ["table", "minstock", "finishedgoods"]
+    STOCK_VIEWS
   );
 
   const fetchStock = useCallback(async ({ silent = false, targetPage } = {}) => {
     if (!silent) setLoading(false);
     setLoadError("");
     const pageToFetch = targetPage ?? page;
+    const requestId = ++stockRequestRef.current;
+    const isStale = () => requestId !== stockRequestRef.current;
     try {
       // Search and PageFilter run on the server. Filtering here instead used to
       // match only the ten rows the API had just paged back, so a search or a
@@ -120,6 +159,7 @@ export default function StockRegister() {
       toFilterParams(rowFilters, STOCK_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
 
       const response = await api.get(`${API_BASE_URL}/stock-register?${params.toString()}`);
+      if (isStale()) return;
       if (!response.data.success) throw new Error(response.data.message || "Failed to load stock register");
       setRows(response.data.stockRows || []);
       setFilterOptions(response.data.filterOptions || {});
@@ -128,7 +168,7 @@ export default function StockRegister() {
       setTotalCount(pagination.totalCount || 0);
       if (pagination.page && pagination.page !== pageToFetch) setPage(pagination.page);
     } catch (error) {
-      setLoadError(errorMessage(error));
+      if (!isStale()) setLoadError(errorMessage(error));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -196,6 +236,8 @@ export default function StockRegister() {
     if (!silent) setFgLoading(false);
     setFgLoadError("");
     const pageToFetch = targetPage ?? fgPage;
+    const requestId = ++fgRequestRef.current;
+    const isStale = () => requestId !== fgRequestRef.current;
     try {
       const params = new URLSearchParams();
       params.set("page", String(pageToFetch));
@@ -207,6 +249,7 @@ export default function StockRegister() {
       // just the selected status.
       toFilterParams(fgRowFilters, FG_FILTER_FIELDS).forEach((value, key) => params.append(key, value));
       const response = await api.get(`${API_BASE_URL}/stock-register/finished-goods?${params.toString()}`);
+      if (isStale()) return;
       if (!response.data.success) throw new Error(response.data.message || "Failed to load finished goods");
       setFgRows(response.data.finishedGoods || []);
       setFgFilterOptions(response.data.filterOptions || {});
@@ -216,7 +259,7 @@ export default function StockRegister() {
       setFgTotalCount(pagination.totalCount || 0);
       if (pagination.page && pagination.page !== pageToFetch) setFgPage(pagination.page);
     } catch (error) {
-      setFgLoadError(errorMessage(error));
+      if (!isStale()) setFgLoadError(errorMessage(error));
     } finally {
       if (!silent) setFgLoading(false);
     }
@@ -275,11 +318,11 @@ export default function StockRegister() {
       </div>
 
       {view === "minstock" ? (
-        <MinStockView onSelectRow={openDetails} />
+        <MinStockView onSelectRow={openDetails} query={minStockQuery} />
       ) : view === "finishedgoods" ? (
         <FinishedGoodsView
           query={fgQuery}
-          setQuery={setFgQuery}
+          setQuery={setHeaderQuery}
           filters={fgRowFilters}
           onFiltersChange={setFgRowFilters}
           rows={fgRows}
@@ -295,6 +338,7 @@ export default function StockRegister() {
           onPageSizeChange={setFgPageSize}
           onRetry={() => fetchFinishedGoods({ targetPage: fgPage })}
           onViewDetails={openDetails}
+          fromDashboard={arrivedFromDashboard && deepLinkToFg}
         />
       ) : (
         <>

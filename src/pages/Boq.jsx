@@ -1569,6 +1569,7 @@ import { createPortal } from "react-dom";
 import Swal from "sweetalert2";
 import { Plus, Pencil, Trash2, ArrowLeft, ClipboardList, X, Save, Loader2, MoreVertical, Check, FileSpreadsheet } from "lucide-react";
 import SearchBar, { SearchableSelect } from "../components/SearchBar";
+import useDebouncedValue from "../utils/useDebouncedValue";
 import FilterModal, { matchesFilters } from "../components/FilterModal";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
@@ -2656,6 +2657,9 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  // The box shows every keystroke (`query`); the table searches once typing
+  // pauses (`searchQuery`), not once per letter.
+  const searchQuery = useDebouncedValue(query);
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
   const [editorOpen, setEditorOpen] = useState(false);
@@ -2704,7 +2708,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
       const params = new URLSearchParams();
       params.set("page", String(pageToFetch));
       params.set("limit", String(pageSize));
-      const search = query.trim();
+      const search = searchQuery.trim();
       if (search) params.set("q", search);
       BOQ_FILTER_FIELDS.forEach((field) => {
         const selected = rowFilters[field.key];
@@ -2736,12 +2740,12 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, query, rowFilters, resolvedModelId, resolvedPhaseId]);
+  }, [page, pageSize, searchQuery, rowFilters, resolvedModelId, resolvedPhaseId]);
 
   // Changing the search text or a PageFilter selection has to restart at page 1,
   // otherwise narrowing the result set leaves the user parked on a page that no
   // longer exists (and a hit sitting on page 2 stays hidden).
-  const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}`;
+  const filterKey = `${searchQuery.trim()}|${JSON.stringify(rowFilters)}`;
   const prevFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -2785,12 +2789,12 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   // Still needed for the PDF/Excel export, which must cover every BOQ row
   // rather than just the page the API returned.
   const filterBoqRows = useCallback((rows) => {
-    const q = query.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch = !q || BOQ_COLUMNS.some((column) => String(row[column.key] ?? "").toLowerCase().includes(q));
       return matchesSearch && matchesFilters(row, rowFilters, BOQ_FILTER_FIELDS);
     });
-  }, [query, rowFilters]);
+  }, [searchQuery, rowFilters]);
 
   // The API already applied the search and PageFilter to every BOQ row before it
   // cut the page, so the table shows its response verbatim. Re-filtering here
@@ -3179,7 +3183,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
           <div className="panel">
             <div className="table-controls-row">
               <div className="table-controls-primary">
-                <SearchBar value={query} onChange={setQuery} placeholder="Search BOQ rows..." />
+                <SearchBar value={query} onChange={setQuery} placeholder="Search BOQ rows..." busy={query.trim() !== searchQuery.trim()} />
                 <FilterModal rows={boq.rows || []} options={boq?.filterOptions || {}} fields={BOQ_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
                 {/* <span className="boq-count">Showing {filteredRows.length} of {totalCount} rows</span> */}
               </div>
