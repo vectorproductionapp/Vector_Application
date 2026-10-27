@@ -1546,6 +1546,8 @@ const [totalCount, setTotalCount] = useState(0);
                   <span className="po-card-detail-label">Client Name</span>
                   <span className="po-card-detail-value">{card.client || "—"}</span>
                 </span>
+                {/* End Customer Name / PO No hidden on the cards (still in the
+                    table and details). Uncomment to show them again.
                 <span className="po-card-detail-row">
                   <span className="po-card-detail-label">End Customer Name</span>
                   <span className="po-card-detail-value">{card.endUserClient || "—"}</span>
@@ -1554,6 +1556,7 @@ const [totalCount, setTotalCount] = useState(0);
                   <span className="po-card-detail-label">End Customer PO No</span>
                   <span className="po-card-detail-value">{card.endUserPoNo || "—"}</span>
                 </span>
+                */}
               </div>
               <div className="po-card-totals">
                 <span className="po-card-total-row">
