@@ -9,7 +9,7 @@ One email per day with two sections:
    units assembled that day now at Semi Finished, units moved to QC
    inspection and units that failed QC.
 2. **Overall** - the same totals the dashboard cards show (Total Unit,
-   In Stock, QC Passed Stock, Sold Units, In Production, Semi Finished,
+   In Stock, Waiting for Packing, Sold Units, In Production, Semi Finished,
    Under QC Inspection, QC Passed, QC Failed), computed with the dashboard's
    own rules so the two never disagree.
 
@@ -318,7 +318,8 @@ def compute_report(report_day):
     overall = {
         "total": total_in_production + total_semi + total_qc_passed + total_qc_failed + total_qc_inspection,
         "inStock": in_stock_packed,
-        "qcPassedStock": max(0, in_stock_added - in_stock_sold),
+        # QC passed, not sold, not packed yet (the dashboard's card).
+        "awaitingPacking": max(0, in_stock_added - in_stock_sold - in_stock_packed),
         "sold": sum(_number(s.get("qty")) for s in delivered),
         "inProduction": total_in_production,
         "semiFinished": total_semi,
@@ -348,7 +349,7 @@ DAY_ROWS = [
 OVERALL_ROWS = [
     ("total", "Total Unit", "In production + semi finished + QC"),
     ("inStock", "In Stock", "Packing completed, ready to dispatch"),
-    ("qcPassedStock", "QC Passed Stock", "QC passed, packed + awaiting packing"),
+    ("awaitingPacking", "Waiting for Packing", "QC passed, packing not done yet"),
     ("sold", "Sold Units", "Dispatch status delivered"),
     ("inProduction", "Units In Production", "Live operational total"),
     ("semiFinished", "Units Semi Finished", "Moving through production"),

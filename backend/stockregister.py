@@ -410,7 +410,10 @@ def list_finished_goods_stock():
             # Determine status by checking if serial is in delivered sales
             serial_key = serial.casefold()
             is_delivered = serial_key in delivered_serials
-            status = "Sold" if is_delivered else "In Stock"
+            # Same words as Daily Production's Stock Status: In Stock once
+            # packed, Awaiting Packing while QC passed but not packed yet.
+            packed_now = str(data.get("packagingStatus", "")).strip().casefold() == "packed"
+            status = "Sold" if is_delivered else ("In Stock" if packed_now else "Awaiting Packing")
            
             # A QC-passed unit is stock whether or not it has been packed yet,
             # matching Daily Production's Stock Status; the Packaging Status
@@ -477,11 +480,10 @@ def list_finished_goods_stock():
             "finishedGoods": filtered_units[start:start + limit],
             "filterOptions": filter_options,
             "summary": {
-                "inStock": sum(1 for u in packed_units if u["status"] == "In Stock"),
-                "inStockPacked": sum(
-                    1 for u in packed_units
-                    if u["status"] == "In Stock" and u["packagingStatus"].casefold() == "packed"
-                ),
+                # Every unsold QC-passed unit (packed or not), kept for older pages.
+                "inStock": sum(1 for u in packed_units if u["status"] != "Sold"),
+                "inStockPacked": sum(1 for u in packed_units if u["status"] == "In Stock"),
+                "awaitingPacking": sum(1 for u in packed_units if u["status"] == "Awaiting Packing"),
                 "sold": sum(1 for u in packed_units if u["status"] == "Sold"),
                 "total": len(packed_units),
             },
