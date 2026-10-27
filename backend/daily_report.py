@@ -398,6 +398,7 @@ def build_email(report, generated_at=None):
     generated_at = generated_at or datetime.now(IST)
     subject = f"Vector daily production report - {report_day.strftime('%d %b %Y')}"
     app_url = os.getenv("APP_FRONTEND_URL", "https://production.vector-power.com").rstrip("/")
+
     # Use a public HTTPS asset for reports.  Some Outlook clients do not
     # resolve ``cid:`` images from messages sent through external SMTP
     # providers, which leaves a broken-image placeholder in the report.
@@ -416,13 +417,11 @@ def build_email(report, generated_at=None):
     <div style="font-size:13px;color:#6b6b6b;margin-top:4px;">Production &amp; Sales Control &middot; generated {_esc(generated_at.strftime('%d %b %Y, %I:%M %p'))} IST</div>
   </td></tr>
   <tr><td style="padding:20px 18px 6px;font-family:Arial,Helvetica,sans-serif;">
-    <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:{BRAND_RED};padding:0 6px;">Section 1</div>
     <div style="font-size:17px;font-weight:700;color:#1f1f1f;padding:2px 6px 8px;">{_esc(_pretty(report_day))}</div>
     {_cards_html(DAY_ROWS, report["day"], BRAND_RED)}
   </td></tr>
   <tr><td style="padding:16px 18px 6px;font-family:Arial,Helvetica,sans-serif;">
-    <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2f6f4f;padding:0 6px;">Section 2</div>
-    <div style="font-size:17px;font-weight:700;color:#1f1f1f;padding:2px 6px 8px;">Overall totals (as of today)</div>
+    <div style="font-size:17px;font-weight:700;color:#1f1f1f;padding:2px 6px 8px;">Overall overview</div>
     {_cards_html(OVERALL_ROWS, report["overall"], "#3fae7c")}
   </td></tr>
   <!-- Centred red button and note, the same footer as the password-reset email. -->
@@ -439,9 +438,9 @@ def build_email(report, generated_at=None):
 </td></tr></table>
 </body></html>"""
 
-    lines = [f"Vector daily production report - {_pretty(report_day)}", "", "SECTION 1 - " + _pretty(report_day)]
+    lines = [f"Vector daily production report - {_pretty(report_day)}", "", _pretty(report_day)]
     lines += [f"  {label}: {report['day'].get(key, 0)}" for key, label, _ in DAY_ROWS]
-    lines += ["", "SECTION 2 - Overall totals (as of today)"]
+    lines += ["", "Overall overview"]
     lines += [f"  {label}: {report['overall'].get(key, 0)}" for key, label, _ in OVERALL_ROWS]
     lines += ["", f"Dashboard: {app_url}/dashboard"]
     return subject, body, "\n".join(lines)

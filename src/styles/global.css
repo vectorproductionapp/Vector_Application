@@ -971,6 +971,17 @@ html body .dashboard-filter-select-menu { max-height: 240px !important; overflow
   box-shadow: var(--shadow-md) !important; backdrop-filter: blur(12px);
 }
 .recharts-tooltip-cursor { fill: var(--accent-soft-bg) !important; }
+/* Hover box text. Recharts paints each line in its series colour, which can be
+   too dark to read on the dark theme (grey "Pending", deep palette colours).
+   The text now uses the theme's text colour; the series colour stays as a
+   swatch before each line (`currentColor` is the <li>'s inline series colour). */
+.recharts-default-tooltip .recharts-tooltip-label { color: var(--text-primary) !important; font-weight: 600; margin-bottom: 4px !important; }
+.recharts-default-tooltip .recharts-tooltip-item { display: flex !important; align-items: center; gap: 6px; padding: 2px 0 !important; }
+.recharts-default-tooltip .recharts-tooltip-item::before {
+  content: ""; flex-shrink: 0; width: 9px; height: 9px; border-radius: 2px; background: currentColor;
+}
+.recharts-default-tooltip .recharts-tooltip-item > span { color: var(--text-primary) !important; }
+.recharts-default-tooltip .recharts-tooltip-item-value { font-weight: 700; }
 
 /* ---------------------------------------------------------------------
    13. MODALS / DIALOGS / ALERTS

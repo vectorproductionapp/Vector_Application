@@ -15,6 +15,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  DefaultTooltipContent,
 } from "recharts";
 import KpiCard from "../components/KpiCard";
 import DatePicker from "../components/DatePicker";
@@ -133,6 +134,17 @@ function formatMonth(value) {
 }
 
 const ACTIVITY_UNIT_LABELS = { assembled: "Assembled units", qc: "QC tested units", packaged: "Packaged units" };
+
+// Hover box for charts that colour each bar or slice on its own (<Cell>):
+// Recharts only knows a series colour, so the swatch came out black. This keeps
+// the default hover box (and its formatter / label) but gives each line the
+// colour of the bar it describes.
+function cellColoredTooltip(colorOf) {
+  return function CellColoredTooltip(props) {
+    const payload = (props.payload || []).map((entry) => ({ ...entry, color: colorOf(entry.payload || {}) || entry.color }));
+    return <DefaultTooltipContent {...props} payload={payload} />;
+  };
+}
 
 function getBarColorOpacity(index) {
   const intensity = [1, 0.76, 0.88];
@@ -1003,7 +1015,7 @@ export default function Dashboard() {
             <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3}>
               {pieData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
             </Pie>
-            <Tooltip contentStyle={chartTheme.tooltip} />
+            <Tooltip contentStyle={chartTheme.tooltip} content={cellColoredTooltip((row) => row.color)} />
           </PieChart>
         </ResponsiveContainer></div></div>
         <ul className="legend">
@@ -1114,7 +1126,13 @@ export default function Dashboard() {
                 <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                 <XAxis dataKey={activeView === "production" ? "user" : "location"} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} angle={qcUserData.length > 8 && activeView === "production" ? -35 : 0} textAnchor={qcUserData.length > 8 && activeView === "production" ? "end" : "middle"} height={qcUserData.length > 8 && activeView === "production" ? 70 : 30} />
                 <YAxis tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} />
-                <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
+                <Tooltip
+                  contentStyle={chartTheme.tooltip}
+                  cursor={{ fill: chartTheme.cursor }}
+                  content={cellColoredTooltip((row) => (activeView === "production"
+                    ? userColor(row.user)
+                    : getContrastBarColor(Math.max(0, locationSales.findIndex((item) => item.location === row.location)), chartTheme)))}
+                />
                 <Bar dataKey="units" radius={[7, 7, 0, 0]} onClick={activeView === "production" ? (entry) => openActivityUser(entry?.user ?? entry?.payload?.user) : undefined}>
                   {(activeView === "production" ? qcUserData : locationSales).map((entry, index) => (
                     <Cell
@@ -1138,7 +1156,7 @@ export default function Dashboard() {
         <div className="chart-grid sales-chart-grid">
           {activeView !== "sales" && <div ref={(node) => { chartRefs.current.salesClient = node; }} data-chart-key="salesClient" className={`panel chart-panel${expandedChart === "salesClient" ? " chart-panel-expanded" : ""}`}>
             <div className="chart-heading"><div><span>End User distribution</span><h3 className="panel-title">Units dispatched by end user client</h3></div><div className="chart-heading-actions"><DashboardFilterSelect label="Year" value={clientYear} onChange={setClientYear} options={[{ value: "all", label: "All years" }, ...locationYears.map((year) => ({ value: year, label: year }))]} /><DashboardFilterSelect label="Month" value={clientMonth} onChange={setClientMonth} options={[{ value: "all", label: "All months" }, ...["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((month, index) => ({ value: String(index + 1).padStart(2, "0"), label: month }))]} /><button type="button" className="chart-clear-filter" onClick={() => { setClientYear("all"); setClientMonth("all"); }}>Clear filters</button><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("salesClient")} aria-label={expandedChart === "salesClient" ? "Exit fullscreen" : "Expand to see full details"} title="Expand to see full details">{expandedChart === "salesClient" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>
-            {hasUsefulClientSalesData ? <><div className="chart-scroll"><div className="chart-scroll-inner" style={{ width: clientSales.length > 8 ? `${clientSales.length * 92}px` : "100%" }}><ResponsiveContainer width="100%" height={expandedChart === "salesClient" ? 650 : 280}><BarChart data={clientSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="client" label={{ value: "Client", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Units dispatched"]} cursor={{ fill: chartTheme.cursor }} /><Bar dataKey="units" radius={[7, 7, 0, 0]}>{clientSales.map((entry, index) => <Cell key={`${entry.client}-${index}`} fill={getContrastBarColor(index, chartTheme)} fillOpacity={getBarColorOpacity(index)} />)}</Bar></BarChart></ResponsiveContainer></div></div></> : <div className="dashboard-empty-chart dashboard-low-data"><span aria-hidden="true">▥</span><strong>{clientSales.length ? "Not enough activity yet this period" : "No dispatch activity yet"}</strong><p>{clientSales.length ? "Record at least four dispatched units to reveal a meaningful client comparison." : "Client dispatches will appear here once sales are recorded."}</p></div>}
+            {hasUsefulClientSalesData ? <><div className="chart-scroll"><div className="chart-scroll-inner" style={{ width: clientSales.length > 8 ? `${clientSales.length * 92}px` : "100%" }}><ResponsiveContainer width="100%" height={expandedChart === "salesClient" ? 650 : 280}><BarChart data={clientSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }}><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="client" label={{ value: "Client", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Units", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Units dispatched"]} cursor={{ fill: chartTheme.cursor }} content={cellColoredTooltip((row) => getContrastBarColor(Math.max(0, clientSales.findIndex((item) => item.client === row.client)), chartTheme))} /><Bar dataKey="units" radius={[7, 7, 0, 0]}>{clientSales.map((entry, index) => <Cell key={`${entry.client}-${index}`} fill={getContrastBarColor(index, chartTheme)} fillOpacity={getBarColorOpacity(index)} />)}</Bar></BarChart></ResponsiveContainer></div></div></> : <div className="dashboard-empty-chart dashboard-low-data"><span aria-hidden="true">▥</span><strong>{clientSales.length ? "Not enough activity yet this period" : "No dispatch activity yet"}</strong><p>{clientSales.length ? "Record at least four dispatched units to reveal a meaningful client comparison." : "Client dispatches will appear here once sales are recorded."}</p></div>}
           </div>}
           <div ref={(node) => { chartRefs.current.salesDispatchTrend = node; }} data-chart-key="salesDispatchTrend" className={`panel chart-panel${expandedChart === "salesDispatchTrend" ? " chart-panel-expanded" : ""}`}>
             <div className="chart-heading"><div><span>Dispatch trend</span><h3 className="panel-title">{drillMonths.salesDispatchTrend ? "Daily dispatched units" : "Monthly dispatched units"}</h3></div><div className="chart-heading-actions">{renderDrillMonthPicker("salesDispatchTrend")}<DashboardFilterSelect label="Year" value={dispatchYear} onChange={setDispatchYear} options={[{ value: "all", label: "All years" }, ...locationYears.map((year) => ({ value: year, label: year }))]} /><button type="button" className="chart-clear-filter" onClick={() => setDispatchYear("all")}>Clear filters</button><button type="button" className="chart-expand-btn" onClick={() => toggleChartFullscreen("salesDispatchTrend")} aria-label={expandedChart === "salesDispatchTrend" ? "Exit fullscreen" : "Expand to see full details"} title="Expand to see full details">{expandedChart === "salesDispatchTrend" ? <><Minimize2 size={16} /> <span>Exit Fullscreen</span></> : <Expand size={16} />}</button></div></div>
@@ -1171,7 +1189,7 @@ export default function Dashboard() {
               </ResponsiveContainer> : <div className="chart-empty-state" role="status"><span>No deliveries for {deliveryDrill.name} in this period.</span></div>}
               {!deliveryDrill.month && deliveryDrillRows.length > 0 && <p className="chart-drill-hint">Click a month to see its day-wise deliveries.</p>}
             </> : <>
-            {locationSales.length === 0 ? <div className="dashboard-empty-chart dashboard-low-data"><span aria-hidden="true">▥</span><strong>No end customer details yet</strong><p>{deliveryGroupBy === "location" ? "Add an End Customer Location on a dispatched sale to see it here." : "Add an End Customer Name on a dispatched sale to see it here."}</p></div> : <ResponsiveContainer width="100%" height={expandedChart === "locationSales" ? 650 : 280}><BarChart data={locationSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="group" label={{ value: deliveryGroupBy === "location" ? "End Customer Location" : "End Customer Name", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Quantity"]} cursor={{ fill: chartTheme.cursor }} /><Bar dataKey="units" maxBarSize={72} radius={[7, 7, 0, 0]} onClick={(entry) => setDeliveryDrill({ name: entry?.group ?? entry?.payload?.group ?? "", month: "" })}>{locationSales.map((entry, index) => <Cell key={`${entry.group}-${index}`} fill={deliveryColor(entry.group)} />)}</Bar></BarChart></ResponsiveContainer>}
+            {locationSales.length === 0 ? <div className="dashboard-empty-chart dashboard-low-data"><span aria-hidden="true">▥</span><strong>No end customer details yet</strong><p>{deliveryGroupBy === "location" ? "Add an End Customer Location on a dispatched sale to see it here." : "Add an End Customer Name on a dispatched sale to see it here."}</p></div> : <ResponsiveContainer width="100%" height={expandedChart === "locationSales" ? 650 : 280}><BarChart data={locationSales} margin={{ top: 8, right: 8, left: 6, bottom: 18 }} className="chart-drillable"><CartesianGrid stroke={chartTheme.grid} vertical={false} /><XAxis dataKey="group" label={{ value: deliveryGroupBy === "location" ? "End Customer Location" : "End Customer Name", position: "insideBottom", offset: -10, fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} interval={0} /><YAxis label={{ value: "Quantity", angle: -90, position: "insideLeft", fill: chartTheme.axis, fontSize: 11 }} tick={{ fontSize: 11, fill: chartTheme.axis }} allowDecimals={false} /><Tooltip contentStyle={chartTheme.tooltip} formatter={(value) => [value, "Quantity"]} cursor={{ fill: chartTheme.cursor }} content={cellColoredTooltip((row) => deliveryColor(row.group))} /><Bar dataKey="units" maxBarSize={72} radius={[7, 7, 0, 0]} onClick={(entry) => setDeliveryDrill({ name: entry?.group ?? entry?.payload?.group ?? "", month: "" })}>{locationSales.map((entry, index) => <Cell key={`${entry.group}-${index}`} fill={deliveryColor(entry.group)} />)}</Bar></BarChart></ResponsiveContainer>}
             {!deliveryDrill.name && locationSales.length > 0 && <p className="chart-drill-hint">Click a {deliveryGroupBy === "location" ? "location" : "customer"}&apos;s bar to see their month-wise deliveries.</p>}
             </>}
 </div>
