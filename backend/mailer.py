@@ -6,6 +6,7 @@ reports too. Kept separate from forgot_password.py, whose builders are
 specific to the OTP message.
 """
 
+import base64
 import os
 import smtplib
 import ssl
@@ -17,8 +18,11 @@ import requests
 from forgot_password import LOGO_CID, _logo_path, _mail_settings
 
 
-def send_html_email(recipients, subject, html_body, text_body, logo_cid=LOGO_CID):
+def send_html_email(recipients, subject, html_body, text_body, logo_cid=LOGO_CID, attachments=None):
     """Deliver one message to every address in `recipients`.
+
+    `attachments` is an optional list of (filename, bytes, mime type), e.g. the
+    weekly stock register workbook.
 
     The HTML may reference the Vector logo as `cid:<logo_cid>`; it is embedded
     for SMTP and swapped for EMAIL_LOGO_URL (or dropped) for Microsoft Graph,
@@ -29,16 +33,18 @@ def send_html_email(recipients, subject, html_body, text_body, logo_cid=LOGO_CID
         raise ValueError("No recipients to send to")
 
     settings = _mail_settings()
+    attachments = attachments or []
     if settings["provider"] == "microsoft_graph":
-        _send_graph(settings, recipients, subject, html_body, logo_cid)
+        _send_graph(settings, recipients, subject, html_body, logo_cid, attachments)
     else:
-        _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid)
+        _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid, attachments)
 
 
-def _send_graph(settings, recipients, subject, html_body, logo_cid):
-    logo_url = os.getenv("EMAIL_LOGO_URL", "").strip()
-    html_body = html_body.replace(f"cid:{logo_cid}", logo_url) if logo_url else html_body.replace(
-        f'src="cid:{logo_cid}"', 'src="" style="display:none"')
+def _send_graph(settings, recipients, subject, html_body, logo_cid, attachments=()):
+    # Graph is sent without inline parts here, so use the hosted logo.
+    app_url = os.getenv("APP_FRONTEND_URL", "https://production.vector-power.com").rstrip("/")
+    logo_url = os.getenv("EMAIL_LOGO_URL", "").strip() or f"{app_url}/images/vector-pdf.png"
+    html_body = html_body.replace(f"cid:{logo_cid}", logo_url)
 
     token_response = requests.post(
         f"https://login.microsoftonline.com/{quote(settings['tenant_id'], safe='')}/oauth2/v2.0/token",
@@ -64,6 +70,15 @@ def _send_graph(settings, recipients, subject, html_body, logo_cid):
                 "subject": subject,
                 "body": {"contentType": "HTML", "content": html_body},
                 "toRecipients": [{"emailAddress": {"address": address}} for address in recipients],
+                "attachments": [
+                    {
+                        "@odata.type": "#microsoft.graph.fileAttachment",
+                        "name": filename,
+                        "contentType": mime,
+                        "contentBytes": base64.b64encode(content).decode("ascii"),
+                    }
+                    for filename, content, mime in attachments
+                ],
             },
             "saveToSentItems": False,
         },
@@ -73,10 +88,9 @@ def _send_graph(settings, recipients, subject, html_body, logo_cid):
         raise RuntimeError(f"Microsoft Graph sendMail failed with status {response.status_code}")
 
 
-def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid):
+def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid, attachments=()):
     logo_path = _logo_path()
-    embeds_logo = f"cid:{logo_cid}" in html_body
-    if not logo_path and embeds_logo:
+    if not logo_path:
         html_body = html_body.replace(f'src="cid:{logo_cid}"', 'src="" style="display:none"')
 
     body = EmailMessage()
@@ -84,7 +98,7 @@ def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid):
     body.add_alternative(html_body, subtype="html")
 
     message = body
-    if logo_path and embeds_logo:
+    if logo_path:
         # multipart/related(alternative(text, html) + inline logo), assembled
         # explicitly for the same reason as the password-reset message.
         message = EmailMessage()
@@ -95,6 +109,16 @@ def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid):
                 handle.read(), maintype="image", subtype="png",
                 cid=f"<{logo_cid}>", filename="vector-logo.png", disposition="inline",
             )
+
+    if attachments:
+        # multipart/mixed(<the message above>, attachment, ...)
+        body_part = message
+        message = EmailMessage()
+        message.make_mixed()
+        message.attach(body_part)
+        for filename, content, mime in attachments:
+            maintype, _, subtype = (mime or "application/octet-stream").partition("/")
+            message.add_attachment(content, maintype=maintype, subtype=subtype or "octet-stream", filename=filename)
 
     message["Subject"] = subject
     message["From"] = settings["sender"]

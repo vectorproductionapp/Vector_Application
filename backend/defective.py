@@ -189,6 +189,9 @@ def list_defects():
         return jsonify({
             "success": True,
             "defects": defects,
+            # Every row matching the search / filters, for Export Excel - the
+            # export must not depend on the rows-per-page setting.
+            "allRows": matching_rows,
             "filterOptions": filter_options,
             "pagination": {
                 "page": page,

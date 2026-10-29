@@ -1,131 +1,3 @@
-// import React, { useEffect, useState } from "react";
-// import { Menu, RefreshCcw } from "lucide-react";
-// import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-// import { ThemeProvider } from "./context/ThemeContext";
-// import Sidebar from "./components/Sidebar";
-// import navConfig from "./data/navConfig";
-// import LoginPage from "./pages/LoginPage";
-// import SignupPage from "./pages/SignupPage";
-
-// import Dashboard from "./pages/Dashboard";
-// import BOQ from "./pages/Model";
-// import PODetails from "./pages/PODetails";
-// import Invoices from "./pages/Invoices";
-// import StockRegister from "./pages/StockRegister";
-// import DailyProduction from "./pages/DailyProduction";
-// import SaleRegister from "./pages/SaleRegister";
-// import DefectiveUnits from "./pages/DefectiveUnits";
-// import "./styles/modal-theme.css";
-
-
-// import "./styles/global.css";
-// import "./App.css";
-
-// function AppShell() {
-//   const location = useLocation();
-//   const navigate = useNavigate();
-//   const [navOpen, setNavOpen] = useState(true);
-
-//   const activeTab = navConfig.find((t) => t.path === location.pathname) || navConfig[0];
-
-//   useEffect(() => {
-//     const syncSidebarToViewport = () => {
-//       setNavOpen(window.innerWidth > 1024);
-//     };
-
-//     syncSidebarToViewport();
-//     window.addEventListener("resize", syncSidebarToViewport);
-
-//     return () => window.removeEventListener("resize", syncSidebarToViewport);
-//   }, []);
-
-//   const handleSelect = (id) => {
-//     const tab = navConfig.find((item) => item.id === id);
-//     if (tab) {
-//       navigate(tab.path);
-//     }
-//   };
-
-//   const handleLogout = () => {
-//     // Hook this up to your real auth flow (clear token, redirect, etc).
-//     // eslint-disable-next-line no-alert
-//     const confirmed = window.confirm("Log out of Vertex Industries dashboard?");
-//     if (confirmed) {
-//       navigate("/");
-//     }
-//   };
-
-//   return (
-//     <div className="app-shell">
-//       <Sidebar
-//         active={activeTab.id}
-//         onSelect={handleSelect}
-//         open={navOpen}
-//         onClose={() => setNavOpen(false)}
-//         onToggle={() => setNavOpen((prev) => !prev)}
-//         onLogout={handleLogout}
-//       />
-
-//       <div className="app-main">
-//         <header className="app-topbar">
-//           <div className="app-topbar-left">
-//             {!navOpen && (
-//               <button
-//                 className="app-menu-btn"
-//                 onClick={() => setNavOpen(true)}
-//                 aria-label="Open navigation"
-//                 aria-expanded={navOpen}
-//               >
-//                 <Menu size={18} />
-//               </button>
-//             )}
-//             <h1 className="app-page-title">{activeTab?.label}</h1>
-//           </div>
-
-//           <div className="app-topbar-right">
-//             <span className="app-refresh-note">
-//               <RefreshCcw size={13} /> Refreshed just now
-//             </span>
-//             <span className="app-live-pill">
-//               <span className="app-live-dot" /> Live
-//             </span>
-//           </div>
-//         </header>
-
-//         <div className="app-content">
-//           <Routes>
-//             <Route path="/dashboard" element={<Dashboard />} />
-//             <Route path="/models" element={<BOQ />} />
-//             <Route path="/po" element={<PODetails />} />
-//             <Route path="/invoices" element={<Invoices />} />
-//             <Route path="/stock" element={<StockRegister />} />
-//             <Route path="/production" element={<DailyProduction />} />
-//             <Route path="/sales" element={<SaleRegister />} />
-//             <Route path="/defects" element={<DefectiveUnits />} />
-//             <Route path="*" element={<Navigate to="/dashboard" replace />} />
-//           </Routes>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function App() {
-//   return (
-//     <ThemeProvider>
-//       <BrowserRouter>
-//         <Routes>
-//           <Route path="/" element={<LoginPage />} />
-//           <Route path="/login" element={<LoginPage />} />
-//           <Route path="/forgot-password" element={<h1>Forgot Password</h1>} />
-//           <Route path="/register" element={<SignupPage />} />
-//           <Route path="/*" element={<AppShell />} />
-//         </Routes>
-//       </BrowserRouter>
-//     </ThemeProvider>
-//   );
-// }
-
 import React, { useEffect, useState } from "react";
 import { ChevronDown, KeyRound, Menu, User, X } from "lucide-react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -422,6 +294,19 @@ function AppShell() {
 }
 
 export default function App() {
+useEffect(() => {
+  const preventSelectArrowChanges = (event) => {
+    if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      event.target instanceof HTMLSelectElement
+    ) {
+      event.preventDefault();
+    }
+  };
+  document.addEventListener("keydown", preventSelectArrowChanges, true);
+  return () => document.removeEventListener("keydown", preventSelectArrowChanges, true);
+}, []);
+
 return (
 <ThemeProvider>
 <AuthProvider>

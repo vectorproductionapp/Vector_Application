@@ -24,6 +24,7 @@ from dashboard import dashboard_bp
 from forgot_password import forgot_password_bp
 from documents import documents_bp
 from daily_report import daily_report_bp, start_scheduler
+from weekly_stock_report import weekly_stock_report_bp
 
 
 def create_app():
@@ -128,6 +129,7 @@ def create_app():
     app.register_blueprint(forgot_password_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(daily_report_bp)
+    app.register_blueprint(weekly_stock_report_bp)
     # Daily director report: checks once a minute, sends once per working day.
     start_scheduler()
 

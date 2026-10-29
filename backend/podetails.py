@@ -355,6 +355,45 @@ def list_po_details():
         return jsonify({"success": False, "message": f"Failed to fetch PO Details: {exc}"}), 500
 
 
+@podetails_bp.route("/po-details/invoice-options", methods=["GET"])
+@cached_read("po-details-invoice-options", ttl_seconds=120)
+def list_invoice_po_options():
+    """Return PO numbers and item codes for the selected model and phase."""
+    model_id = _text(request.args.get("modelId"))
+    phase_id = _text(request.args.get("phaseId"))
+    if not model_id or not phase_id:
+        return jsonify({
+            "success": False,
+            "message": "Both modelId and phaseId are required",
+        }), 400
+
+    try:
+        options = {}
+        for doc in po_details_collection.where("phaseId", "==", phase_id).stream():
+            row = doc.to_dict() or {}
+            if _text(row.get("modelId")) != model_id or _text(row.get("phaseId")) != phase_id:
+                continue
+
+            po = _text(row.get("po"))
+            code = _text(row.get("code"))
+            if not po or not code:
+                continue
+
+            key = (po.casefold(), code.casefold())
+            option = {"po": po, "code": code, "desc": _text(row.get("desc"))}
+            existing = options.get(key)
+            if existing is None or (not existing["desc"] and option["desc"]):
+                options[key] = option
+
+        po_details = sorted(
+            options.values(),
+            key=lambda row: (row["po"].casefold(), row["code"].casefold()),
+        )
+        return jsonify({"success": True, "poDetails": po_details}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"Failed to fetch invoice PO options: {exc}"}), 500
+
+
 @podetails_bp.route("/po-details/groups", methods=["GET"])
 @cached_read("po-details-groups", ttl_seconds=120)
 def list_po_groups():

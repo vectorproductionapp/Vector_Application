@@ -2655,8 +2655,10 @@ export default function PODetails() {
                     <span className="table-total-scope">(Total incl. GST)</span>
                   </span>
                 </span>
+                {/* Every matching line (allRows), not just this table page, so
+                    the file count does not change with the rows-per-page setting. */}
                 <ImageStrip
-                  rows={filteredRows}
+                  rows={exportRows.length ? exportRows : filteredRows}
                   endpoint={`${API_BASE_URL}/po-details/images`}
                   updateEndpoint={`${API_BASE_URL}/po-details`}
                   attachmentsEndpoint={`${API_BASE_URL}/po-details/attachments`}

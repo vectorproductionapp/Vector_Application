@@ -72,10 +72,19 @@ export default function ImageStrip({
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get(`${endpoint}?ids=${encodeURIComponent(inlineIds)}`);
-        if (cancelled) return;
-        if (!res.data.success) throw new Error(res.data.message || "Failed to load attachments");
-        setFiles(res.data.attachments || {});
+        // The endpoint reads at most 50 records per request, and the strip
+        // now covers every matching record, so ask in batches of 50.
+        const ids = inlineIds.split(",");
+        const merged = {};
+        for (let start = 0; start < ids.length; start += 50) {
+          const batch = ids.slice(start, start + 50).join(",");
+          // eslint-disable-next-line no-await-in-loop
+          const res = await api.get(`${endpoint}?ids=${encodeURIComponent(batch)}`);
+          if (cancelled) return;
+          if (!res.data.success) throw new Error(res.data.message || "Failed to load attachments");
+          Object.assign(merged, res.data.attachments || {});
+        }
+        setFiles(merged);
       } catch (err) {
         if (cancelled) return;
         setFiles({});
