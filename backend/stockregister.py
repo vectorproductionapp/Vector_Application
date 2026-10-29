@@ -348,6 +348,8 @@ def list_stock_register():
         response = jsonify({
             "success": True,
             "stockRows": filtered_rows[start:start + limit],
+            # Every matching row, for Export Excel (not just this page).
+            "allRows": filtered_rows,
             "filterOptions": filter_options,
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,
                            "totalPages": total_pages, "hasNextPage": page < total_pages,
@@ -478,6 +480,8 @@ def list_finished_goods_stock():
         response = jsonify({
             "success": True,
             "finishedGoods": filtered_units[start:start + limit],
+            # Every matching unit, for Export Excel (not just this page).
+            "allRows": filtered_units,
             "filterOptions": filter_options,
             "summary": {
                 # Every unsold QC-passed unit (packed or not), kept for older pages.

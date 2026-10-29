@@ -69,6 +69,9 @@ export default function StockRegister() {
   // One entry per filterable field; a missing key means "All" for that field.
   const [rowFilters, setRowFilters] = useState({});
   const [rows, setRows] = useState([]);
+  // Every matching row (the server's `allRows`) for Export Excel, so the export
+  // is not limited to the page on screen.
+  const [allStockRows, setAllStockRows] = useState([]);
   const [filterOptions, setFilterOptions] = useState({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -111,6 +114,7 @@ export default function StockRegister() {
   const stockRequestRef = useRef(0);
   const fgRequestRef = useRef(0);
   const [fgRows, setFgRows] = useState([]);
+  const [fgAllRows, setFgAllRows] = useState([]);
   const [fgFilterOptions, setFgFilterOptions] = useState({});
   const [fgPage, setFgPage] = useState(1);
   const [fgPageSize, setFgPageSize] = useState(PAGE_SIZE);
@@ -162,6 +166,7 @@ export default function StockRegister() {
       if (isStale()) return;
       if (!response.data.success) throw new Error(response.data.message || "Failed to load stock register");
       setRows(response.data.stockRows || []);
+      setAllStockRows(response.data.allRows || response.data.stockRows || []);
       setFilterOptions(response.data.filterOptions || {});
       const pagination = response.data.pagination || {};
       setTotalPages(pagination.totalPages || 1);
@@ -222,9 +227,30 @@ export default function StockRegister() {
   const [tableSort, setTableSort] = useState(null);
 
   const exportTableRows = useMemo(
-    () => sortRows(filteredRows, columns, tableSort),
-    [filteredRows, tableSort]
+    () => sortRows(allStockRows, columns, tableSort),
+    [allStockRows, tableSort]
   );
+
+  // Use the same server-generated workbook as the weekly email.  The browser
+  // exporter creates a basic spreadsheet; this endpoint includes the Vector
+  // title block, red divider, dark headers, row styling and record total.
+  const downloadStyledStockRegister = useCallback(async () => {
+    const response = await api.get(`${API_BASE_URL}/alerts/weekly-stock-report/excel`, {
+      responseType: "blob",
+      __vectorNoDedupe: true,
+    });
+    const match = /filename="?([^";]+)"?/i.exec(
+      response.headers?.["content-disposition"] || ""
+    );
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = match ? match[1] : "Vector-Stock-Register.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
 
   const handlePageSizeChange = (nextPageSize) => {
     setPageSize(nextPageSize);
@@ -252,6 +278,7 @@ export default function StockRegister() {
       if (isStale()) return;
       if (!response.data.success) throw new Error(response.data.message || "Failed to load finished goods");
       setFgRows(response.data.finishedGoods || []);
+      setFgAllRows(response.data.allRows || response.data.finishedGoods || []);
       setFgFilterOptions(response.data.filterOptions || {});
       setFgSummary(response.data.summary || { inStock: 0, sold: 0, total: 0 });
       const pagination = response.data.pagination || {};
@@ -326,6 +353,7 @@ export default function StockRegister() {
           filters={fgRowFilters}
           onFiltersChange={setFgRowFilters}
           rows={fgRows}
+          allRows={fgAllRows}
           filterOptions={fgFilterOptions}
           summary={fgSummary}
           loading={fgLoading}
@@ -348,7 +376,12 @@ export default function StockRegister() {
             <FilterModal rows={rows} options={filterOptions} fields={STOCK_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
             <ActiveFilterChips fields={STOCK_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
           </div>
-          <ExportPdfButton mode="table" title="Material Stock Register" columns={columns} rows={exportTableRows} />
+          <ExportPdfButton
+            title="Material Stock Register"
+            columns={columns}
+            rows={exportTableRows}
+            onExport={downloadStyledStockRegister}
+          />
         </div>
         {loading ? (
           <div className="stock-loading"><Loader2 size={28} className="spin" /><span>Loading stock register...</span></div>

@@ -6,13 +6,15 @@ import "./ExportPdfButton.css";
 /**
  * <ExportExcelButton title="BOQ" columns={cols} rows={rows} fileName="boq" />
  */
-export default function ExportExcelButton({ title, columns, rows, fileName }) {
+export default function ExportExcelButton({ title, columns, rows, fileName, onExport }) {
   const [busy, setBusy] = useState(false);
  
   const handleClick = async () => {
     setBusy(true);
     try {
-      exportTableToExcel({ title, columns, rows, fileName });
+      await (onExport
+        ? onExport()
+        : exportTableToExcel({ title, columns, rows, fileName }));
     } finally {
       setBusy(false);
     }
@@ -25,4 +27,3 @@ export default function ExportExcelButton({ title, columns, rows, fileName }) {
     </button>
   );
 }
- 

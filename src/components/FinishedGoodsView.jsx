@@ -69,6 +69,8 @@ export default function FinishedGoodsView({
   filters,
   onFiltersChange,
   rows,
+  // Every unit matching the search / filters, for Export Excel.
+  allRows,
   filterOptions,
   summary,
   loading,
@@ -170,8 +172,8 @@ export default function FinishedGoodsView({
   }, [closeDetails]);
 
   const exportTableRows = useMemo(
-    () => sortRows(rows, FG_COLUMNS, tableSort),
-    [rows, tableSort]
+    () => sortRows(allRows || rows, FG_COLUMNS, tableSort),
+    [allRows, rows, tableSort]
   );
 
   const searchActive = Boolean(query.trim());

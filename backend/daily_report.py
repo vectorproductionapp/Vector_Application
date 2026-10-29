@@ -57,6 +57,9 @@ STATE_REF = db.collection("system_settings").document("daily_report_alert_state"
 
 DEFAULT_SETTINGS = {
     "enabled": False,
+    "weekly_enabled": False,
+    "weekly_send_day": 0,
+    "weekly_send_time": "09:00",
     "recipients": [],
     "send_time": "09:00",
     # Monday = 0 ... Sunday = 6
@@ -77,8 +80,20 @@ MAX_HOLIDAYS = 400
 
 def load_settings():
     snapshot = SETTINGS_REF.get()
-    stored = snapshot.to_dict() if snapshot.exists else {}
-    settings = {**DEFAULT_SETTINGS, **(stored or {})}
+    stored = (snapshot.to_dict() or {}) if snapshot.exists else {}
+    settings = {**DEFAULT_SETTINGS, **stored}
+    if "weekly_send_day" not in stored:
+        try:
+            settings["weekly_send_day"] = min(
+                6, max(0, int(os.getenv("WEEKLY_STOCK_REPORT_DAY", "0")))
+            )
+        except ValueError:
+            logger.warning("invalid WEEKLY_STOCK_REPORT_DAY; using Monday")
+            settings["weekly_send_day"] = 0
+    if "weekly_send_time" not in stored:
+        settings["weekly_send_time"] = settings.get("send_time", DEFAULT_SETTINGS["send_time"])
+    if "weekly_enabled" not in stored:
+        settings["weekly_enabled"] = bool(settings.get("enabled"))
     settings["holidays"] = sorted(
         [h for h in settings.get("holidays") or [] if isinstance(h, dict) and h.get("date")],
         key=lambda item: item["date"],
@@ -111,6 +126,9 @@ def _clean_settings(payload):
     send_time = str(payload.get("send_time") or "").strip()
     if not TIME_PATTERN.match(send_time):
         raise ValueError("Send time must be in HH:MM (24-hour) format")
+    weekly_send_time = str(payload.get("weekly_send_time") or send_time).strip()
+    if not TIME_PATTERN.match(weekly_send_time):
+        raise ValueError("Weekly send time must be in HH:MM (24-hour) format")
 
     working_days = []
     for raw in payload.get("working_days") or []:
@@ -122,6 +140,13 @@ def _clean_settings(payload):
             working_days.append(day)
     if not working_days:
         raise ValueError("Select at least one working day")
+
+    try:
+        weekly_send_day = int(payload.get("weekly_send_day", DEFAULT_SETTINGS["weekly_send_day"]))
+    except (TypeError, ValueError):
+        raise ValueError("Weekly send day must be a number 0 (Mon) to 6 (Sun)")
+    if not 0 <= weekly_send_day <= 6:
+        raise ValueError("Weekly send day must be a number 0 (Mon) to 6 (Sun)")
 
     holidays = {}
     for raw in payload.get("holidays") or []:
@@ -142,11 +167,15 @@ def _clean_settings(payload):
         raise ValueError(f"Up to {MAX_HOLIDAYS} holidays are allowed")
 
     enabled = bool(payload.get("enabled"))
-    if enabled and not recipients:
-        raise ValueError("Add at least one recipient before turning the daily email on")
+    weekly_enabled = bool(payload.get("weekly_enabled", enabled))
+    if (enabled or weekly_enabled) and not recipients:
+        raise ValueError("Add at least one recipient before turning email reports on")
 
     return {
         "enabled": enabled,
+        "weekly_enabled": weekly_enabled,
+        "weekly_send_day": weekly_send_day,
+        "weekly_send_time": weekly_send_time,
         "recipients": recipients,
         "send_time": send_time,
         "working_days": sorted(working_days),
@@ -369,6 +398,18 @@ def _pretty(day):
     return day.strftime("%A, %d %b %Y")
 
 
+def email_logo_src():
+    """Where report emails load the Vector logo from.
+
+    Default: the logo embedded in the email itself (`cid:vector-logo`; mailer.py
+    attaches backend/assets/vector-logo.png). Outlook blocks images loaded from
+    the internet until the reader clicks "download pictures", so a web address
+    left the logo blank, while an embedded image shows straight away (as the
+    26 Oct report did). EMAIL_LOGO_URL overrides it with a hosted image.
+    """
+    return os.getenv("EMAIL_LOGO_URL", "").strip() or "cid:vector-logo"
+
+
 def _cards_html(rows, values, accent):
     """Two cards per row; table layout so every mail client renders it."""
     cells = []
@@ -399,12 +440,7 @@ def build_email(report, generated_at=None):
     subject = f"Vector daily production report - {report_day.strftime('%d %b %Y')}"
     app_url = os.getenv("APP_FRONTEND_URL", "https://production.vector-power.com").rstrip("/")
 
-    # Use a public HTTPS asset for reports.  Some Outlook clients do not
-    # resolve ``cid:`` images from messages sent through external SMTP
-    # providers, which leaves a broken-image placeholder in the report.
-    # The React build copies this file from public/images, and deployments
-    # with a CDN or different asset host can override it explicitly.
-    logo_url = os.getenv("EMAIL_LOGO_URL", "").strip() or f"{app_url}/images/vector-pdf.png"
+    logo_url = email_logo_src()
 
     body = f"""<!doctype html>
 <html><body style="margin:0;padding:0;background:#f5f4f1;">
@@ -430,9 +466,9 @@ def build_email(report, generated_at=None):
        style="display:inline-block;background:{BRAND_RED};color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 30px;border-radius:8px;">
       Open the dashboard
     </a>
-  </td></tr>
-  <tr><td align="center" style="padding:16px 32px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#6b6b6b;text-align:center;">
-    You receive this email because you are listed as a recipient<br>on the Vector Alerts page.
+    <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b;">
+      This is a system-generated report. Powered by Vector Production.
+    </p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -442,7 +478,12 @@ def build_email(report, generated_at=None):
     lines += [f"  {label}: {report['day'].get(key, 0)}" for key, label, _ in DAY_ROWS]
     lines += ["", "Overall overview"]
     lines += [f"  {label}: {report['overall'].get(key, 0)}" for key, label, _ in OVERALL_ROWS]
-    lines += ["", f"Dashboard: {app_url}/dashboard"]
+    lines += [
+        "",
+        f"Dashboard: {app_url}/dashboard",
+        "",
+        "This is a system-generated report. Powered by Vector Production.",
+    ]
     return subject, body, "\n".join(lines)
 
 
@@ -555,6 +596,12 @@ def start_scheduler():
                 send_if_due()
             except Exception:
                 logger.exception("daily report scheduler check failed")
+            try:
+                # The weekly stock register email shares this check.
+                from weekly_stock_report import send_weekly_if_due
+                send_weekly_if_due()
+            except Exception:
+                logger.exception("weekly stock report check failed")
             time.sleep(60)
 
     threading.Thread(target=loop, name="daily-report-scheduler", daemon=True).start()

@@ -307,6 +307,9 @@ export default function DefectiveUnits() {
     (patch) => setRowFilters((prev) => ({ ...prev, ...patch }))
   );
   const [rows, setRows] = useState([]);
+  // Every row matching the search / filters (the server's `allRows`), for
+  // Export Excel - so the export does not depend on the rows-per-page setting.
+  const [exportRows, setExportRows] = useState([]);
   const [filterOptions, setFilterOptions] = useState({});
 
   // ---------- Defect list loading/error state ----------
@@ -456,6 +459,7 @@ export default function DefectiveUnits() {
         throw new Error(res.data.message || "Failed to load Defective Units");
       }
       setRows(res.data.defects || []);
+      setExportRows(res.data.allRows || res.data.defects || []);
       setFilterOptions(res.data.filterOptions || {});
       const pagination = res.data.pagination;
       if (pagination) {
@@ -943,7 +947,7 @@ export default function DefectiveUnits() {
               mode="table"
               title="Defective Units"
               columns={columns}
-              rows={filteredRows}
+              rows={exportRows}
             />
           )}
         </div>

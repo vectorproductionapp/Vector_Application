@@ -762,6 +762,8 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
   const handlePhaseSelect = (value) => {
     const phase = boqPhases.find((item) => `${item.modelId}::${item.phaseId}` === value);
     setFormError("");
+    setInvoicePoLines([]);
+    setInvoicePoLinesError("");
     setFormValues((prev) => ({ ...prev, modelId: phase?.modelId || "", phaseId: phase?.phaseId || "",
       phase: phase?.phaseName || "" }));
     // Existing items point at PO lines of the previous phase.
@@ -1492,8 +1494,10 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
             />
           </div>
           <div className="table-controls-right">
+            {/* Every matching line (allRows), not just this table page, so the
+                file count does not change with the rows-per-page setting. */}
             <ImageStrip
-              rows={filteredRows}
+              rows={exportRows.length ? exportRows : filteredRows}
               endpoint={`${API_BASE_URL}/invoices/images`}
               updateEndpoint={`${API_BASE_URL}/invoices`}
               attachmentsEndpoint={`${API_BASE_URL}/invoices/attachments`}
