@@ -53,9 +53,17 @@ if __name__ == "__main__":
 
 from firebase_admin import firestore
 from flask import Blueprint, Flask, Response, jsonify, request
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    OPENPYXL_AVAILABLE = True
+except ModuleNotFoundError:
+    Workbook = None
+    Alignment = Border = Font = PatternFill = Side = None
+    get_column_letter = None
+    OPENPYXL_AVAILABLE = False
 
 import daily_report
 from auth_utils import roles_required
@@ -223,6 +231,12 @@ def _table_sheet(workbook, name, title, subtitle, columns, rows, status_key=None
 
 
 def build_workbook(materials, generated_at):
+    if not OPENPYXL_AVAILABLE:
+        raise RuntimeError(
+            "openpyxl is required to generate the weekly stock register Excel export. "
+            "Install backend requirements or add openpyxl to the environment."
+        )
+
     stamp = generated_at.strftime("%A, %d %b %Y")
     workbook = Workbook()
     workbook.remove(workbook.active)
