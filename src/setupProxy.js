@@ -6,9 +6,8 @@
 // serving `/`, its static assets and HTML navigations (the SPA routes).
 //
 // `/ws` is deliberately NOT proxied: webpack-dev-server serves the hot-reload
-// socket at `/ws` by default, and forwarding it would break live reload.  The
-// live-update socket connects straight to the backend (REACT_APP_API_BASE_URL
-// -> ws://localhost:5000/ws) instead.
+// socket at `/ws` by default, and forwarding it would break live reload.
+// (The backend has no /ws any more; live updates come from Firestore.)
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const BACKEND = process.env.REACT_APP_DEV_API || "http://127.0.0.1:5000";

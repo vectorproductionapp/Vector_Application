@@ -9,7 +9,10 @@ Covered here:
     no Authorization header and without touching Firebase.
   * CORS must allow the exact production origins and this project's own preview
     channel, and must never answer with ``*``.
-  * ``/ws`` must still be registered, because the release docs promise it.
+  * the old ``/ws`` WebSocket is gone; ``POST /realtime/token`` replaces it.
+  * preflights are cacheable (``Access-Control-Max-Age``) and every route is
+    also served under ``/api`` for the same-origin Firebase Hosting rewrite.
+  * ``/dashboard`` is cached in memory per user and dropped on any write.
 """
 
 import os
@@ -24,7 +27,7 @@ if _BACKEND_DIR not in sys.path:
 os.environ["JWT_SECRET"] = "unit-test-secret-not-a-real-production-secret"
 os.environ["CORS_ORIGINS"] = ",".join(
     [
-        "https://production.vector-power.com",
+        " https://production.vector-power.com/ ",
         "https://vector-production-506505.web.app",
         "https://vector-production-506505.firebaseapp.com",
         "http://localhost:3000",
@@ -125,20 +128,136 @@ class CorsTests(unittest.TestCase):
         self.assertEqual(os.getenv("FIREBASE_SITE_ID"), "vector-production-506505")
 
 
+def _auth_header(role="admin", sub="u1"):
+    import jwt
+    from auth_utils import JWT_SECRET
+
+    token = jwt.encode({"sub": sub, "email": f"{sub}@example.com", "role": role, "name": "T"},
+                       JWT_SECRET, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
+
+
 class RealtimeRouteTests(unittest.TestCase):
-    """The release must keep serving /ws from the same port as the API."""
+    """Live updates come from Firestore now; no request stays open."""
 
     @classmethod
     def setUpClass(cls):
         cls.app = _build_app()
+        cls.client = cls.app.test_client()
 
-    def test_ws_route_is_registered(self):
+    def test_ws_route_is_gone(self):
         paths = {rule.rule for rule in self.app.url_map.iter_rules()}
-        self.assertIn("/ws", paths)
-
-    def test_health_still_registered_alongside_ws(self):
-        paths = {rule.rule for rule in self.app.url_map.iter_rules()}
+        self.assertNotIn("/ws", paths)
         self.assertIn("/health", paths)
+
+    def test_realtime_token_needs_a_session(self):
+        self.assertEqual(self.client.post("/realtime/token").status_code, 401)
+
+    def test_realtime_token_is_issued_for_a_signed_in_user(self):
+        response = self.client.post("/realtime/token", headers=_auth_header(sub="abc"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["token"], "fake-token-for-vector-abc")
+
+
+class CostControlTests(unittest.TestCase):
+    """Preflight caching, the /api prefix and the dashboard memory cache."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = _build_app()
+        cls.client = cls.app.test_client()
+
+    def test_preflight_is_cacheable(self):
+        response = self.client.options(
+            "/dashboard",
+            headers={
+                "Origin": "https://production.vector-power.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        self.assertEqual(response.headers.get("Access-Control-Max-Age"), "7200")
+
+    def test_api_prefix_serves_the_same_routes(self):
+        self.assertEqual(self.client.get("/api/health").status_code, 200)
+        self.assertEqual(self.client.get("/api/health").get_json(), {"status": "ok"})
+
+    def test_json_is_compressed(self):
+        from flask import jsonify
+
+        def big():
+            return jsonify({"rows": ["x" * 50] * 200})
+
+        # A fresh app: routes cannot be added after the first request.
+        test_app = _build_app()
+        test_app.add_url_rule("/big-test", "big_test", big)
+        response = test_app.test_client().get("/big-test", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(response.headers.get("Content-Encoding"), "gzip")
+
+    def test_api_responses_are_never_cached(self):
+        for path in ("/health", "/api/health", "/realtime/token", "/does-not-exist"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.headers.get("Cache-Control"), "private, no-store")
+
+    def test_cors_origins_are_trimmed(self):
+        response = self.client.get("/health", headers={"Origin": "https://production.vector-power.com"})
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://production.vector-power.com")
+
+    def test_dashboard_copy_is_dropped_after_a_save_on_another_instance(self):
+        import time as time_module
+        import read_cache
+        from flask import Flask, jsonify
+        from auth_utils import token_required
+        from unittest.mock import patch
+
+        calls = []
+        app = Flask("cache-stale-test")
+
+        @app.get("/d")
+        @token_required
+        @read_cache.cached_read("dashboard")
+        def dashboard():
+            calls.append(1)
+            return jsonify({"n": len(calls)}), 200
+
+        client = app.test_client()
+        read_cache.invalidate_read_cache()
+        with patch.object(read_cache, "_last_change_time", return_value=None):
+            client.get("/d", headers=_auth_header(sub="a"))
+            client.get("/d", headers=_auth_header(sub="a"))
+        self.assertEqual(len(calls), 1)
+        # Another instance saved something just now: the copy is stale.
+        with patch.object(read_cache, "_last_change_time", return_value=time_module.time()):
+            client.get("/d", headers=_auth_header(sub="a"))
+        self.assertEqual(len(calls), 2)
+
+    def test_dashboard_cache_is_per_user_and_cleared_on_write(self):
+        import read_cache
+        from flask import Flask, jsonify
+        from auth_utils import token_required
+
+        calls = []
+        app = Flask("cache-test")
+
+        @app.get("/d")
+        @token_required
+        @read_cache.cached_read("dashboard")
+        def dashboard():
+            calls.append(1)
+            return jsonify({"n": len(calls)}), 200
+
+        client = app.test_client()
+        read_cache.invalidate_read_cache()
+        first = client.get("/d", headers=_auth_header(sub="a")).get_json()
+        again = client.get("/d", headers=_auth_header(sub="a"))
+        self.assertEqual(again.get_json(), first)
+        self.assertEqual(again.headers.get("X-Vector-Cache"), "memory")
+        # Another user gets their own computation.
+        self.assertNotEqual(client.get("/d", headers=_auth_header(sub="b")).get_json(), first)
+        read_cache.invalidate_read_cache()
+        self.assertNotEqual(client.get("/d", headers=_auth_header(sub="a")).get_json(), first)
+        self.assertEqual(len(calls), 3)
 
 
 if __name__ == "__main__":

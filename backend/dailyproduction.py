@@ -7,6 +7,8 @@ from firebase_config import db, users_collection
 from auth_utils import roles_required
 from read_cache import cached_read, invalidate_read_cache
 from date_range import in_date_range, read_date_range
+from google.cloud.firestore_v1.base_query import FieldFilter
+from list_params import parse_optional_page, requested_fields, select_fields, wants_all_rows
  
 dailyproduction_bp = Blueprint("dailyproduction", __name__)
 assembly_collection = db.collection("assembly_units")
@@ -209,9 +211,9 @@ def _sale_statuses_for_serials(serials):
     docs_by_id = {}
     for start in range(0, len(serials), 30):
         batch = serials[start:start + 30]
-        for doc in sales_collection.where("serial", "in", batch).stream():
+        for doc in sales_collection.where(filter=FieldFilter("serial", "in", batch)).stream():
             docs_by_id[doc.id] = doc
-        for doc in sales_collection.where("serialNumbers", "array_contains_any", batch).stream():
+        for doc in sales_collection.where(filter=FieldFilter("serialNumbers", "array_contains_any", batch)).stream():
             docs_by_id[doc.id] = doc
     return _sale_statuses_by_serial(docs_by_id.values())
 
@@ -358,6 +360,12 @@ def _matches(row, search, filters):
             if cell not in ("under inspection", "pending"):
                 return False
             continue
+        # "Passed / Failed" is the dashboard First-pass yield card: every unit
+        # with a QC decision, passed and failed together.
+        if field == "qc" and value.lower() == "passed / failed":
+            if cell not in ("passed", "failed"):
+                return False
+            continue
         if cell != value.lower():
             return False
     return True
@@ -412,7 +420,7 @@ def _existing_serials(serials, exclude_id=None):
     })
     taken = set()
     for start in range(0, len(variants), 30):
-        for doc in assembly_collection.where("serial", "in", variants[start:start + 30]).stream():
+        for doc in assembly_collection.where(filter=FieldFilter("serial", "in", variants[start:start + 30])).stream():
             if doc.id == exclude_id:
                 continue
             value = str((doc.to_dict() or {}).get("serial", "")).strip()
@@ -619,12 +627,21 @@ def list_assembly_units():
         page = min(page, total_pages)
         page_entries = matched[(page - 1) * limit:page * limit]
 
-        return jsonify({
+        fields = requested_fields(request.args)
+        body = {
             "success": True,
-            "assemblyUnits": [_serialize(entry["doc"], sale_status_by_serial) for entry in page_entries],
+            "assemblyUnits": select_fields(
+                [_serialize(entry["doc"], sale_status_by_serial) for entry in page_entries], fields),
+        }
+        if wants_all_rows(request.args):
             # Every unit the active search/filters/date range matched, so the
             # table's export covers the whole result set and not just the page.
-            "allRows": [_serialize(entry["doc"], sale_status_by_serial) for entry in matched],
+            # The table itself asks for `includeAllRows=0` and fetches this
+            # only when the user exports.
+            body["allRows"] = select_fields(
+                [_serialize(entry["doc"], sale_status_by_serial) for entry in matched], fields)
+        return jsonify({
+            **body,
             "filterOptions": filter_options,
             "summary": summary,
             "pagination": {"page": page, "limit": limit, "totalCount": total_count,

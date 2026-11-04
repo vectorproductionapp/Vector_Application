@@ -113,13 +113,19 @@ export async function downloadCardDocuments({ category, match, folderName }) {
   return { count: items.length, saved: ready.length, missing, folder: `${wanted}.zip` };
 }
 
-/** Does a document belong to this phase (by name, as the card groups it)? */
-export function inPhaseNamed(item, phaseName) {
+/** Does a document belong to this phase (by id when available, otherwise name)? */
+export function inPhaseNamed(item, phaseName, modelId, phaseId) {
+  const modelIds = item.scope?.modelIds || [];
+  const phaseIds = item.scope?.phaseIds || [];
+  if (modelId && modelIds.length && !modelIds.includes(modelId)) return false;
+  if (phaseId && phaseIds.length && !phaseIds.includes(phaseId)) return false;
   return (item.scope?.phaseNames || []).includes(norm(phaseName));
 }
 
 /** Is this the document of one invoice / PO number (optionally in a phase)? */
-export function isReference(item, reference, phaseName) {
+export function isReference(item, reference, phaseName, modelId, phaseId) {
   if (norm(item.reference) !== norm(reference)) return false;
-  return !phaseName || !(item.scope?.phaseNames || []).length || inPhaseNamed(item, phaseName);
+  return !phaseName ||
+    (!(item.scope?.phaseNames || []).length && !(item.scope?.phaseIds || []).length && !(item.scope?.modelIds || []).length) ||
+    inPhaseNamed(item, phaseName, modelId, phaseId);
 }

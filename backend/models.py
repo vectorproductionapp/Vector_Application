@@ -1,12 +1,13 @@
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify
 from firebase_config import db
 from firebase_admin import firestore
 from auth_utils import roles_required
 from read_cache import cached_read, invalidate_read_cache
 from record_files import drop_orphaned_headers, release_line_files
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 models_bp = Blueprint("models", __name__)
 models_collection = db.collection("models")
@@ -80,7 +81,7 @@ def _save_suppliers(rows):
         chunk = normalized_names[start:start + 10]
         existing.update(
             (doc.to_dict() or {}).get("normalizedName", "")
-            for doc in suppliers_collection.where("normalizedName", "in", chunk).stream()
+            for doc in suppliers_collection.where(filter=FieldFilter("normalizedName", "in", chunk)).stream()
         )
 
     batch = db.batch()
@@ -118,7 +119,7 @@ def create_model():
 
     try:
         normalized_name = name.lower()
-        existing = models_collection.where("normalizedName", "==", normalized_name).limit(1).get()
+        existing = models_collection.where(filter=FieldFilter("normalizedName", "==", normalized_name)).limit(1).get()
         if len(existing) > 0:
             return jsonify({"success": False, "message": "Model already exists"}), 409
 
@@ -182,14 +183,14 @@ def rename_supplier():
 
     try:
         target = None
-        for doc in suppliers_collection.where("normalizedName", "==", old_name.lower()).stream():
+        for doc in suppliers_collection.where(filter=FieldFilter("normalizedName", "==", old_name.lower())).stream():
             target = doc
             break
         if target is None:
             return jsonify({"success": False, "message": "Supplier not found"}), 404
 
         clash = [
-            doc for doc in suppliers_collection.where("normalizedName", "==", new_name.lower()).stream()
+            doc for doc in suppliers_collection.where(filter=FieldFilter("normalizedName", "==", new_name.lower())).stream()
         ]
         if clash and clash[0].id != target.id:
             return jsonify({"success": False, "message": "A supplier with that name already exists"}), 409
@@ -215,7 +216,7 @@ def delete_supplier():
         return jsonify({"success": False, "message": "Supplier name is required"}), 400
 
     try:
-        for doc in suppliers_collection.where("normalizedName", "==", name.lower()).stream():
+        for doc in suppliers_collection.where(filter=FieldFilter("normalizedName", "==", name.lower())).stream():
             doc.reference.delete()
         invalidate_read_cache()
         return jsonify({"success": True, "message": f"Supplier {name} removed"}), 200
@@ -263,6 +264,14 @@ def _phase_doc(model_id):
     return models_collection.document(model_id).collection("phases")
 
 
+def _phase_date_value(value):
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
 def _serialize_phase(doc):
     d = doc.to_dict()
     return {
@@ -271,7 +280,53 @@ def _serialize_phase(doc):
         "itemCodeId": d.get("itemCodeId", ""),
         "itemCode": d.get("itemCode", ""),
         "date": d.get("date").isoformat() if d.get("date") else None,
+        "target": d.get("target"),
+        "startDate": _phase_date_value(d.get("startDate")),
+        "endDate": _phase_date_value(d.get("endDate")),
     }
+
+
+def _phase_schedule_fields(data):
+    """Target, start date and end date - each optional.
+
+    Only keys present in `data` are returned, so an edit that leaves a field
+    out keeps it.  A blank value ("" or null) clears that field.  When both
+    dates are set, the end date may not be before the start date.
+    """
+    fields = {}
+    if "target" in data:
+        target = data.get("target")
+        if target is None or (isinstance(target, str) and not target.strip()):
+            fields["target"] = None
+        else:
+            try:
+                if isinstance(target, bool):
+                    raise ValueError
+                target_number = float(target)
+                if not target_number.is_integer() or target_number < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return None, "Production target must be a positive whole number"
+            fields["target"] = int(target_number)
+
+    labels = {"startDate": "Start date", "endDate": "End date"}
+    for key, label in labels.items():
+        if key not in data:
+            continue
+        value = data.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            fields[key] = None
+            continue
+        try:
+            fields[key] = date.fromisoformat(str(value).strip()[:10]).isoformat()
+        except (TypeError, ValueError):
+            return None, f"{label} must be a valid date"
+
+    start_date = fields.get("startDate")
+    end_date = fields.get("endDate")
+    if start_date and end_date and end_date < start_date:
+        return None, "End date must be on or after the start date"
+    return fields, None
 
 
 def _row_gst_rate(row):
@@ -359,6 +414,10 @@ def create_phase(model_id):
     if not name:
         return jsonify({"success": False, "message": "Phase name is required"}), 400
 
+    schedule_fields, schedule_error = _phase_schedule_fields(data)
+    if schedule_error:
+        return jsonify({"success": False, "message": schedule_error}), 400
+
     item_code = _normalise_item_code(data.get("itemCode")) if data.get("itemCode") else ""
     if data.get("itemCode") and not item_code:
         return jsonify({"success": False, "message": "Item Code cannot be blank or contain a slash"}), 400
@@ -366,7 +425,7 @@ def create_phase(model_id):
     try:
         phases_collection = _phase_doc(model_id)
         normalized_name = name.lower()
-        existing = phases_collection.where("normalizedName", "==", normalized_name).limit(1).get()
+        existing = phases_collection.where(filter=FieldFilter("normalizedName", "==", normalized_name)).limit(1).get()
         if len(existing) > 0:
             return jsonify({"success": False, "message": "Phase already exists"}), 409
 
@@ -386,6 +445,7 @@ def create_phase(model_id):
             "itemCodeId": item_code_id,
             "itemCode": item_code,
             "date": created_at,
+            **schedule_fields,
         })
         return jsonify({
             "success": True,
@@ -395,6 +455,9 @@ def create_phase(model_id):
             "itemCodeId": item_code_id,
             "itemCode": item_code,
             "date": created_at.isoformat(),
+            "target": schedule_fields.get("target"),
+            "startDate": schedule_fields.get("startDate"),
+            "endDate": schedule_fields.get("endDate"),
         }), 201
     except Exception as exc:
         return jsonify({"success": False, "message": f"Failed to create phase: {exc}"}), 500
@@ -610,7 +673,7 @@ def delete_item_code(item_code):
         # 1. Update all phases referencing this item code to remove the reference
         phases_updated = 0
         for model_doc in models_collection.stream():
-            phases_snap = model_doc.reference.collection("phases").where("itemCodeId", "==", item_code_doc.id).stream()
+            phases_snap = model_doc.reference.collection("phases").where(filter=FieldFilter("itemCodeId", "==", item_code_doc.id)).stream()
             for phase_doc in phases_snap:
                 model_doc.reference.collection("phases").document(phase_doc.id).update({
                     "itemCodeId": "",
@@ -698,6 +761,7 @@ def _assign_global_item_codes(rows, existing_rows=None, create_missing=False):
     return prepared_rows
 
 
+@models_bp.route("/item-codes/orphans", methods=["GET"])
 @models_bp.route("/item-codes/purge-orphans", methods=["POST"])
 @roles_required("admin", "coadmin")
 def purge_orphan_item_codes():
@@ -710,9 +774,13 @@ def purge_orphan_item_codes():
     Defaults to a dry run so the caller sees the list before anything is deleted
     - these include invoice lines, which are financial records. Pass
     `{"confirm": true}` to actually remove them.
+
+    `GET /item-codes/orphans` is the same check, read-only: the BOQ page uses
+    it on every load, and as a GET it is cached by the browser and does not
+    count as a write (no cache drop, no live-update notice).
     """
     try:
-        confirm = bool((request.get_json(silent=True) or {}).get("confirm"))
+        confirm = request.method == "POST" and bool((request.get_json(silent=True) or {}).get("confirm"))
 
         boq_codes = set()
         for boq_doc in db.collection_group("boqs").stream():
@@ -793,7 +861,7 @@ def _purge_item_code_everywhere(codes):
         # 3. Delete invoice lines carrying the code. One document per line, so
         #    the documents themselves are what go.
         removed_invoice_lines = []
-        for invoice_doc in db.collection("invoices").where("code", "==", code).stream():
+        for invoice_doc in db.collection("invoices").where(filter=FieldFilter("code", "==", code)).stream():
             data = invoice_doc.to_dict() or {}
             # Files go with the header once the invoice has no lines left.
             invoice_doc.reference.delete()
@@ -1020,6 +1088,11 @@ def update_phase(model_id, phase_id):
             return jsonify({"success": False, "message": "Phase name cannot be empty"}), 400
         update_fields["name"] = name
         update_fields["normalizedName"] = name.lower()
+
+    schedule_fields, schedule_error = _phase_schedule_fields(data)
+    if schedule_error:
+        return jsonify({"success": False, "message": schedule_error}), 400
+    update_fields.update(schedule_fields)
 
     if not update_fields:
         return jsonify({"success": False, "message": "Nothing to update"}), 400

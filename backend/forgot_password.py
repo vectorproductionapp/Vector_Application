@@ -15,6 +15,7 @@ import requests
 from flask import Blueprint, current_app, jsonify, request
  
 from firebase_config import db, users_collection
+from google.cloud.firestore_v1.base_query import FieldFilter
  
  
 forgot_password_bp = Blueprint("forgot_password", __name__)
@@ -427,7 +428,7 @@ def request_password_reset():
     if not _valid_email(email):
         return jsonify({"success": False, "message": "Enter a valid email address"}), 400
  
-    matches = users_collection.where("email", "==", email).limit(1).get()
+    matches = users_collection.where(filter=FieldFilter("email", "==", email)).limit(1).get()
     if not matches:
         return jsonify({
             "success": False,

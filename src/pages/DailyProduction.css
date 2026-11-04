@@ -69,6 +69,9 @@
 
 /* BULK SELECT / DELETE */
 .production-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; margin-left: auto; gap: 10px; flex-wrap: wrap; }
+.production-model-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.production-model-filter .searchable-select { width: min(220px, 30vw); }
+.production-model-filter .searchable-select-trigger { min-height: 38px; }
 
 .production-delete-btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
@@ -102,7 +105,10 @@
 .production-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 640px) {
-  .production-toolbar-actions { display: none; }
+  .production-toolbar-actions { display: contents; }
+  .production-toolbar-actions > button { display: none; }
+  .production-model-filter { flex: 1 1 100%; }
+  .production-model-filter .searchable-select { flex: 1; width: auto; }
   .production-kebab-wrapper { display: block; }
 }
 

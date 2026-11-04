@@ -223,6 +223,7 @@
 
 .app-content { flex: 1; padding: 16px 24px 40px; }
 
+
 .app-footer {
   flex-shrink: 0;
   padding: 10px 20px;
@@ -256,15 +257,15 @@
   background: linear-gradient(90deg, var(--accent), transparent);
 }
 
-/* The two clusters (controls on the left, total + export on the right) wrap as
-   whole units. Letting each cluster wrap internally produced a ragged three-row
-   toolbar on pages whose Total badge is wide, e.g. Sale Register. */
+/* Filter/date controls and totals/actions. When they do not fit on one line
+   they wrap onto the next line (no horizontal scrollbar). */
 .table-controls-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 12px;
   flex-wrap: wrap;
+  overflow-x: visible;
   min-height: 48px;
   margin: 0 0 12px;
   padding: 0 0 12px;
@@ -276,8 +277,15 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   flex-wrap: wrap;
+}
+
+.table-controls-primary .date-range-filter {
+  flex-wrap: wrap;
+  margin-left: 0;
+  white-space: nowrap;
 }
 
 .table-controls-primary .search-bar {
@@ -291,8 +299,9 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
   margin-left: auto;
 }
 
@@ -304,8 +313,11 @@
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--bg-table-stripe);
-  white-space: nowrap;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
+
+.table-total-value { white-space: nowrap; }
 
 .table-total-label {
   font-size: 11px;
@@ -377,12 +389,12 @@
   .app-user-role { max-width: 100px; }
   .app-user-tools svg:not(:last-child) { display: none; }
   .app-refresh-note { display: none; }
-  .table-controls-row,
-  .table-controls-primary { align-items: stretch; flex-direction: column; width: 100%; }
+  .table-controls-row { align-items: center; flex-direction: row; width: 100%; }
+  .table-controls-primary { align-items: center; flex-direction: row; width: auto; }
   .table-controls-primary .search-bar { min-width: 0; width: 100%; }
-  .table-controls-row > .export-pdf-btn { width: 100%; }
-  .table-controls-right { width: 100%; justify-content: space-between; }
-  .table-controls-right .export-pdf-btn { flex: 1 1 auto; }
+  .table-controls-row > .export-pdf-btn { width: auto; }
+  .table-controls-right { width: auto; justify-content: flex-start; }
+  .table-controls-right .export-pdf-btn { flex: 0 0 auto; }
   .app-footer { padding: 8px 12px; font-size: 10px; }
 }
 
@@ -525,6 +537,27 @@
   .date-range-filter .date-range-apply:only-of-type,
   .date-range-filter .date-range-apply:last-of-type { grid-column: 1 / -1; }
   .date-range-filter .date-range-error { grid-column: 1 / -1; }
+
+  .table-controls-primary .date-range-filter {
+    display: inline-flex;
+    width: auto;
+    margin-top: 0;
+    padding: 4px 8px;
+  }
+  .table-controls-primary .date-range-filter .app-date-picker {
+    min-width: 148px;
+    width: auto;
+  }
+  .table-controls-primary .date-range-filter .date-range-column {
+    width: auto;
+    max-width: 160px;
+    height: 32px;
+  }
+  .table-controls-primary .date-range-filter .date-range-apply,
+  .table-controls-primary .date-range-filter .date-range-clear {
+    width: auto;
+    height: auto;
+  }
 }
 
 /* ---------------------------------------------------------------------------

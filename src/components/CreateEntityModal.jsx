@@ -71,21 +71,46 @@ export default function CreateEntityModal({
   onClose,
   onCreate,
   showTiming = true,
+  showPhaseSchedule = false,
+  initialValues = {},
+  submitLabel = "Create",
+  nameLabel = "Name",
+  isEditing = false,
   itemCodeOptions,
   itemCode,
   onItemCodeChange,
   onCreateNewItemCode,
   itemCodesLoading = false,
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialValues.name || "");
   const [timing, setTiming] = useState("");
+  const [target, setTarget] = useState(initialValues.target ?? "");
+  const [startDate, setStartDate] = useState(initialValues.startDate || "");
+  const [endDate, setEndDate] = useState(initialValues.endDate || "");
 
   const canSubmit = name.trim().length > 0 && (!itemCodeOptions || Boolean(itemCode));
+  const targetText = String(target ?? "").trim();
+  const targetInvalid = targetText !== "" && !(Number.isInteger(Number(targetText)) && Number(targetText) >= 1);
+  const scheduleInvalid = targetInvalid || Boolean(startDate && endDate && endDate < startDate);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!canSubmit) return;
-    const result = await onCreate({ name: name.trim(), timing, itemCode });
+    // Target and dates are optional; only an end date before the start date
+    // is refused.  Blank fields are sent as null so an edit can clear them.
+    if (showPhaseSchedule && scheduleInvalid) return;
+    const result = await onCreate({
+      name: name.trim(),
+      timing,
+      itemCode,
+      ...(showPhaseSchedule
+        ? {
+          target: String(target).trim() === "" ? null : Number(target),
+          startDate: startDate || null,
+          endDate: endDate || null,
+        }
+        : {}),
+    });
     if (result !== false) {
       onClose();
     }
@@ -93,12 +118,15 @@ export default function CreateEntityModal({
 
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal-card${showPhaseSchedule ? " modal-card--phase-schedule" : ""}${isEditing ? " modal-card--phase-edit" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="modal-title">{title}</h3>
 
         <form onSubmit={handleSubmit}>
           <label className="modal-label">
-            Name
+            {nameLabel}
             <input
               type="text"
               className="modal-input"
@@ -108,6 +136,49 @@ export default function CreateEntityModal({
               autoFocus
             />
           </label>
+
+          {showPhaseSchedule && (
+            <>
+              <label className="modal-label">
+                Production target (units) <span className="modal-optional">optional</span>
+                <input
+                  type="number"
+                  className="modal-input"
+                  min="1"
+                  step="1"
+                  value={target ?? ""}
+                  onChange={(e) => setTarget(e.target.value)}
+                />
+              </label>
+              <div className="modal-date-grid">
+                <label className="modal-label">
+                  Start date <span className="modal-optional">optional</span>
+                  <input
+                    type="date"
+                    className="modal-input"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </label>
+                <label className="modal-label">
+                  End date <span className="modal-optional">optional</span>
+                  <input
+                    type="date"
+                    className="modal-input"
+                    min={startDate || undefined}
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </label>
+              </div>
+              {startDate && endDate && endDate < startDate && (
+                <p className="modal-validation-message" role="alert">End date must be on or after the start date.</p>
+              )}
+              {targetInvalid && (
+                <p className="modal-validation-message" role="alert">Target must be a whole number of 1 or more.</p>
+              )}
+            </>
+          )}
 
           {showTiming && (
             <label className="modal-label">
@@ -144,8 +215,12 @@ export default function CreateEntityModal({
             <button type="button" className="modal-btn-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="modal-btn-submit" disabled={!canSubmit}>
-              Create
+            <button
+              type="submit"
+              className="modal-btn-submit"
+              disabled={!canSubmit || (showPhaseSchedule && scheduleInvalid)}
+            >
+              {submitLabel}
             </button>
           </div>
         </form>

@@ -21,6 +21,15 @@
   box-shadow: var(--shadow-lg);
 }
 
+.modal-card--phase-edit {
+  box-sizing: border-box;
+  width: min(100%, 380px) !important;
+  max-width: 380px !important;
+}
+
+.modal-date-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.modal-validation-message { margin: -4px 0 12px; color: var(--danger, #dc2626); font-size: 11px; }
+
 .modal-title {
   font-family: "Inter", sans-serif;
   font-size: 16px;
@@ -113,3 +122,10 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+@media (max-width: 480px) {
+  .modal-date-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
+/* "optional" tag next to a field label (phase target and dates). */
+.modal-optional { margin-left: 4px; color: var(--text-secondary); font-size: 0.85em; font-weight: 500; text-transform: none; letter-spacing: 0; }

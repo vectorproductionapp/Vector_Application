@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { signOutRealtime } from "../components/realtimeFirebase";
 
 const AuthContext = createContext(null);
 
@@ -29,6 +30,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    // End the Firebase session so Firestore live-update listeners stop.
+    signOutRealtime();
     setAuth(null);
   };
 

@@ -8,6 +8,7 @@ from auth_utils import roles_required
 from read_cache import cached_read, invalidate_read_cache
 from date_range import in_date_range, read_date_range
 from attachments import delete_files, entries_of, normalise_entries, upload_files
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 podetails_bp = Blueprint("po_details", __name__)
 po_details_collection = db.collection("po_details")
@@ -191,7 +192,7 @@ def _row_matches_filters(row, search, filters):
 _SEARCH_KEYS = ("phase", "po", "supplier", "date", "code", "desc", "qty", "rate", "gstRate", "gst", "value", "status")
 
 # Fields the PageFilter dropdown offers (mirrors PO_FILTER_FIELDS).
-_FILTER_FIELDS = frozenset({"phase", "po", "supplier", "code", "status"})
+_FILTER_FIELDS = frozenset({"modelId", "phaseId", "phase", "po", "supplier", "code", "status"})
 
 # Date columns the toolbar range may target. Keeps a hand-written `dateField`
 # from probing fields the endpoint does not expose.
@@ -369,7 +370,7 @@ def list_invoice_po_options():
 
     try:
         options = {}
-        for doc in po_details_collection.where("phaseId", "==", phase_id).stream():
+        for doc in po_details_collection.where(filter=FieldFilter("phaseId", "==", phase_id)).stream():
             row = doc.to_dict() or {}
             if _text(row.get("modelId")) != model_id or _text(row.get("phaseId")) != phase_id:
                 continue
@@ -399,17 +400,23 @@ def list_invoice_po_options():
 def list_po_groups():
     """Card view for the PO Details page.
 
-    Mirrors the Models grid but with this project's own order: one card per
-    phase, with that phase's PO numbers as a second-level card grid
-    (Phases -> POs -> line items).  Grouping keys are lower-cased so `po-12`
-    and `PO-12` land on the same card, and both levels read A-Z.
+    Groups are keyed by model and phase so the UI can drill down through
+    Models -> Phases -> POs -> line items without merging identically named
+    phases from different models.
     """
     try:
+        model_names = {
+            doc.id: _text((doc.to_dict() or {}).get("name"))
+            for doc in db.collection("models").stream()
+        }
         groups = {}
         for doc in po_details_collection.order_by("createdAt", direction="DESCENDING").stream():
             row = _serialize(doc)
             po_name = _text(row.get("po")) or "Untitled PO"
             phase_name = _text(row.get("phase")) or "Unassigned"
+            model_id = _text(row.get("modelId"))
+            phase_id = _text(row.get("phaseId"))
+            model_name = model_names.get(model_id, "") or "Unassigned Model"
             date = _text(row.get("date"))
             try:
                 value = float(row.get("value") or 0)
@@ -423,7 +430,11 @@ def list_po_groups():
             # same line minus its GST portion.
             base = value - gst
 
-            group = groups.setdefault(phase_name.lower(), {
+            group_key = (model_id, phase_id or phase_name.lower())
+            group = groups.setdefault(group_key, {
+                "modelId": model_id,
+                "modelName": model_name,
+                "phaseId": phase_id,
                 "phase": phase_name,
                 "date": date,
                 "rowCount": 0,
@@ -439,6 +450,7 @@ def list_po_groups():
 
             po = group["pos"].setdefault(po_name.lower(), {
                 "po": po_name,
+                "editRowId": row.get("id"),
                 "date": date,
                 "supplier": _text(row.get("supplier")),
                 "rowCount": 0,
@@ -476,8 +488,7 @@ def list_po_groups():
             )
             payload.append(group)
 
-        # Phase first, then PO number - both alphabetically.
-        payload.sort(key=lambda item: item["phase"].lower())
+        payload.sort(key=lambda item: (item["modelName"].lower(), item["phase"].lower()))
 
         return jsonify({"success": True, "phases": payload}), 200
     except Exception as exc:

@@ -51,7 +51,7 @@ export default function ImageStrip({
 
   // Adding a file to a row that already had files keeps `inlineIds` identical,
   // so the effect below also keys off the actual file list: when a save (or a
-  // WebSocket notice) brings new metadata, the inline lookup refetches and the
+  // live-update notice) brings new metadata, the inline lookup refetches and the
   // badge count updates without a page refresh.
   const inlineSig = withFiles
     .filter((row) => (row.attachments || []).some((file) => !file?.url))

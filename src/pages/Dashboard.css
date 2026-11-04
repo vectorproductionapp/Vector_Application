@@ -11,6 +11,8 @@
 
 /* Dashboard shell, controls and semantic summary tier */
 .dashboard-page-header {
+  position: relative;
+  z-index: 20;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -37,9 +39,18 @@
 .dashboard-page-heading { font-size: 22px; }
 .dashboard-section-title { font-size: 18px; }
 
+.dashboard-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .dashboard-tabs {
   display: inline-flex;
   align-self: flex-start;
+  flex: 0 0 auto;
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
@@ -89,6 +100,8 @@
 }
 
 .dashboard-summary {
+  position: relative;
+  z-index: 1;
   padding: 22px;
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
@@ -103,8 +116,116 @@
 }
 
 .dashboard-summary-grid--production {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Six cards in one row, original style (icon, 22px value). */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
 }
+/* Icon on top, text below, everything aligned to the top so all six
+   headings and values line up and each heading gets the full card width. */
+.dashboard-summary-grid--production .summary-card { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 12px; padding: 16px; }
+.dashboard-summary-grid--production .summary-card-icon { width: 36px; height: 36px; }
+.dashboard-summary-grid--production .summary-card small { letter-spacing: 0.08em; line-height: 1.35; }
+.dashboard-summary-grid--production .summary-card > div { min-width: 0; }
+
+/* Phase plan (one model selected): a card per phase. */
+.phase-plan-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.phase-plan-card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 16px 18px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-surface);
+}
+.phase-plan-card.phase-status-running, .phase-plan-card.phase-status-behind { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft-border); }
+.phase-plan-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.phase-plan-card-head strong { font-size: 16px; color: var(--text-primary); }
+.phase-plan-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.phase-plan-pill.phase-status-completed { color: #34b887; background: color-mix(in srgb, #34b887 14%, transparent); }
+.phase-plan-pill.phase-status-running { color: var(--accent); background: var(--accent-soft-bg); }
+.phase-plan-pill.phase-status-behind { color: #f59e63; background: color-mix(in srgb, #f59e63 15%, transparent); }
+.phase-plan-pill.phase-status-upcoming { color: var(--text-secondary); background: var(--bg-surface-alt); }
+.phase-plan-dates { font-size: 12px; color: var(--text-secondary); }
+.phase-plan-figures { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--text-secondary); font-size: 13px; }
+.phase-plan-figures b { font-size: 26px; color: var(--text-primary); margin-right: 2px; }
+.phase-plan-figures strong { font-size: 13px; color: var(--text-primary); }
+.phase-plan-progress { height: 8px; border-radius: 999px; background: var(--bg-surface-alt); overflow: hidden; }
+.phase-plan-progress span { display: block; height: 100%; border-radius: inherit; background: var(--text-secondary); }
+.phase-plan-card.phase-status-completed .phase-plan-progress span { background: #34b887; }
+.phase-plan-card.phase-status-running .phase-plan-progress span { background: var(--accent); }
+.phase-plan-card.phase-status-behind .phase-plan-progress span { background: #f59e63; }
+.phase-plan-note { font-size: 12px; color: var(--text-secondary); }
+@media (max-width: 1100px) { .phase-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .phase-plan-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.dashboard-summary-more { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; margin-top: 14px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; transition: border-color 150ms ease, color 150ms ease, background 150ms ease; }
+.dashboard-summary-more:hover { border-color: var(--accent-soft-border); background: var(--accent-soft-bg); color: var(--accent); }
+
+.phase-roadmap { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: var(--r-xl); background: var(--bg-surface); box-shadow: var(--dash-card-shadow); }
+.phase-roadmap-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.phase-roadmap-heading h2 { margin: 3px 0 0; color: var(--text-primary); font-size: 15px; }
+.phase-roadmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 10px; }
+.phase-roadmap-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.phase-roadmap-legend span::before { width: 8px; height: 8px; border-radius: 2px; background: currentColor; content: ""; }
+.phase-roadmap-scroll { overflow-x: auto; }
+.phase-roadmap-axis, .phase-roadmap-row { display: grid; grid-template-columns: minmax(110px, 150px) minmax(560px, 1fr); gap: 12px; min-width: max-content; }
+.phase-roadmap-axis { padding: 4px 0 8px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 10px; }
+.phase-roadmap-axis > strong { text-transform: uppercase; letter-spacing: .06em; }
+.phase-roadmap-months { display: grid; text-align: center; }
+.phase-roadmap-months span { white-space: nowrap; }
+.phase-roadmap-row { min-height: 66px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.phase-roadmap-model { overflow: hidden; color: var(--text-primary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.phase-roadmap-track { position: relative; min-height: 52px; }
+.phase-roadmap-block { position: absolute; display: flex; min-width: 0; height: 64px; box-sizing: border-box; flex-direction: column; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 8px; border: 1px solid; border-radius: var(--r-md); background: var(--bg-page); }
+.phase-roadmap-block-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-primary); font-size: 10px; white-space: nowrap; }
+.phase-roadmap-block-heading strong, .phase-roadmap-block-heading span { overflow: hidden; text-overflow: ellipsis; }
+.phase-roadmap-block-dates { overflow: hidden; color: var(--text-secondary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.phase-roadmap-progress { height: 4px; overflow: hidden; border-radius: 99px; background: var(--bg-surface-alt); }
+.phase-roadmap-progress > span { display: block; height: 100%; border-radius: inherit; background: currentColor; }
+.phase-roadmap-block.phase-status-completed { color: #34b887; border-color: #34b887; background: color-mix(in srgb, #34b887 10%, var(--bg-surface)); }
+.phase-roadmap-block.phase-status-running { color: var(--accent); border-color: var(--accent); background: var(--accent-soft-bg); }
+.phase-roadmap-block.phase-status-behind { color: #f59e63; border-color: #f59e63; background: color-mix(in srgb, #f59e63 11%, var(--bg-surface)); }
+.phase-roadmap-block.phase-status-upcoming { color: var(--text-secondary); border-color: var(--border); background: var(--bg-surface-alt); }
+.phase-roadmap-legend .phase-status-completed { color: #34b887; }
+.phase-roadmap-legend .phase-status-running { color: var(--accent); }
+.phase-roadmap-legend .phase-status-behind { color: #f59e63; }
+.phase-roadmap-legend .phase-status-upcoming { color: var(--text-secondary); }
+.phase-roadmap-note { margin: 10px 0 0; color: var(--text-secondary); font-size: 10px; }
+
+.dashboard-completed-models {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--dash-card-shadow);
+}
+.dashboard-completed-models-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 18px; }
+.dashboard-sales-model-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 12px; }
+.dashboard-sales-model-row { display: grid; grid-template-columns: minmax(130px, 1.4fr) repeat(2, minmax(90px, 1fr)); align-items: center; gap: 12px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-page); }
+.dashboard-sales-model-row.has-sales-value { grid-template-columns: minmax(130px, 1.4fr) repeat(3, minmax(100px, 1fr)); }
+.dashboard-sales-model-row > span:not(.dashboard-completed-model-name) { display: grid; min-width: 0; gap: 3px; white-space: nowrap; }
+.dashboard-sales-model-row small { color: var(--text-secondary); font-size: 10px; }
+.dashboard-sales-model-row strong { overflow: hidden; color: var(--text-primary); font-size: 12px; text-overflow: ellipsis; }
+.dashboard-completed-model-row { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-md); background: var(--bg-page); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: background 150ms ease, border-color 150ms ease, transform 150ms ease; }
+.dashboard-completed-model-row:hover, .dashboard-completed-model-row.selected { border-color: var(--accent-soft-border); background: var(--accent-soft-bg); }
+.dashboard-completed-model-row:hover { transform: translateY(-1px); }
+.dashboard-completed-model-name { display: flex; min-width: 0; align-items: center; gap: 8px; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-completed-model-name > span { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 3px; }
+.dashboard-completed-model-track { height: 9px; overflow: hidden; border-radius: 999px; background: var(--bg-surface-alt); }
+.dashboard-completed-model-track > span { display: block; height: 100%; border-radius: inherit; transition: width 180ms ease; }
+.dashboard-completed-model-row > strong { min-width: 68px; color: var(--text-primary); font-size: 12px; text-align: right; white-space: nowrap; }
+.dashboard-completed-models-empty { margin: 0; padding: 20px; border: 1px dashed var(--border); border-radius: var(--r-md); color: var(--text-secondary); font-size: 12px; text-align: center; }
+.dashboard-model-detail { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); animation: dashboard-premium-enter 180ms ease-out both; }
+.dashboard-model-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.dashboard-model-detail-heading > div { min-width: 0; }
+.dashboard-model-detail-heading > div > span { color: var(--text-secondary); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.dashboard-model-detail-heading h3 { overflow: hidden; margin: 2px 0 0; color: var(--text-primary); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-model-detail-heading button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface); color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.dashboard-model-detail-heading button:hover { border-color: var(--accent-soft-border); background: var(--accent-soft-bg); color: var(--accent); }
+.dashboard-model-detail-status { margin: 0; padding: 14px; color: var(--text-secondary); font-size: 12px; }
+.dashboard-model-detail-status--error { color: var(--danger, #b42318); }
+.dashboard-model-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.dashboard-model-detail-card { display: flex; min-width: 0; min-height: 82px; flex-direction: column; justify-content: center; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-page); }
+.dashboard-model-detail-card > span { color: var(--text-secondary); font-size: 10px; font-weight: 700; letter-spacing: .03em; line-height: 1.35; overflow-wrap: anywhere; text-transform: uppercase; }
+.dashboard-model-detail-card strong { color: var(--text-primary); font-size: 16px; line-height: 1.2; }
+.dashboard-model-detail-card small { color: var(--text-muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
 
 .summary-card {
   display: flex;
@@ -468,7 +589,7 @@
 .dashboard-filter-select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 92px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-primary); background: var(--bg-surface); font: inherit; font-size: 11px; cursor: pointer; }
 .dashboard-filter-select-trigger:hover, .dashboard-filter-select-trigger:focus { border-color: var(--accent); outline: none; }
 .dashboard-filter-chevron { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--text-secondary); }
-.dashboard-filter-select-menu { position: absolute; top: calc(100% + 7px); right: 0; min-width: 140px; max-height: 240px; overflow-y: auto; padding: 7px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); box-shadow: var(--shadow-md); }
+.dashboard-filter-select-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 30; min-width: 140px; max-height: 240px; overflow-y: auto; padding: 7px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); box-shadow: var(--shadow-md); }
 .dashboard-filter-select-menu button { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r-sm); color: var(--text-primary); background: transparent; text-align: left; font: inherit; font-size: 11px; cursor: pointer; }
 .dashboard-filter-select-menu button + button { margin-top: 3px; }
 .dashboard-filter-select-menu button:hover { color: var(--accent); background: var(--accent-soft-bg); }
@@ -536,6 +657,24 @@
 .chart-panel-expanded .recharts-responsive-container { min-height: 420px; }
 .chart-panel:fullscreen { width: 100vw; height: 100vh; box-sizing: border-box; overflow: auto; border: 0; border-radius: 0; padding: 34px clamp(24px, 5vw, 80px); background: var(--bg-surface); }
 .chart-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
+.chart-scroll--user-activity { height: 280px; max-height: 280px; overflow-x: hidden; overflow-y: auto; padding: 8px 6px 8px 0; scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+.horizontal-activity-bars { display: flex; min-height: 100%; flex-direction: column; }
+.horizontal-activity-row { display: grid; flex: 0 0 50px; grid-template-columns: minmax(100px, 170px) minmax(0, 1fr) 42px; align-items: center; gap: 14px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r-sm); color: var(--text-primary); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.horizontal-activity-row:hover { background: var(--bg-surface-alt); }
+.horizontal-activity-name { overflow: hidden; color: var(--text-primary); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.horizontal-activity-track { display: flex; width: 100%; height: 34px; overflow: hidden; border-radius: 6px; background: var(--bg-surface-alt); }
+.horizontal-activity-fill { display: block; height: 100%; flex: 0 0 auto; border-radius: 4px; transition: width 180ms ease; }
+.horizontal-activity-fill--interactive { min-width: 2px; padding: 0; border: 0; cursor: pointer; }
+.horizontal-activity-fill--interactive:hover { filter: brightness(1.12); }
+.horizontal-activity-fill--interactive:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.horizontal-activity-value { color: var(--text-primary); font-size: 13px; font-weight: 700; text-align: right; }
+.dashboard-model-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 8px 0 0; padding: 0; list-style: none; }
+.dashboard-model-legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-secondary); font-size: 11px; }
+.chart-scroll--defective-parts { height: auto; max-height: 280px; min-height: 0; padding-top: 0; }
+.chart-scroll--defective-parts .horizontal-activity-bars { min-height: 0; }
+.chart-scroll-inner-defective-pie { height: 280px; }
+.chart-panel-expanded .chart-scroll-inner-defective-pie { height: 610px; }
+.chart-panel-expanded .chart-scroll--user-activity { height: min(610px, calc(100vh - 360px)); max-height: min(610px, calc(100vh - 360px)); }
 .chart-scroll-inner { height: 280px; min-width: 100%; }
 .chart-scroll-inner-pie { width: 100%; }
 .production-user-summary { margin-top: 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
@@ -583,12 +722,29 @@
 @media (max-width: 720px) {
   .dashboard-page-header,
   .production-analytics-header { align-items: flex-start; flex-direction: column; }
+  .dashboard-header-controls { width: 100%; align-items: stretch; flex-direction: column; }
   .dashboard-summary { padding: 16px; }
+  .dashboard-summary-more { width: 100%; }
+  .dashboard-completed-models { padding: 16px; }
+  .phase-roadmap-heading { flex-direction: column; }
+  .phase-roadmap-legend { justify-content: flex-start; }
+  .dashboard-completed-models-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .dashboard-sales-model-list { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-sales-model-row,
+  .dashboard-sales-model-row.has-sales-value { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .dashboard-sales-model-row > .dashboard-completed-model-name { grid-column: 1 / -1; }
+  .dashboard-completed-model-row { grid-template-columns: minmax(76px, 34%) minmax(0, 1fr) auto; gap: 8px; padding: 8px 6px; }
+  .dashboard-model-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .dashboard-model-detail-card { min-height: 74px; padding: 8px; }
+  .dashboard-model-detail-card strong { font-size: 14px; }
   .dashboard-summary-grid,
   .dashboard-summary-grid--production { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-completed-models-list { grid-template-columns: minmax(0, 1fr); }
   .summary-card--hero { grid-column: auto; }
   .dashboard-tabs { width: 100%; }
   .dashboard-tab { flex: 1; }
+  .dashboard-header-controls > .dashboard-filter-select { width: 100%; }
+  .dashboard-header-controls > .dashboard-filter-select .dashboard-filter-select-trigger { flex: 1; }
   .dashboard-filter-bar { width: 100%; }
   .dashboard-skeleton-hero,
   .dashboard-skeleton-charts { grid-template-columns: minmax(0, 1fr); }
@@ -605,6 +761,9 @@
   .panel-title { font-size: 16px; }
   .chart-heading span { font-size: 9px; }
   .chart-scroll-inner { height: 250px; }
+  .chart-scroll--user-activity { height: 250px; max-height: 250px; }
+  .horizontal-activity-row { grid-template-columns: minmax(74px, 34%) minmax(0, 1fr) 34px; gap: 8px; padding-right: 4px; padding-left: 4px; }
+  .horizontal-activity-name, .horizontal-activity-value { font-size: 11px; }
   .recharts-cartesian-axis-tick-value { font-size: 10px; }
   .legend li { font-size: 11px; }
 }
@@ -757,3 +916,180 @@
   white-space: nowrap; min-width: 0; gap: 8px; padding: 6px 10px;
 }
 .production-monthly-chart-grid .chart-heading > div:first-child { min-width: 0; }
+
+
+/* ---- Responsive summary cards ------------------------------------------
+   Columns follow the width the cards actually get (sidebar open or closed,
+   laptop, tablet, phone) rather than the screen width. Card style and font
+   sizes stay the original ones. */
+.dashboard-summary,
+.phase-plan { container-type: inline-size; }
+
+.dashboard-summary .dashboard-summary-grid--production,
+.dashboard-summary .snapshot-in-hero { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@container (max-width: 1180px) {
+  .dashboard-summary .dashboard-summary-grid--production { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 1080px) {
+  .dashboard-summary .snapshot-in-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 760px) {
+  .dashboard-summary .dashboard-summary-grid--production { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .dashboard-summary .snapshot-in-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+}
+@container (max-width: 440px) {
+  .dashboard-summary .dashboard-summary-grid--production { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 340px) {
+  .dashboard-summary .snapshot-in-hero { grid-template-columns: minmax(0, 1fr); }
+}
+
+.phase-plan .phase-plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@container (max-width: 820px) { .phase-plan .phase-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 520px) { .phase-plan .phase-plan-grid { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ---- Model view header (one model selected) ---------------------------- */
+.dashboard-model-heading { min-width: 0; }
+.dashboard-page-heading--model { font-size: 22px; overflow-wrap: anywhere; }
+.dashboard-model-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
+.dashboard-model-phase-pill { padding: 2px 8px; border-radius: 999px; color: #34b887; background: color-mix(in srgb, #34b887 15%, transparent); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.dashboard-model-back { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.dashboard-model-back:hover, .dashboard-model-back:focus-visible { text-decoration: underline; outline: none; }
+
+
+/* ---- Phase roadmap look (all models) ----------------------------------- */
+.phase-roadmap { padding: 22px 20px 18px; }
+.phase-roadmap-heading { align-items: flex-end; }
+.phase-roadmap-heading h2 { font-size: 18px; }
+.phase-roadmap-legend { gap: 16px; font-size: 13px; }
+.phase-roadmap-legend span::before { width: 10px; height: 10px; border-radius: 3px; }
+.phase-roadmap-legend .phase-status-completed::before { background: #34b887; }
+.phase-roadmap-legend .phase-status-running::before { background: var(--accent); }
+.phase-roadmap-legend .phase-status-behind::before { background: #f59e63; }
+.phase-roadmap-legend .phase-status-upcoming::before { background: var(--text-secondary); }
+.phase-roadmap-legend .phase-status-completed,
+.phase-roadmap-legend .phase-status-running,
+.phase-roadmap-legend .phase-status-behind,
+.phase-roadmap-legend .phase-status-upcoming { color: var(--text-secondary); }
+.phase-roadmap-axis { align-items: center; padding: 0 0 10px; font-size: 13px; }
+.phase-roadmap-axis > strong { font-size: 13px; letter-spacing: .08em; }
+.phase-roadmap-months { gap: 0 4px; }
+.phase-roadmap-months span { padding: 7px 4px; border-radius: var(--r-sm); }
+.phase-roadmap-months span.is-current { color: var(--accent); font-weight: 700; background: var(--accent-soft-bg); }
+.phase-roadmap-row { min-height: 64px; padding: 6px 0; }
+.phase-roadmap-model { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; }
+.phase-roadmap-model i { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 3px; }
+.phase-roadmap-block { height: 48px; justify-content: center; gap: 6px; padding: 6px 10px; }
+.phase-roadmap-block-heading { font-size: 12px; }
+.phase-roadmap-block-heading span { color: var(--text-primary); font-weight: 600; }
+.phase-roadmap-block.phase-status-upcoming { background: var(--bg-surface); }
+.phase-roadmap-progress { height: 4px; }
+.phase-roadmap-note { margin-top: 14px; font-size: 13px; }
+
+
+/* ---- Roadmap scrolling: many models / many years ---------------------- */
+/* The box scrolls both ways. Month header stays on top, model names stay on
+   the left, so any phase can be read against its model and month. */
+.phase-roadmap-scroll { position: relative; max-height: 440px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.phase-roadmap-axis, .phase-roadmap-row { gap: 0; }
+.phase-roadmap-axis { position: sticky; top: 0; z-index: 3; padding-top: 4px; background: var(--bg-surface); }
+.phase-roadmap-axis > strong,
+.phase-roadmap-model { position: sticky; left: 0; z-index: 2; align-self: stretch; display: flex; align-items: center; padding-right: 12px; background: var(--bg-surface); }
+.phase-roadmap-axis > strong { z-index: 4; }
+.phase-roadmap-model { min-width: 0; overflow: hidden; white-space: nowrap; }
+@media (max-width: 720px) {
+  .phase-roadmap-scroll { max-height: 380px; }
+}
+
+
+/* ---- Overall view: First-pass yield by model + Floor alerts ------------ */
+.floor-insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
+.floor-insight-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.yield-list { display: flex; flex-direction: column; gap: 16px; }
+.yield-row { display: flex; flex-direction: column; gap: 7px; }
+.yield-row-head { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.yield-row-head strong { color: var(--text-primary); }
+.yield-row-head b { color: #34b887; }
+.yield-row.is-low .yield-row-head b { color: #e5534b; }
+.yield-track { position: relative; height: 10px; border-radius: 99px; background: var(--bg-surface-alt); }
+.yield-track > span { display: block; height: 100%; border-radius: inherit; background: #34b887; }
+.yield-row.is-low .yield-track > span { background: #e5534b; }
+.yield-track > i { position: absolute; top: -3px; bottom: -3px; left: 90%; width: 2px; border-radius: 1px; background: var(--text-primary); }
+.yield-row small, .floor-insight-note, .floor-insight-empty { color: var(--text-secondary); font-size: 12px; }
+.floor-insight-note, .floor-insight-empty { margin: 0; }
+.floor-alert-list { display: flex; flex-direction: column; gap: 8px; }
+.floor-alert { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-page); }
+.floor-alert > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.floor-alert strong { color: var(--text-primary); font-size: 13px; }
+.floor-alert small { color: var(--text-secondary); font-size: 12px; }
+.floor-alert-tag { flex: 0 0 auto; padding: 4px 9px; border-radius: 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.floor-alert-tag.tone-phase { color: #f59e63; background: color-mix(in srgb, #f59e63 15%, transparent); }
+.floor-alert-tag.tone-accent { color: var(--accent); background: var(--accent-soft-bg); }
+.floor-alert-tag.tone-danger { color: #e5534b; background: color-mix(in srgb, #e5534b 14%, transparent); }
+.floor-alert-tag.tone-info { color: #5b8def; background: color-mix(in srgb, #5b8def 15%, transparent); }
+@media (max-width: 900px) { .floor-insight-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Fixed-height panels; the list scrolls inside when there are many models
+   or alerts, so the two panels always stay the same size. */
+.floor-insight-panel { height: 440px; overflow: hidden; }
+.floor-insight-panel > .chart-heading { flex: 0 0 auto; }
+.yield-list, .floor-alert-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; scrollbar-width: thin; }
+.floor-insight-note { flex: 0 0 auto; }
+@media (max-width: 720px) { .floor-insight-panel { height: 400px; } }
+
+/* ---- "See more" model lists: no overlap, fixed height, scroll inside ---- */
+/* Vector Sales: one model per line (name, total, delivered, sales value). */
+.dashboard-sales-model-list {
+  grid-template-columns: minmax(0, 1fr);
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+.dashboard-sales-model-row,
+.dashboard-sales-model-row.has-sales-value { grid-template-columns: minmax(0, 1.4fr) repeat(var(--sales-cols, 2), minmax(0, 1fr)); }
+.dashboard-sales-model-row.has-sales-value { --sales-cols: 3; }
+.dashboard-sales-model-row > .dashboard-completed-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Production: keep the 3-column list, but scroll after ~6 rows. */
+.dashboard-completed-models-list {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+@media (max-width: 720px) {
+  .dashboard-sales-model-list, .dashboard-completed-models-list { max-height: 360px; }
+  .dashboard-sales-model-row,
+  .dashboard-sales-model-row.has-sales-value { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Note under the "by model" production charts. */
+.chart-model-note { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
+
+
+/* ---- Phase roadmap: fixed size, scroll inside, expand ------------------ */
+.phase-roadmap-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
+/* Month header + 5 model rows, like the reference; more models scroll. */
+.phase-roadmap-scroll { height: 400px; max-height: none; }
+.phase-roadmap.is-expanded, .phase-roadmap:fullscreen { overflow: auto; background: var(--bg-surface); }
+.phase-roadmap.is-expanded .phase-roadmap-scroll,
+.phase-roadmap:fullscreen .phase-roadmap-scroll { height: auto; max-height: calc(100vh - 230px); }
+.phase-roadmap:fullscreen { padding: 34px clamp(24px, 5vw, 80px); }
+.phase-roadmap-unscheduled { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--r-md); }
+.phase-roadmap-unscheduled > strong { color: var(--text-secondary); font-size: 12px; }
+.phase-roadmap-unscheduled-list { display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto; }
+.phase-roadmap-unscheduled-list span { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border-radius: var(--r-sm); background: var(--bg-surface-alt); color: var(--text-primary); font-size: 12px; }
+.phase-roadmap-unscheduled-list em { color: var(--text-secondary); font-style: normal; font-size: 11px; }
+@media (max-width: 720px) { .phase-roadmap-scroll { height: 340px; } }
+
+/* ---- Phase roadmap blocks: name and count on separate lines ------------- */
+/* A one-month block is narrow; side by side, both texts were cut short. */
+.phase-roadmap-block { height: 56px; gap: 4px; padding: 6px 9px; }
+.phase-roadmap-block-heading { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; }
+.phase-roadmap-block-heading strong { font-size: 12px; line-height: 1.25; }
+.phase-roadmap-block-heading span { font-size: 11px; line-height: 1.25; }

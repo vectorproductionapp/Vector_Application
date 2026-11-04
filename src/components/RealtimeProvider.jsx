@@ -8,200 +8,194 @@ import React, {
   useState,
 } from "react";
 import api from "./Api";
+import { useAuth } from "../context/Auth";
+import { loadFirebase, signOutRealtime } from "./realtimeFirebase";
 
 /*
- * One WebSocket for the whole app.
+ * Live updates through Firestore.
  *
- * The server pushes `{"type":"changed","scope":"po_details",...}` the moment a
- * write succeeds, so a page that is open refreshes only the list it is showing -
- * no page reload, no polling.  Pages subscribe to the scopes they care about
- * with `useRealtime(scopes, handler)`; handlers are called at most once every
- * `debounceMs`, so a burst of saves results in a single quiet refresh.
+ * After every successful save the backend writes `realtime_notices/{scope}`
+ * ({action, updatedAt, updatedBy}).  This provider listens to those documents
+ * directly in Firestore (onSnapshot) for the scopes the open page asked for,
+ * so a page refreshes only its own data - no page reload, no polling, and no
+ * connection held open to Cloud Run (which bills for every open second).
+ *
+ * Pages use `useRealtime(scopes, refresh)`.  Refreshes are debounced: a burst
+ * of saves results in one quiet refresh once the burst settles.
+ *
+ * Without Firebase config or sign-in, nothing breaks: pages just refresh on
+ * their next load instead of live.
  */
 
 const RealtimeContext = createContext(null);
 
-const TOKEN_KEY = "vector_auth";
-const RECONNECT_MS = 3000;
-const RECONNECT_MAX_MS = 30000;
-const DEFAULT_DEBOUNCE_MS = 500;
+const NOTICES_COLLECTION = "realtime_notices";
+// Listeners are dropped after this long in a hidden tab and re-attached when
+// the tab is shown again (a change made meanwhile triggers one refresh then).
+const HIDDEN_DETACH_MS = 2 * 60_000;
+const DEFAULT_DEBOUNCE_MS = 1500;
+const MAX_WAIT_MS = 5000;
 
-// Where the socket lives.
-//
-//   1. REACT_APP_WS_BASE_URL, when set, wins: it lets one environment point the
-//      live-update socket at a host of its own (a dedicated API domain) while
-//      the REST calls stay on REACT_APP_API_BASE_URL.
-//   2. Otherwise the host is taken from REACT_APP_API_BASE_URL, which is how
-//      production works: the browser opens wss://<cloud-run-service-url>/ws.
-//   3. Otherwise the page's own origin - only correct behind the CRA dev
-//      server, which does NOT proxy /ws (see setupProxy.js).
-function socketUrl() {
-  const explicit = (process.env.REACT_APP_WS_BASE_URL || "").trim().replace(/\/+$/, "");
-  if (explicit) {
-    if (/^wss?:\/\//i.test(explicit)) return explicit;
-    const host = explicit.replace(/^https?:\/\//i, "");
-    const secure = /^https:\/\//i.test(explicit) || window.location.protocol === "https:";
-    return `${secure ? "wss:" : "ws:"}//${host}`;
-  }
-  const apiBase = (process.env.REACT_APP_API_BASE_URL || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  const origin = apiBase || window.location.host;
-  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${origin}/ws`;
-}
-
-function readToken() {
+// `sub` (user id) from the app's JWT, to match the Firebase user to it.
+function tokenSubject(token) {
   try {
-    const raw = sessionStorage.getItem(TOKEN_KEY);
-    if (!raw) return "";
-    const parsed = JSON.parse(raw);
-    return parsed?.token || "";
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload)).sub || "";
   } catch {
     return "";
   }
 }
 
 export function RealtimeProvider({ children }) {
-  const socketRef = useRef(null);
+  const { token } = useAuth();
   const handlersRef = useRef(new Map()); // scope -> Set<handler>
-  const scopesRef = useRef(new Set());
-  const reconnectRef = useRef(null);
-  const attemptRef = useRef(0);
-  // Token the server rejected; quiet until a sign-in issues a new one, so an
-  // expired session cannot hammer /ws every few seconds.
-  const rejectedTokenRef = useRef("");
-  const [connected, setConnected] = useState(false);
+  const listenersRef = useRef(new Map()); // scope -> unsubscribe
+  const lastSeenRef = useRef(new Map()); // scope -> updatedAt millis
+  const firebaseRef = useRef(null); // { db, firestoreApi } once signed in
+  const [signedIn, setSignedIn] = useState(false);
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  const syncRef = useRef(() => {});
 
-  const sendSubscription = useCallback(() => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ action: "subscribe", scopes: [...scopesRef.current] }));
-  }, []);
-
-  const connect = useCallback(() => {
-    const token = readToken();
-    if (!token) return;
-    if (token === rejectedTokenRef.current) return;
-    if (socketRef.current) return;
-
-    let socket;
-    try {
-      socket = new WebSocket(`${socketUrl()}?token=${encodeURIComponent(token)}`);
-    } catch {
-      scheduleReconnect();
-      return;
-    }
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      attemptRef.current = 0;
-      setConnected(true);
-      sendSubscription();
-    };
-    socket.onmessage = (event) => {
-      let payload;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-      if (payload.type === "unauthorized") {
-        rejectedTokenRef.current = token;
-        setConnected(false);
-        const current = socketRef.current;
-        socketRef.current = null;
-        try {
-          current?.close();
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      if (payload.type !== "changed" || !payload.scope) return;
-      const handlers = handlersRef.current.get(payload.scope);
-      if (!handlers?.size) return;
-      handlers.forEach((handler) => {
-        try {
-          handler(payload);
-        } catch {
-          /* a page failing to refresh must not break the socket */
-        }
-      });
-    };
-    socket.onclose = () => {
-      setConnected(false);
-      socketRef.current = null;
-      scheduleReconnect();
-    };
-    socket.onerror = () => {
-      try {
-        socket.close();
-      } catch {
-        /* ignore */
-      }
-    };
-
-    function scheduleReconnect() {
-      if (rejectedTokenRef.current === token) return;
-      if (reconnectRef.current) return;
-      // Exponential backoff: quick for a blip, quiet for a dead server.
-      const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_MS * 2 ** attemptRef.current);
-      attemptRef.current += 1;
-      reconnectRef.current = setTimeout(() => {
-        reconnectRef.current = null;
-        connect();
-      }, delay);
-    }
-  }, [sendSubscription]);
-
+  // Sign in to Firebase with a custom token for the current app session.
   useEffect(() => {
-    connect();
+    let cancelled = false;
+    setSignedIn(false);
+    firebaseRef.current = null;
+
+    if (!token) {
+      // Signed out (also after a reload, e.g. a 401 redirect to /login):
+      // end any Firebase session left in this tab.
+      signOutRealtime();
+      return undefined;
+    }
+
+    (async () => {
+      const { auth, authApi, db, firestoreApi } = await loadFirebase();
+      await auth.authStateReady();
+      if (cancelled) return;
+      const wantedUid = `vector-${tokenSubject(token)}`;
+      if (auth.currentUser?.uid !== wantedUid) {
+        const response = await api.post("/realtime/token", null, {
+          __vectorSuppressBusy: true,
+          __vectorKeepCache: true,
+        });
+        if (cancelled) return;
+        await authApi.signInWithCustomToken(auth, response.data.token);
+      }
+      if (cancelled) return;
+      firebaseRef.current = { db, firestoreApi };
+      setSignedIn(true);
+    })().catch(() => {
+      // Live updates are optional; the page keeps working without them.
+    });
+
     return () => {
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      reconnectRef.current = null;
-      if (socketRef.current) {
-        socketRef.current.onclose = null;
-        try {
-          socketRef.current.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      socketRef.current = null;
+      cancelled = true;
     };
-  }, [connect]);
+  }, [token]);
 
-  const subscribe = useCallback(
-    (scope, handler) => {
-      if (!scope) return () => {};
-      if (!handlersRef.current.has(scope)) handlersRef.current.set(scope, new Set());
-      handlersRef.current.get(scope).add(handler);
-      scopesRef.current.add(scope);
-      sendSubscription();
-      return () => {
-        const handlers = handlersRef.current.get(scope);
-        handlers?.delete(handler);
-        if (handlers && !handlers.size) {
-          handlersRef.current.delete(scope);
-          scopesRef.current.delete(scope);
-          sendSubscription();
-        }
-      };
-    },
-    [sendSubscription]
-  );
-
-  const value = useMemo(() => ({ subscribe, connected }), [subscribe, connected]);
-
-  // Close the socket when the tab is hidden for a while, and pick it straight
-  // back up on return: fewer idle sockets, no user-visible delay.
+  // Hidden tab: keep listening for 2 minutes, then let go until it is shown.
   useEffect(() => {
+    let timer = null;
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") return;
-      if (!socketRef.current) connect();
+      if (document.visibilityState === "hidden") {
+        if (!timer) timer = setTimeout(() => { timer = null; setVisible(false); }, HIDDEN_DETACH_MS);
+      } else {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        setVisible(true);
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [connect]);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  const detach = useCallback((scope, forget) => {
+    const off = listenersRef.current.get(scope);
+    if (off) off();
+    listenersRef.current.delete(scope);
+    if (forget) lastSeenRef.current.delete(scope);
+  }, []);
+
+  const attach = useCallback((scope) => {
+    const firebase = firebaseRef.current;
+    if (!firebase || listenersRef.current.has(scope)) return;
+    const { db, firestoreApi } = firebase;
+    const off = firestoreApi.onSnapshot(
+      firestoreApi.doc(db, NOTICES_COLLECTION, scope),
+      (snapshot) => {
+        const updatedAt = snapshot.get("updatedAt");
+        const at = typeof updatedAt?.toMillis === "function" ? updatedAt.toMillis() : 0;
+        const seen = lastSeenRef.current.get(scope);
+        lastSeenRef.current.set(scope, at);
+        // The first snapshot is the current state, not a change.
+        if (seen === undefined || at <= seen) return;
+        const notice = {
+          type: "changed",
+          scope,
+          action: snapshot.get("action") || "",
+          actor: snapshot.get("updatedBy") || "",
+          at,
+        };
+        handlersRef.current.get(scope)?.forEach((handler) => {
+          try {
+            handler(notice);
+          } catch {
+            /* one page failing to refresh must not stop the others */
+          }
+        });
+      },
+      () => {
+        // Permission or config problem: stop this listener quietly.
+        listenersRef.current.delete(scope);
+      }
+    );
+    listenersRef.current.set(scope, off);
+  }, []);
+
+  // Listen to exactly the scopes some mounted page needs, while allowed.
+  const sync = useCallback(() => {
+    const live = signedIn && visible;
+    const wanted = live ? new Set(handlersRef.current.keys()) : new Set();
+    [...listenersRef.current.keys()].forEach((scope) => {
+      if (!wanted.has(scope)) detach(scope, !handlersRef.current.has(scope));
+    });
+    wanted.forEach(attach);
+  }, [signedIn, visible, attach, detach]);
+  syncRef.current = sync;
+
+  useEffect(() => {
+    sync();
+  }, [sync]);
+
+  useEffect(() => () => {
+    [...listenersRef.current.keys()].forEach((scope) => detach(scope, true));
+  }, [detach]);
+
+  useEffect(() => {
+    if (!token) {
+      [...listenersRef.current.keys()].forEach((scope) => detach(scope, true));
+      lastSeenRef.current.clear();
+    }
+  }, [token, detach]);
+
+  const subscribe = useCallback((scope, handler) => {
+    if (!scope) return () => {};
+    if (!handlersRef.current.has(scope)) handlersRef.current.set(scope, new Set());
+    handlersRef.current.get(scope).add(handler);
+    syncRef.current();
+    return () => {
+      const handlers = handlersRef.current.get(scope);
+      handlers?.delete(handler);
+      if (handlers && !handlers.size) handlersRef.current.delete(scope);
+      syncRef.current();
+    };
+  }, []);
+
+  const value = useMemo(() => ({ subscribe, connected: signedIn }), [subscribe, signedIn]);
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
@@ -211,44 +205,51 @@ export function RealtimeProvider({ children }) {
  *
  * `refresh` is expected to call the page's existing silent loader - it must never
  * reload the page.  Nothing runs while a form is open: pass a guard that returns
- * a message (or false) to skip that moment.
+ * false to skip that moment; the refresh then waits until the guard clears.
+ *
+ * Refreshes wait until notices have been quiet for `debounceMs` (but never
+ * longer than 5 s), so a bulk save refreshes once, not once per row.
  */
 export function useRealtime(scopes, refresh, { enabled = true, guard = null, debounceMs = DEFAULT_DEBOUNCE_MS } = {}) {
   const realtime = useContext(RealtimeContext);
   const refreshRef = useRef(refresh);
   const guardRef = useRef(guard);
   const timerRef = useRef(null);
-  const lastRef = useRef(0);
   const pendingRef = useRef(false);
+  const firstNoticeRef = useRef(0);
+  const lastNoticeRef = useRef(0);
+  const changedScopesRef = useRef(new Set());
 
   refreshRef.current = refresh;
   guardRef.current = guard;
 
   const scopeKey = Array.isArray(scopes) ? scopes.join(",") : scopes || "";
 
-  // Run the refresh once one is pending, the guard has cleared, and the
-  // debounce window has passed.  This runs after every render: a notice that
-  // arrived while a save (or open form) blocked it just waits here until the
-  // state that blocked it changes - which always causes a render.
+  // Runs after every render too: a notice that arrived while a save (or an
+  // open form) blocked it waits here until the blocking state changes.
   const flush = useCallback(() => {
     if (!pendingRef.current) return;
     const guardValue = guardRef.current?.();
     if (guardValue === false) return;
     const now = Date.now();
-    if (now - lastRef.current < debounceMs) {
+    const wait = Math.min(
+      debounceMs - (now - lastNoticeRef.current),
+      MAX_WAIT_MS - (now - firstNoticeRef.current)
+    );
+    if (wait > 0) {
       if (!timerRef.current) {
         timerRef.current = setTimeout(() => {
           timerRef.current = null;
           flushRef.current();
-        }, debounceMs - (now - lastRef.current));
+        }, wait);
       }
       return;
     }
     pendingRef.current = false;
-    lastRef.current = now;
-    // The notice arrived because data changed somewhere: bypass the GET cache
-    // so this refresh shows the new data, not a copy cached minutes ago.
-    api.invalidateGetCache?.();
+    // Drop cached GETs for the changed scopes only, so this refresh shows
+    // the new data while other pages keep their cached copies.
+    api.invalidateGetCache?.([...changedScopesRef.current]);
+    changedScopesRef.current.clear();
     refreshRef.current?.(guardValue);
   }, [debounceMs]);
 
@@ -261,9 +262,13 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
     if (!realtime || !scopeKey || !enabled) return undefined;
     const list = scopeKey.split(",").filter(Boolean);
 
-    const handler = () => {
+    const handler = (notice) => {
+      const now = Date.now();
+      if (!pendingRef.current) firstNoticeRef.current = now;
+      lastNoticeRef.current = now;
       pendingRef.current = true;
-      flush();
+      if (notice?.scope) changedScopesRef.current.add(notice.scope);
+      flushRef.current();
     };
 
     const unsubscribes = list.map((scope) => realtime.subscribe(scope, handler));
@@ -274,7 +279,7 @@ export function useRealtime(scopes, refresh, { enabled = true, guard = null, deb
       }
       unsubscribes.forEach((off) => off());
     };
-  }, [realtime, scopeKey, enabled, debounceMs, flush]);
+  }, [realtime, scopeKey, enabled]);
 }
 
 export { api };

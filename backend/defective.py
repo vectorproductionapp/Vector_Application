@@ -16,7 +16,7 @@ defects_collection = db.collection("defective_units")
 REQUIRED_FIELDS = ["date", "make", "model", "serial", "part", "problem", "observations", "solution", "scratches", "dent", "status"]
 
 ALLOWED_UPDATE_FIELDS = [
-    "date", "make", "model", "serial", "part", "problem",
+    "date", "make", "model", "endUserClient", "endUserLocation", "serial", "part", "problem",
     "observations", "solution", "scratches", "dent", "status",
 ]
 
@@ -28,6 +28,8 @@ def _serialize(doc):
         "date": d.get("date"),
         "make": d.get("make"),
         "model": d.get("model"),
+        "endUserClient": d.get("endUserClient", ""),
+        "endUserLocation": d.get("endUserLocation", ""),
         "serial": d.get("serial"),
         "part": d.get("part"),
         "problem": d.get("problem"),
@@ -39,6 +41,23 @@ def _serialize(doc):
         "attachments": d.get("attachments", []),
         "createdAt": d.get("createdAt").isoformat() if d.get("createdAt") else None,
     }
+
+
+def _attach_product_models(rows):
+    """Set each row's productModel: the unit's model by serial number, else the
+    typed model when it names a product model."""
+    from product_models import canonical_names, model_names_by_id, models_for_serials, product_model_for
+
+    names_by_id = model_names_by_id()
+    canonical = canonical_names(names_by_id)
+    by_serial = models_for_serials([row.get("serial") for row in rows], names_by_id)
+    for row in rows:
+        names = product_model_for(
+            row.get("serial"), (), row.get("model"),
+            names_by_id=names_by_id, canonical=canonical, by_serial=by_serial,
+        )
+        row["productModel"] = names[0] if names else ""
+    return rows
 
 
 def _upload_attachments(files):
@@ -110,6 +129,8 @@ def create_defect():
             "date": data.get("date", ""),
             "make": data.get("make", ""),
             "model": data.get("model", ""),
+            "endUserClient": data.get("endUserClient", ""),
+            "endUserLocation": data.get("endUserLocation", ""),
             "serial": data.get("serial", ""),
             "part": data.get("part", ""),
             "problem": data.get("problem", ""),
@@ -168,6 +189,7 @@ def list_defects():
                 filters.append((field, str(raw_value or "").strip()))
 
         all_rows = [_serialize(doc) for doc in base_query.stream()]
+        _attach_product_models(all_rows)
         matching_rows = [row for row in all_rows
                          if _defect_row_matches(row, search, filters, from_date, to_date)]
 
@@ -208,11 +230,13 @@ def list_defects():
 
 # Columns the Defective Units search box scans (mirrors `columns` in
 # DefectiveUnits.jsx).
-_DEFECT_SEARCH_KEYS = ("date", "make", "model", "serial", "part", "problem",
+_DEFECT_SEARCH_KEYS = ("date", "make", "model", "productModel", "endUserClient", "endUserLocation", "serial", "part", "problem",
                        "observations", "scratches", "dent", "status")
 
 # Fields the PageFilter dropdown offers (mirrors DEFECT_FILTER_FIELDS).
-_DEFECT_FILTER_FIELDS = frozenset({"make", "model", "part", "status"})
+# productModel is the Models-page model of the unit (found by its serial);
+# "model" is the free-text model typed on the report.
+_DEFECT_FILTER_FIELDS = frozenset({"make", "model", "productModel", "part", "status"})
 
 
 def _defect_text(value):

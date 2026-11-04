@@ -1110,7 +1110,7 @@
 //     loadBoq({ targetPage });
 //   }, [loadBoq, page, pageSize, resolvedModelId, resolvedPhaseId]);
 
-//   // A BOQ write on this phase arrives as a WebSocket notice and reloads the
+//   // A BOQ write on this phase arrives as a live-update notice and reloads the
 //   // items quietly.  Skipped while the row editor or the bulk-upload modal is
 //   // open, so a background save never disturbs a half-finished edit.
 //   useRealtime(["boq"], () => loadBoq({ silent: true }), {
@@ -2768,7 +2768,7 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
     loadBoq({ targetPage });
   }, [loadBoq, page, pageSize, filterKey, resolvedModelId, resolvedPhaseId]);
 
-  // A BOQ write on this phase arrives as a WebSocket notice and reloads the
+  // A BOQ write on this phase arrives as a live-update notice and reloads the
   // items quietly.  Skipped while the row editor or the bulk-upload modal is
   // open, so a background save never disturbs a half-finished edit.
   useRealtime(["boq"], () => loadBoq({ silent: true }), {
@@ -2976,7 +2976,9 @@ export default function BOQ({ model, phase, modelId, phaseId, onBack, readOnly =
   // rendered while such codes exist, so there is nothing to act on otherwise.
   const refreshOrphans = useCallback(async () => {
     try {
-      const preview = await api.post(`${API_BASE_URL}/item-codes/purge-orphans`, {});
+      // Read-only check (GET): cached and de-duplicated like any other read,
+      // so it no longer counts as a save on every BOQ page load.
+      const preview = await api.get(`${API_BASE_URL}/item-codes/orphans`, { __vectorBackground: true });
       setOrphanCodes(preview.data?.orphans || []);
     } catch {
       // Not permitted for this role, or the check failed: nothing to offer.

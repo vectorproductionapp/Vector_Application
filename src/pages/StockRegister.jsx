@@ -8,6 +8,7 @@ import { Loader2, RefreshCw, Table2, TriangleAlert, X, Package } from "lucide-re
 import { useHeaderSearch } from "../context/HeaderSearch";
 import api from "../components/Api";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
+import { SearchableSelect } from "../components/SearchBar";
 import MinStockView from "../components/MinStockView";
 import FinishedGoodsView, { FG_FILTER_FIELDS } from "../components/FinishedGoodsView";
 import { useRealtime } from "../components/RealtimeProvider";
@@ -21,6 +22,8 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
 const PAGE_SIZE = 10;
 
 const columns = [
+  // The Models-page model this material belongs to (its BOQ's model).
+  { key: "productModel", label: "Model" },
   { key: "phase", label: "Phase" },
   { key: "code", label: "Product Code", mono: true },
   { key: "desc", label: "Material Description" },
@@ -43,7 +46,7 @@ const columns = [
   { key: "status", label: "Stock Status" },
   { key: "lastUpdated", label: "Last Updated" },
 ];
-const STOCK_FILTER_FIELDS = columns.filter((column) => ["phase", "make", "model", "status"].includes(column.key));
+const STOCK_FILTER_FIELDS = columns.filter((column) => ["productModel", "phase", "make", "model", "status"].includes(column.key));
 
 const DETAIL_FIELDS = columns;
 
@@ -128,6 +131,20 @@ export default function StockRegister() {
   // reached the query string and the FilterModal (and the summary cards that
   // drive the same `status` filter) had no effect on the rows.
   const [fgRowFilters, setFgRowFilters] = useState({});
+  // Min Stock has no filter of its own; the Model dropdown sets this.
+  const [minStockModel, setMinStockModel] = useState("");
+  // Model names from the Models page, for the Model dropdown.
+  const [modelNames, setModelNames] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`${API_BASE_URL}/models`)
+      .then((response) => {
+        if (cancelled || !response.data?.success) return;
+        setModelNames((response.data.models || []).map((model) => String(model.name || "").trim()).filter(Boolean));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // A dashboard KPI card can deep-link here: "In Stock" opens the Finished
   // Goods tab, "Materials Below Min Stock" opens Min Stock, and a `field`/`value`
@@ -342,10 +359,42 @@ export default function StockRegister() {
           </button>
         </div>
 
+        {(() => {
+          // One Model dropdown for all three tabs: picking a model filters
+          // Table View, Min Stock and Finished Goods together.
+          const current = view === "finishedgoods"
+            ? fgRowFilters.model || ""
+            : view === "minstock" ? minStockModel : rowFilters.productModel || "";
+          const withModel = (key, model) => (prev) => {
+            const { [key]: _currentModel, ...otherFilters } = prev;
+            return model ? { ...otherFilters, [key]: model } : otherFilters;
+          };
+          const names = Array.from(new Set([...modelNames, current].filter(Boolean)))
+            .sort((x, y) => x.localeCompare(y));
+          return (
+            <label className="stock-model-filter">
+              <span>Model</span>
+              <SearchableSelect
+                value={current}
+                onChange={(model) => {
+                  setRowFilters(withModel("productModel", model));
+                  setFgRowFilters(withModel("model", model));
+                  setMinStockModel(model || "");
+                }}
+                options={[
+                  { value: "", label: "All models" },
+                  ...names.map((name) => ({ value: name, label: name })),
+                ]}
+                placeholder="All models"
+              />
+            </label>
+          );
+        })()}
+
       </div>
 
       {view === "minstock" ? (
-        <MinStockView onSelectRow={openDetails} query={minStockQuery} />
+        <MinStockView onSelectRow={openDetails} query={minStockQuery} model={minStockModel} />
       ) : view === "finishedgoods" ? (
         <FinishedGoodsView
           query={fgQuery}

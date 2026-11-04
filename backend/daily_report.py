@@ -16,17 +16,12 @@ One email per day with two sections:
 When it sends
 -------------
 Settings live in Firestore (`system_settings/daily_report_alert`): an on/off
-switch, recipients, the send time (IST), the working days and a holiday
-calendar. A background thread checks once a minute; on a working, non-holiday
-day at or after the send time it sends once. The "sent today" marker is
-claimed in a Firestore transaction, so several server instances (or a restart)
-can never send twice. The report covers the most recent working, non-holiday
+switch, recipients, the send time (IST, any time of day), the working days
+and a holiday calendar.  Cloud Scheduler calls `POST /internal/reports/run`
+every minute, all day, and the report goes out on the first run at or after
+the send time on a working, non-holiday day - see report_runs.py, which also makes sure it is
+sent at most once.  The report covers the most recent working, non-holiday
 day before today - on a Monday after a weekend off, that is Friday.
-
-Hosts that sleep between requests (Cloud Run) should also call
-`POST /alerts/daily-report/run` from a scheduler (e.g. Cloud Scheduler every
-15 minutes) with the `X-Cron-Secret` header set to ALERTS_CRON_SECRET; it runs
-the same "send if due" check.
 """
 
 import html
@@ -37,7 +32,6 @@ import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from firebase_admin import firestore
 from flask import Blueprint, jsonify, request
 
 from auth_utils import roles_required
@@ -491,32 +485,11 @@ def build_email(report, generated_at=None):
 # Sending
 # ---------------------------------------------------------------------------
 
-@firestore.transactional
-def _claim_today(transaction, today_iso):
-    snapshot = STATE_REF.get(transaction=transaction)
-    state = snapshot.to_dict() if snapshot.exists else {}
-    if state.get("last_sent_date") == today_iso:
-        return False
-    transaction.set(STATE_REF, {
-        "last_sent_date": today_iso,
-        "last_status": "sending",
-        "last_attempt_at": datetime.now(timezone.utc),
-    }, merge=True)
-    return True
-
-
-# Firestore reads cost money and the scheduler runs every minute, so it works
-# from memory as much as it can:
-# - settings are re-read at most every SETTINGS_CACHE_SECONDS (a save on this
-#   instance refreshes them at once; another instance picks a save up within
-#   that window);
-# - once today's email is sent (or another instance sent it), the day is
-#   remembered and no further reads happen until tomorrow.
-# That is roughly 150 reads a day per instance instead of ~2,000.
+# The Alerts page reads the settings often; keep them in memory for a while
+# (a save on this instance refreshes them at once).
 SETTINGS_CACHE_SECONDS = 600
 _cache_lock = threading.Lock()
 _settings_cache = {"value": None, "loaded_at": 0.0}
-_handled_day = {"date": None}
 
 
 def cached_settings():
@@ -532,79 +505,6 @@ def remember_settings(value):
     with _cache_lock:
         _settings_cache["value"] = value
         _settings_cache["loaded_at"] = time.monotonic()
-
-
-def send_if_due(now=None):
-    """Send today's report when it is due. Returns a short status string."""
-    now = now or datetime.now(IST)
-    today = now.date()
-    if _handled_day["date"] == today:
-        return "already sent"
-    settings = cached_settings()
-    if not settings.get("enabled"):
-        return "disabled"
-    if not settings.get("recipients"):
-        return "no recipients"
-    if not _is_business_day(today, settings):
-        return "not a working day"
-    hour, minute = (int(part) for part in settings["send_time"].split(":"))
-    if (now.hour, now.minute) < (hour, minute):
-        return "not yet time"
-    if not _claim_today(db.transaction(), today.isoformat()):
-        _handled_day["date"] = today
-        return "already sent"
-    _handled_day["date"] = today
-
-    report_day = report_day_for(today, settings)
-    try:
-        report = compute_report(report_day)
-        subject, body, text = build_email(report, now)
-        send_html_email(settings["recipients"], subject, body, text)
-        STATE_REF.set({
-            "last_status": "sent",
-            "last_sent_at": datetime.now(timezone.utc),
-            "last_report_date": report_day.isoformat(),
-            "last_recipients": settings["recipients"],
-            "last_error": "",
-        }, merge=True)
-        logger.info("daily report sent for %s to %d recipient(s)", report_day, len(settings["recipients"]))
-        return "sent"
-    except Exception as exc:  # recorded on the page; the marker stays so it does not retry every minute
-        STATE_REF.set({"last_status": "failed", "last_error": str(exc)[:500]}, merge=True)
-        logger.exception("daily report failed")
-        return f"failed: {exc}"
-
-
-_scheduler_started = False
-_scheduler_lock = threading.Lock()
-
-
-def start_scheduler():
-    """Start the once-a-minute check in a daemon thread (once per process)."""
-    global _scheduler_started
-    if os.getenv("DAILY_REPORT_SCHEDULER", "on").strip().lower() in {"0", "off", "false", "no"}:
-        return
-    with _scheduler_lock:
-        if _scheduler_started:
-            return
-        _scheduler_started = True
-
-    def loop():
-        time.sleep(15)
-        while True:
-            try:
-                send_if_due()
-            except Exception:
-                logger.exception("daily report scheduler check failed")
-            try:
-                # The weekly stock register email shares this check.
-                from weekly_stock_report import send_weekly_if_due
-                send_weekly_if_due()
-            except Exception:
-                logger.exception("weekly stock report check failed")
-            time.sleep(60)
-
-    threading.Thread(target=loop, name="daily-report-scheduler", daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -703,12 +603,3 @@ def send_test_daily_report():
         return jsonify({"success": True, "message": f"Test email sent to {', '.join(recipients)}"}), 200
     except Exception as exc:
         return jsonify({"success": False, "message": f"Could not send the email: {exc}"}), 502
-
-
-@daily_report_bp.route("/alerts/daily-report/run", methods=["POST"])
-def run_daily_report():
-    """Scheduler hook: same 'send if due' check as the background thread."""
-    secret = os.getenv("ALERTS_CRON_SECRET", "").strip()
-    if not secret or request.headers.get("X-Cron-Secret", "") != secret:
-        return jsonify({"success": False, "message": "Forbidden"}), 403
-    return jsonify({"success": True, "result": send_if_due()}), 200

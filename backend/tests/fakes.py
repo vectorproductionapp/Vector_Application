@@ -1,7 +1,7 @@
 """Credential-free stand-ins for ``firebase_admin``.
 
 The smoke tests build the *real* Flask application so they can exercise
-``/health``, CORS and the ``/ws`` registration.  Building it for real imports
+``/health``, CORS and the live-update token route.  Building it for real imports
 ``firebase_config``, which would use Google credentials and then read and write
 whatever project those credentials belong to.  A pull request must never be able
 to touch production data, so ``firebase_admin`` is replaced *before* the
@@ -83,6 +83,9 @@ class _FakeDb(_FakeResource):
     def collection_group(self, *args, **kwargs):
         return _FakeCollection()
 
+    def get_all(self, *args, **kwargs):
+        return iter(())
+
     def transaction(self):
         return _FakeTransaction()
 
@@ -154,6 +157,10 @@ def install():
 
     storage.bucket = lambda *args, **kwargs: _FakeResource()
 
+    # Custom tokens for the Firestore live-update listener (/realtime/token).
+    auth = types.ModuleType("firebase_admin.auth")
+    auth.create_custom_token = lambda uid, claims=None, **kwargs: f"fake-token-for-{uid}".encode()
+
     firebase_admin.initialize_app = lambda *args, **kwargs: None
     firebase_admin.delete_app = lambda *args, **kwargs: None
     # Truthy so `if not firebase_admin._apps` in firebase_config skips init.
@@ -161,11 +168,13 @@ def install():
     firebase_admin.credentials = credentials
     firebase_admin.firestore = firestore
     firebase_admin.storage = storage
+    firebase_admin.auth = auth
 
     for name, module in (
         ("firebase_admin", firebase_admin),
         ("firebase_admin.credentials", credentials),
         ("firebase_admin.firestore", firestore),
         ("firebase_admin.storage", storage),
+        ("firebase_admin.auth", auth),
     ):
         sys.modules[name] = module

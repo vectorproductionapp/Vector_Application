@@ -1,11 +1,10 @@
 Flask
 Flask-Cors
+Flask-Compress
 firebase-admin
-pymongo
 python-dotenv
 bcrypt
 PyJWT
 requests
 gunicorn
-flask-sock
 openpyxl

@@ -58,6 +58,7 @@ function rowName(row) {
 
 // Full register information, same columns and order as the table view.
 const DETAIL_COLUMNS = [
+  { key: "productModel", label: "Model" },
   { key: "phase", label: "Phase" },
   { key: "code", label: "Product Code", mono: true },
   { key: "desc", label: "Material Description" },
@@ -79,14 +80,22 @@ function statusTone(row) {
 }
 
 // Free-text search runs in the browser: this view already holds every row.
-const SEARCH_KEYS = ["phase", "code", "desc", "make", "model", "status"];
+const SEARCH_KEYS = ["productModel", "phase", "code", "desc", "make", "model", "status"];
 
 function matchesSearch(row, search) {
   return SEARCH_KEYS.some((key) => String(row[key] ?? "").toLowerCase().includes(search));
 }
 
-export default function MinStockView({ onSelectRow, query = "" }) {
-  const [allRows, setRows] = useState([]);
+export default function MinStockView({ onSelectRow, query = "", model = "" }) {
+  const [registerRows, setRows] = useState([]);
+  // The page's Model dropdown narrows everything here, cards included.
+  const modelKey = model.trim().toLowerCase();
+  const allRows = useMemo(
+    () => (modelKey
+      ? registerRows.filter((row) => String(row.productModel || "").trim().toLowerCase() === modelKey)
+      : registerRows),
+    [registerRows, modelKey]
+  );
   const search = query.trim().toLowerCase();
   const rows = useMemo(
     () => (search ? allRows.filter((row) => matchesSearch(row, search)) : allRows),

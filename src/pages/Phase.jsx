@@ -321,6 +321,7 @@ const swalError = (title, text) =>
 
 export default function Phase({ model, onBack, readOnly = false }) {
   const [showModal, setShowModal] = useState(false);
+  const [editingPhase, setEditingPhase] = useState(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [phases, setPhases] = useState([]);
   // A refresh reopens this model's phase BOQ - but only if the stored drill
@@ -380,10 +381,10 @@ export default function Phase({ model, onBack, readOnly = false }) {
     loadPhases();
   }, [loadPhases]);
 
-  // Phase writes arrive as a WebSocket notice and reload the list quietly.
+  // Phase writes arrive as a live-update notice and reload the list quietly.
   // Skipped while the create/edit modal, bulk upload, or a delete is running.
   useRealtime(["phases"], () => loadPhases(), {
-    guard: () => !(showModal || uploadOpen || deleting),
+    guard: () => !(showModal || editingPhase || uploadOpen || deleting),
   });
 
   // Close the kebab menu when clicking outside it
@@ -397,10 +398,13 @@ export default function Phase({ model, onBack, readOnly = false }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleCreatePhase = async ({ name }) => {
+  const handleCreatePhase = async ({ name, target, startDate, endDate }) => {
     try {
       const response = await api.post(`${API_BASE_URL}/models/${model.id}/phases`, {
         name,
+        target,
+        startDate,
+        endDate,
       });
       if (response.data.success) {
         await loadPhases();
@@ -522,39 +526,25 @@ export default function Phase({ model, onBack, readOnly = false }) {
     });
   };
 
-  const handleRenamePhase = async (p) => {
-    const { value: newName } = await Swal.fire({
-      title: "Rename Phase",
-      input: "text",
-      inputLabel: "New name",
-      inputValue: p.name,
-      showCancelButton: true,
-      confirmButtonColor: "var(--accent)",
-      cancelButtonColor: "var(--bg-surface-alt)",
-      confirmButtonText: "Rename",
-      cancelButtonText: "Cancel",
-      reverseButtons: true,
-      inputValidator: (value) => {
-        if (!value?.trim()) return "Name cannot be empty";
-      },
-      customClass: { popup: "swal-vector-popup" },
-    });
-    if (!newName || newName.trim() === p.name) return;
-
+  const handleEditPhase = async ({ name, target, startDate, endDate }) => {
+    const phase = editingPhase;
+    if (!phase) return false;
     try {
       const res = await api.put(
-        `${API_BASE_URL}/models/${model.id}/phases/${p.id}`,
-        { name: newName.trim() }
+        `${API_BASE_URL}/models/${model.id}/phases/${phase.id}`,
+        { name, target, startDate, endDate }
       );
       if (res.data.success) {
         await loadPhases();
-        swalSuccess("Phase renamed", `"${p.name}" → "${newName.trim()}"`);
+        swalSuccess("Phase updated", `"${name}" has been updated.`);
+        return true;
       } else {
-        swalError("Rename failed", res.data.message || "Failed to rename phase");
+        swalError("Update failed", res.data.message || "Failed to update phase");
       }
     } catch (err) {
-      swalError("Rename failed", err.response?.data?.message || "Something went wrong");
+      swalError("Update failed", err.response?.data?.message || "Something went wrong");
     }
+    return false;
   };
 
   const openModal = () => {
@@ -832,11 +822,11 @@ export default function Phase({ model, onBack, readOnly = false }) {
               className="model-card-edit"
               onClick={(e) => {
                 e.stopPropagation();
-                handleRenamePhase(p);
+                setEditingPhase(p);
               }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleRenamePhase(p); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); setEditingPhase(p); } }}
               aria-label="Rename phase"
             >
               <Pencil size={14} />
@@ -847,6 +837,17 @@ export default function Phase({ model, onBack, readOnly = false }) {
               </div>
               <span className="model-card-name">{p.name}</span>
             </div>
+            {p.target != null && (
+              <span className="model-card-time">Target: {p.target} units</span>
+            )}
+            {(p.startDate || p.endDate) && (
+              <span className="model-card-time">
+                {p.startDate ? new Date(`${p.startDate}T00:00:00`).toLocaleDateString("en-IN") : "No start date"}
+                {" – "}
+                {p.endDate ? new Date(`${p.endDate}T00:00:00`).toLocaleDateString("en-IN") : "No end date"}
+              </span>
+            )}
+            {/* Created date/time, hidden on the card for now.
             {p.date && (
               <span className="model-card-time">
                 {new Date(p.date).toLocaleString("en-IN", {
@@ -855,6 +856,7 @@ export default function Phase({ model, onBack, readOnly = false }) {
                 })}
               </span>
             )}
+            */}
             <div className="model-card-totals">
               <span className="model-card-total-row">
                 <span className="model-card-total-label">Basic Price</span>
@@ -895,7 +897,23 @@ export default function Phase({ model, onBack, readOnly = false }) {
         onClose={() => setShowModal(false)}
         onCreate={handleCreatePhase}
         showTiming={false}
+        showPhaseSchedule
       />
+      )}
+
+      {editingPhase && (
+        <CreateEntityModal
+          title="Edit Phase"
+          namePlaceholder="e.g. Phase 1"
+          nameLabel="Name"
+          submitLabel="Save"
+          isEditing
+          initialValues={editingPhase}
+          onClose={() => setEditingPhase(null)}
+          onCreate={handleEditPhase}
+          showTiming={false}
+          showPhaseSchedule
+        />
       )}
 
       {!readOnly && (

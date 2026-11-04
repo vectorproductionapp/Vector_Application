@@ -3,6 +3,7 @@ import {
   Camera, Check, CheckSquare, ClipboardCheck, Download, FileArchive, FileText, Files, Loader2, Receipt, RefreshCw, X,
 } from "lucide-react";
 import api from "./Api";
+import { SearchableSelect } from "./SearchBar";
 import DataTable from "./DataTable";
 import ListPagination from "./ListPagination";
 import FilterModal, { countActiveFilters, matchesFilters } from "./FilterModal";
@@ -13,6 +14,9 @@ import { downloadQcReportPdf } from "../utils/qcInspection";
 import "./DocumentsView.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
+// Large ZIPs can take longer than Firebase Hosting's 60 s rewrite limit, so
+// this one call goes straight to the Cloud Run URL (300 s) when it is set.
+const DIRECT_API_BASE_URL = (process.env.REACT_APP_DIRECT_API_BASE_URL || API_BASE_URL).replace(/\/+$/, "");
 
 // The categories the endpoint assigns, in the order the cards show them.
 const CATEGORIES = [
@@ -239,6 +243,20 @@ export default function DocumentsView({ query = "" }) {
     }
   });
   const [rowFilters, setRowFilters] = useState({});
+  // Model dropdown: narrows every type card and the table.
+  const [modelFilter, setModelFilter] = useState("");
+  // Model names from the Models page, for the Model dropdown.
+  const [modelNames, setModelNames] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`${API_BASE_URL}/models`)
+      .then((response) => {
+        if (cancelled || !response.data?.success) return;
+        setModelNames((response.data.models || []).map((model) => String(model.name || "").trim()).filter(Boolean));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [appliedFrom, setAppliedFrom] = useState("");
@@ -300,10 +318,11 @@ export default function DocumentsView({ query = "" }) {
   const narrowed = useMemo(
     () => documents.filter((item) => (
       (!search || matchesSearch(item, search)) && inDateRange(item, appliedFrom, appliedTo)
+      && (!modelFilter || (item.productModels || []).includes(modelFilter))
     )),
-    [documents, search, appliedFrom, appliedTo]
+    [documents, search, appliedFrom, appliedTo, modelFilter]
   );
-  const narrowedActive = Boolean(search) || Boolean(appliedFrom || appliedTo);
+  const narrowedActive = Boolean(search) || Boolean(appliedFrom || appliedTo) || Boolean(modelFilter);
   const cardCounts = useMemo(() => {
     if (!narrowedActive) return counts;
     return narrowed.reduce((result, item) => ({ ...result, [item.category]: (result[item.category] || 0) + 1 }), {});
@@ -318,7 +337,7 @@ export default function DocumentsView({ query = "" }) {
 
   // A failed download belongs to the list it happened in; changing what the
   // list shows starts clean.
-  const viewKey = `${category}|${search}|${JSON.stringify(rowFilters)}|${appliedFrom}|${appliedTo}`;
+  const viewKey = `${category}|${search}|${JSON.stringify(rowFilters)}|${appliedFrom}|${appliedTo}|${modelFilter}`;
   useEffect(() => {
     setPage(1);
     setActionError("");
@@ -389,9 +408,10 @@ export default function DocumentsView({ query = "" }) {
         await downloadOne(files[0]);
       } else if (files.length) {
         const response = await api.post(
-          `${API_BASE_URL}/documents/zip`,
+          `${DIRECT_API_BASE_URL}/documents/zip`,
           { ids: files.map((item) => item.id) },
-          { responseType: "blob", __vectorSuppressBusy: true }
+          // A download, not a save: keep the cached lists.
+          { responseType: "blob", __vectorSuppressBusy: true, __vectorKeepCache: true }
         );
         saveBlob(response.data, fileNameFromHeader(response.headers?.["content-disposition"], "vector-documents.zip"));
       }
@@ -480,6 +500,7 @@ export default function DocumentsView({ query = "" }) {
   const anyFilterActive = narrowedActive || countActiveFilters(rowFilters) > 0 || Boolean(category);
 
   const clearAll = () => {
+    setModelFilter("");
     setCategory("");
     setRowFilters({});
     setFromDate("");
@@ -490,6 +511,22 @@ export default function DocumentsView({ query = "" }) {
 
   return (
     <div className="documents-page">
+      <div className="documents-toolbar">
+            <label className="documents-model-filter">
+              <span>Model</span>
+              <SearchableSelect
+                value={modelFilter}
+                onChange={(model) => setModelFilter(model || "")}
+                options={[
+                  { value: "", label: "All models" },
+                  ...Array.from(new Set([...modelNames, modelFilter].filter(Boolean)))
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((name) => ({ value: name, label: name })),
+                ]}
+                placeholder="All models"
+              />
+            </label>
+      </div>
       <div className="documents-cards" role="tablist" aria-label="Document type">
         {CATEGORIES.map(({ key, label, Icon }) => {
           const active = category === key;

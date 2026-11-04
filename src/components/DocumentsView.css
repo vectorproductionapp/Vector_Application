@@ -86,3 +86,9 @@
 .documents-record-badge.is-deleted {
   background: var(--color-danger-soft, #fdecec); color: var(--color-danger, #b42318);
 }
+
+/* Model dropdown above the type cards */
+.documents-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.documents-model-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.documents-model-filter .searchable-select { width: min(220px, 60vw); }
+.documents-model-filter .searchable-select-trigger { min-height: 38px; }

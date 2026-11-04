@@ -141,6 +141,16 @@ export function attachmentsOf(row) {
   return [];
 }
 
+export function mergeAttachments(...groups) {
+  const seen = new Set();
+  return groups.flatMap((group) => attachmentsOf({ attachments: group })).filter((file) => {
+    const identity = file.path || file.url || file.data || `${file.name}\u0000${file.type}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
 export default function AttachmentsEditor({
   files = [],
   onChange,

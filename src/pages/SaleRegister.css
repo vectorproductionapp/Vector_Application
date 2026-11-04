@@ -1,8 +1,15 @@
 ﻿/* PAGE LAYOUT */
 .sales-page { display: flex; flex-direction: column; }
+.sales-page .model-card-edit { opacity: 1; }
 .sales-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.sales-model-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.sales-model-filter .searchable-select { width: min(220px, 30vw); }
+.sales-model-filter .searchable-select-trigger { min-height: 38px; }
 .table-export-bar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .sales-page .panel { padding: 8px; }
+/* The row uses space-between: on the same line as the filters the totals sit
+   at the right; when they wrap onto their own line they start at the left. */
+.sales-page .table-controls-right { margin-left: 0; justify-content: flex-start; }
 .sales-page .table-wrap { width: 100%; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
 .sales-page .data-table { min-width: 2500px; }
 .sales-hint { font-size: 12px; color: var(--text-secondary); margin: 10px 2px 0; }
@@ -18,6 +25,8 @@
 
 @media (max-width: 640px) {
   .sales-toolbar { flex-wrap: wrap; justify-content: flex-end; }
+  .sales-model-filter { flex: 1 1 100%; }
+  .sales-model-filter .searchable-select { flex: 1; width: auto; }
   .sales-toolbar > *:not(.sales-kebab-wrapper) { flex: 1 1 100%; }
   .sales-kebab-wrapper { margin-left: auto; flex: 0 0 auto; }
   .table-export-bar { justify-content: stretch; }
@@ -241,8 +250,61 @@ select.sale-details-edit-input { appearance: none; background-image: url("data:i
 .modal-container.po-edit-modal .sale-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .modal-container.po-edit-modal .sale-field { min-width: 0; }
 .modal-container.po-edit-modal .sale-field > input,
-.modal-container.po-edit-modal .sale-field > div { width: 100%; min-width: 0; }
+.modal-container.po-edit-modal .sale-field > div,
+.modal-container.po-edit-modal .sale-field > textarea { width: 100%; min-width: 0; }
 .modal-container.po-edit-modal .modal-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sale-register-edit-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11px;
+}
+.sale-register-edit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 18px;
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.sale-register-edit-item > .sale-form-section-title {
+  margin: 0 0 2px;
+}
+.sale-register-edit-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.sale-register-edit-serials {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.sale-register-edit-serials:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
+}
 
 @media (max-width: 1024px) {
   .modal-container.po-edit-modal { max-width: 720px; }
@@ -257,6 +319,7 @@ select.sale-details-edit-input { appearance: none; background-image: url("data:i
   .modal-container.po-edit-modal .sale-form { padding: 14px 16px 20px; }
   .modal-container.po-edit-modal .sale-form-grid { grid-template-columns: 1fr; gap: 14px; }
   .modal-container.po-edit-modal .sale-form-section-title { font-size: 11px; }
+  .sale-register-edit-item { padding: 14px; }
   .modal-container.po-edit-modal .modal-footer { padding: 12px 16px; gap: 10px; }
   .modal-container.po-edit-modal .modal-footer > button { flex: 1 1 0; justify-content: center; }
 }

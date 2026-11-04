@@ -61,6 +61,9 @@
 
 /* BULK SELECT / DELETE */
 .defects-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; margin-left: auto; gap: 10px; flex-wrap: wrap; }
+.defects-model-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.defects-model-filter .searchable-select { width: min(220px, 30vw); }
+.defects-model-filter .searchable-select-trigger { min-height: 38px; }
 .defect-delete-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; }
 .defect-delete-btn:hover { background: var(--bg-table-stripe); border-color: var(--accent); color: var(--accent); }
 .defects-row-checkbox { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
