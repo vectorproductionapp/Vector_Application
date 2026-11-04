@@ -262,26 +262,6 @@ def _update_page_status(spec, fields):
         log.warning("could not update the report status document", exc_info=True)
  
  
-# Periods this process already knows are finished (sent, or another run sent
-# them).  Later runs that day / week skip them without any Firestore read or
-# log line, instead of re-claiming every minute until midnight.
-_finished_periods = set()
-_finished_lock = threading.Lock()
- 
- 
-def _remember_finished(period_key):
-    with _finished_lock:
-        if len(_finished_periods) > 50:
-            _finished_periods.clear()
-        _finished_periods.add(period_key)
- 
- 
-def forget_finished_periods():
-    """For tests, and for a manual resend after deleting a run record."""
-    with _finished_lock:
-        _finished_periods.clear()
- 
- 
 def run_report(name, now, settings, store, session):
     """Send report `name` if it is due. Returns (result dict, failed bool)."""
     started = time.perf_counter()
@@ -294,17 +274,11 @@ def run_report(name, now, settings, store, session):
         if not period_key:
             result["skippedReason"] = reason
             return result, False
-        if period_key in _finished_periods:
-            # Known to be done: no read, and (due stays False) no log line.
-            result["skippedReason"] = "already sent"
-            return result, False
         result["due"] = True
  
         now_utc = now.astimezone(timezone.utc)
         claimed, reason = store.claim(period_key, name, now_utc)
         if not claimed:
-            if reason == "already sent":
-                _remember_finished(period_key)
             result["skippedReason"] = reason
             return result, False
  
@@ -322,7 +296,6 @@ def run_report(name, now, settings, store, session):
  
         sent_at = datetime.now(timezone.utc)
         store.mark_sent(period_key, len(recipients), sent_at)
-        _remember_finished(period_key)
         _update_page_status(spec, {
             **state,
             "last_status": "sent",
