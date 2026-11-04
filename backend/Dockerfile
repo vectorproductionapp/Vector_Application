@@ -25,6 +25,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Runtime payload only (see .dockerignore).
 COPY . ./
 
+# Refuse to build an image that cannot start: imports the whole app (Firebase
+# mocked, no credentials needed) plus the lazily imported packages.  A missing
+# package fails here instead of crash-looping on Cloud Run.
+RUN python check_imports.py
+
 # Never run the API as root.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin vector \
     && chown -R vector:vector /app
@@ -32,21 +37,17 @@ USER vector
 
 EXPOSE 8080
 
-# Gunicorn, gthread workers (implied by --threads) so flask-sock can complete
-# the /ws WebSocket upgrade.
+# Gunicorn with one process and a small thread pool.
 #
-#   --workers 1   realtime.py broadcasts in-process: the socket set that gets
-#                 the "something changed" notice and the request that writes
-#                 the change must live in the same worker, otherwise roughly
-#                 half of the notifications are silently dropped.  Raise it
-#                 with WEB_CONCURRENCY only if you first move broadcasts onto
-#                 a shared broker (Firestore pub/sub, Redis, ...).
-#   --threads 16  every held WebSocket occupies one thread, so the per-worker
-#                 thread pool is what the API actually runs on.
-#   --timeout 0   a silent-but-connected WebSocket must never be reaped.
+#   --workers 1   one process per instance keeps memory inside 512Mi and the
+#                 dashboard memory cache (read_cache.py) shared by all threads.
+#   --threads 8   requests are short (no WebSocket any more); Cloud Run
+#                 --concurrency 40 lets extra requests queue here briefly
+#                 instead of starting a second instance.
+#   --timeout 0   Cloud Run's own request timeout (--timeout) is the limit.
 CMD exec gunicorn \
       --bind :${PORT} \
       --workers ${WEB_CONCURRENCY:-1} \
-      --threads ${GUNICORN_THREADS:-16} \
+      --threads ${GUNICORN_THREADS:-8} \
       --timeout ${GUNICORN_TIMEOUT:-0} \
       app:app

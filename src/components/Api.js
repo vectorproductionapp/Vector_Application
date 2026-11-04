@@ -104,8 +104,9 @@ api.interceptors.request.use((config) => {
     }
   } else if (!["head", "options"].includes(method)) {
     // A successful save can affect dashboard totals and every table, so do
-    // not show stale data after any create, edit, or deletion.
-    getCache.clear();
+    // not show stale data after any create, edit, or deletion.  Requests that
+    // change no data (e.g. the live-update sign-in) opt out.
+    if (!config.__vectorKeepCache) getCache.clear();
     config.__vectorMutation = true;
     // Inline forms can provide a clearer local saving state than the global
     // blocking popup. They opt in with __vectorSuppressBusy.
@@ -172,11 +173,37 @@ api.get = (url, config = {}) => {
   return requestPromise;
 };
 
-// A WebSocket notice means some tab changed this data: drop every cached GET
-// so the refresh that follows can never serve a stale copy (attachment counts,
-// lists, cards).
-api.invalidateGetCache = () => {
-  getCache.clear();
+// Which cached GETs a live-update notice for each scope makes stale.  Lists
+// that show derived data (stock, documents, sale status on units) are listed
+// under every scope they derive from.  The dashboard and search depend on
+// everything.
+const SCOPE_CACHE_PATHS = {
+  po_details: ["/po-details", "/stock-register", "/documents", "/boq"],
+  invoices: ["/invoices", "/po-details", "/stock-register", "/documents"],
+  assembly_units: ["/assembly", "/production-users", "/available-serials", "/stock-register", "/documents", "/sales"],
+  sales: ["/sales", "/available-serials", "/assembly", "/stock-register", "/documents"],
+  defectives: ["/defect", "/documents", "/assembly"],
+  stock_register: ["/stock-register"],
+  models: ["/models", "/suppliers", "/item-codes", "/boq", "/po-details", "/invoices", "/stock-register"],
+  phases: ["/models", "/boq", "/item-codes", "/stock-register"],
+  boq: ["/models", "/boq", "/item-codes", "/stock-register", "/po-details"],
+};
+const ALWAYS_STALE_PATHS = ["/dashboard", "/search"];
+
+// A live-update notice means some tab changed this data: drop the cached GETs
+// of the changed scopes so the refresh that follows can never serve a stale
+// copy.  With no (or an unknown) scope, everything is dropped.
+api.invalidateGetCache = (scopes) => {
+  const list = Array.isArray(scopes) ? scopes : scopes ? [scopes] : [];
+  if (!list.length || list.some((scope) => !SCOPE_CACHE_PATHS[scope])) {
+    getCache.clear();
+    return;
+  }
+  const paths = [...ALWAYS_STALE_PATHS, ...list.flatMap((scope) => SCOPE_CACHE_PATHS[scope])];
+  [...getCache.keys()].forEach((key) => {
+    const path = key.replace(/^https?:\/\/[^/]+/, "");
+    if (paths.some((prefix) => path.includes(prefix))) getCache.delete(key);
+  });
 };
 
 export default api;

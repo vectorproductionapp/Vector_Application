@@ -8,6 +8,8 @@ from flask import Blueprint, jsonify, request
 from firebase_config import db
 from auth_utils import roles_required
 from read_cache import cached_read
+from google.cloud.firestore_v1.base_query import FieldFilter
+from list_params import parse_optional_page, requested_fields, select_fields, wants_all_rows
 
 stockregister_bp = Blueprint("stockregister", __name__)
 
@@ -93,12 +95,14 @@ def _collection_docs(path):
 
 # Columns scanned by the UI's free-text search box (mirrors `columns` in
 # StockRegister.jsx).  Values are stringified exactly like the client does.
-_SEARCH_KEYS = ("phase", "code", "desc", "make", "model", "reqQty", "opening",
+_SEARCH_KEYS = ("phase", "code", "desc", "make", "model", "productModel", "reqQty", "opening",
                 "purchased", "consumed", "closing", "minLevel", "status",
                 "lastUpdated")
 
 # Fields the PageFilter dropdown offers (mirrors STOCK_FILTER_FIELDS).
-_FILTER_FIELDS = frozenset({"phase", "make", "model", "status"})
+# productModel is the Models-page model the row belongs to (its BOQ's parent);
+# "model" is the BOQ line's own linked finished model.
+_FILTER_FIELDS = frozenset({"phase", "make", "model", "productModel", "status"})
 
 
 def _text(value):
@@ -250,6 +254,7 @@ def list_stock_register():
                     "desc": data.get("desc", ""),
                     "make": "",
                     "model": "",
+                    "productModel": model_names.get(model_id, ""),
                     "uom": "",
                     "reqQty": 0,
                     "opening": 0,
@@ -296,6 +301,8 @@ def list_stock_register():
                 item["desc"] = row.get("desc", "") or item["desc"]
                 item["make"] = row.get("make", "") or item["make"]
                 item["model"] = row.get("model", "") or item["model"] or model_names.get(model_id, "")
+                if not item.get("productModel"):
+                    item["productModel"] = model_names.get(model_id, "")
                 if not item["uom"]:
                     item["uom"] = row.get("uom", "")
                 item["reqQty"] = _number(row.get("reqQty"))
@@ -477,11 +484,14 @@ def list_finished_goods_stock():
         page = min(page, total_pages)
         start = (page - 1) * limit
 
+        fields = requested_fields(request.args)
+        body = {"finishedGoods": select_fields(filtered_units[start:start + limit], fields)}
+        if wants_all_rows(request.args):
+            # Every matching unit, for Export Excel (not just this page).
+            body["allRows"] = select_fields(filtered_units, fields)
         response = jsonify({
             "success": True,
-            "finishedGoods": filtered_units[start:start + limit],
-            # Every matching unit, for Export Excel (not just this page).
-            "allRows": filtered_units,
+            **body,
             "filterOptions": filter_options,
             "summary": {
                 # Every unsold QC-passed unit (packed or not), kept for older pages.
@@ -537,7 +547,7 @@ def debug_assembly_serials():
         sales_collection = db.collection("sale_register")
         delivered_serials = set()
         for status in ["delivered", "dispatched"]:
-            docs = sales_collection.where("dispatch", "==", status).stream()
+            docs = sales_collection.where(filter=FieldFilter("dispatch", "==", status)).stream()
             for doc in docs:
                 data = doc.to_dict() or {}
                 serials = data.get("serialNumbers")

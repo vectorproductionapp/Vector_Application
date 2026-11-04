@@ -18,6 +18,9 @@ import requests
 from forgot_password import LOGO_CID, _logo_path, _mail_settings
 
 
+SMTP_TIMEOUT_SECONDS = 20
+
+
 def send_html_email(recipients, subject, html_body, text_body, logo_cid=LOGO_CID, attachments=None):
     """Deliver one message to every address in `recipients`.
 
@@ -28,24 +31,58 @@ def send_html_email(recipients, subject, html_body, text_body, logo_cid=LOGO_CID
     for SMTP and swapped for EMAIL_LOGO_URL (or dropped) for Microsoft Graph,
     which does not take inline parts on this path.
     """
-    recipients = [address for address in (recipients or []) if address]
-    if not recipients:
-        raise ValueError("No recipients to send to")
-
-    settings = _mail_settings()
-    attachments = attachments or []
-    if settings["provider"] == "microsoft_graph":
-        _send_graph(settings, recipients, subject, html_body, logo_cid, attachments)
-    else:
-        _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid, attachments)
+    with MailSession() as session:
+        session.send(recipients, subject, html_body, text_body, logo_cid=logo_cid, attachments=attachments)
 
 
-def _send_graph(settings, recipients, subject, html_body, logo_cid, attachments=()):
-    # Graph is sent without inline parts here, so use the hosted logo.
-    app_url = os.getenv("APP_FRONTEND_URL", "https://production.vector-power.com").rstrip("/")
-    logo_url = os.getenv("EMAIL_LOGO_URL", "").strip() or f"{app_url}/images/vector-pdf.png"
-    html_body = html_body.replace(f"cid:{logo_cid}", logo_url)
+class MailSession:
+    """One mail connection for a whole run.
 
+    The scheduled report run may send two emails; they share one SMTP
+    connection (opened on the first send, closed on exit) or one Microsoft
+    Graph access token.  Nothing connects until something is actually sent.
+    """
+
+    def __init__(self):
+        self._settings = None
+        self._smtp = None
+        self._graph_token = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        if self._smtp is not None:
+            try:
+                self._smtp.quit()
+            except Exception:
+                try:
+                    self._smtp.close()
+                except Exception:
+                    pass
+            self._smtp = None
+        return False
+
+    def send(self, recipients, subject, html_body, text_body, logo_cid=LOGO_CID, attachments=None):
+        recipients = [address for address in (recipients or []) if address]
+        if not recipients:
+            raise ValueError("No recipients to send to")
+        if self._settings is None:
+            self._settings = _mail_settings()
+        settings = self._settings
+        attachments = attachments or []
+        if settings["provider"] == "microsoft_graph":
+            if self._graph_token is None:
+                self._graph_token = _graph_access_token(settings)
+            _send_graph(settings, self._graph_token, recipients, subject, html_body, logo_cid, attachments)
+        else:
+            message = _smtp_message(settings, recipients, subject, html_body, text_body, logo_cid, attachments)
+            if self._smtp is None:
+                self._smtp = _smtp_connect(settings)
+            self._smtp.send_message(message)
+
+
+def _graph_access_token(settings):
     token_response = requests.post(
         f"https://login.microsoftonline.com/{quote(settings['tenant_id'], safe='')}/oauth2/v2.0/token",
         data={
@@ -61,6 +98,14 @@ def _send_graph(settings, recipients, subject, html_body, logo_cid, attachments=
     access_token = token_response.json().get("access_token")
     if not access_token:
         raise RuntimeError("Microsoft identity response did not contain an access token")
+    return access_token
+
+
+def _send_graph(settings, access_token, recipients, subject, html_body, logo_cid, attachments=()):
+    # Graph is sent without inline parts here, so use the hosted logo.
+    app_url = os.getenv("APP_FRONTEND_URL", "https://production.vector-power.com").rstrip("/")
+    logo_url = os.getenv("EMAIL_LOGO_URL", "").strip() or f"{app_url}/images/vector-pdf.png"
+    html_body = html_body.replace(f"cid:{logo_cid}", logo_url)
 
     response = requests.post(
         f"https://graph.microsoft.com/v1.0/users/{quote(settings['sender'], safe='')}/sendMail",
@@ -82,13 +127,13 @@ def _send_graph(settings, recipients, subject, html_body, logo_cid, attachments=
             },
             "saveToSentItems": False,
         },
-        timeout=20,
+        timeout=SMTP_TIMEOUT_SECONDS,
     )
     if response.status_code != 202:
         raise RuntimeError(f"Microsoft Graph sendMail failed with status {response.status_code}")
 
 
-def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid, attachments=()):
+def _smtp_message(settings, recipients, subject, html_body, text_body, logo_cid, attachments=()):
     logo_path = _logo_path()
     if not logo_path:
         html_body = html_body.replace(f'src="cid:{logo_cid}"', 'src="" style="display:none"')
@@ -123,17 +168,24 @@ def _send_smtp(settings, recipients, subject, html_body, text_body, logo_cid, at
     message["Subject"] = subject
     message["From"] = settings["sender"]
     message["To"] = ", ".join(recipients)
+    return message
 
+
+def _smtp_connect(settings):
     context = ssl.create_default_context()
     smtp_class = smtplib.SMTP_SSL if settings["use_ssl"] else smtplib.SMTP
-    smtp_kwargs = {"host": settings["host"], "port": settings["port"], "timeout": 20}
+    smtp_kwargs = {"host": settings["host"], "port": settings["port"], "timeout": SMTP_TIMEOUT_SECONDS}
     if settings["use_ssl"]:
         smtp_kwargs["context"] = context
-    with smtp_class(**smtp_kwargs) as server:
+    server = smtp_class(**smtp_kwargs)
+    try:
         if not settings["use_ssl"] and settings["use_tls"]:
             server.ehlo()
             server.starttls(context=context)
             server.ehlo()
         if settings["username"]:
             server.login(settings["username"], settings["password"])
-        server.send_message(message)
+    except Exception:
+        server.close()
+        raise
+    return server

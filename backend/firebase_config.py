@@ -24,6 +24,7 @@
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KEY_PATH = os.getenv(
@@ -64,7 +65,7 @@ def user_document_for_email(email):
     index_doc = user_email_index.document(key).get()
     if not index_doc.exists:
         # Backwards-compatible fallback while existing accounts are migrated.
-        matches = users_collection.where("email", "==", key).limit(1).get()
+        matches = users_collection.where(filter=FieldFilter("email", "==", key)).limit(1).get()
         if not matches:
             return None
         user_doc = matches[0]

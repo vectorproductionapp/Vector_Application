@@ -10,6 +10,7 @@ import ActiveFilterChips from "../components/ActiveFilterChips";
 import BackToDashboard from "../components/BackToDashboard";
 import { createPortal } from "react-dom";
 import api from "../components/Api";
+import { SearchableSelect } from "../components/SearchBar";
 import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
 import { useHeaderSearch } from "../context/HeaderSearch";
@@ -88,20 +89,26 @@ const swalError = (title, text) =>
 
 const columns = [
   { key: "date", label: "Date Reported", isDate: true },
+  // The Models-page model of the unit (found by its serial number).
+  { key: "productModel", label: "Product Model" },
   { key: "make", label: "Make" },
   { key: "model", label: "Model" },
+  { key: "endUserClient", label: "End User Name" },
+  { key: "endUserLocation", label: "End User Location" },
   { key: "serial", label: "Serial No", mono: true },
   { key: "part", label: "Defective Part" },
   { key: "problem", label: "Problem Identified" },
   { key: "status", label: "Status" },
 ];
-const DEFECT_FILTER_FIELDS = columns.filter((column) => ["make", "model", "part", "status"].includes(column.key));
+const DEFECT_FILTER_FIELDS = columns.filter((column) => ["productModel", "make", "model", "part", "status"].includes(column.key));
 
 // Flat list of every field shown in the "View Details" popup, in order.
 const DETAIL_FIELDS = [
   { key: "date", label: "Date Reported", isDate: true },
   { key: "make", label: "Make" },
   { key: "model", label: "Model" },
+  { key: "endUserClient", label: "End User Name" },
+  { key: "endUserLocation", label: "End User Location" },
   { key: "serial", label: "Serial No" },
   { key: "part", label: "Defective Part" },
   { key: "problem", label: "Problem Identified" },
@@ -119,6 +126,8 @@ const emptyDefectForm = {
   date: "",
   make: "",
   model: "",
+  endUserClient: "",
+  endUserLocation: "",
   serial: "",
   part: "",
   problem: "",
@@ -311,6 +320,18 @@ export default function DefectiveUnits() {
   // Export Excel - so the export does not depend on the rows-per-page setting.
   const [exportRows, setExportRows] = useState([]);
   const [filterOptions, setFilterOptions] = useState({});
+  // Model names from the Models page, for the Model dropdown.
+  const [modelNames, setModelNames] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/models`)
+      .then((response) => {
+        if (cancelled || !response.data?.success) return;
+        setModelNames((response.data.models || []).map((model) => String(model.name || "").trim()).filter(Boolean));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // ---------- Defect list loading/error state ----------
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -493,7 +514,7 @@ export default function DefectiveUnits() {
     fetchDefects({ targetPage: page });
   }, [fetchDefects, page]);
 
-  // Defect writes arrive as a WebSocket notice and refresh the table quietly.
+  // Defect writes arrive as a live-update notice and refresh the table quietly.
   // Skipped while the add/edit form or a bulk delete is running.
   useRealtime(["defectives"], () => fetchDefects({ silent: true }), {
     guard: () => !(modalOpen || saving || bulkDeleting),
@@ -840,6 +861,25 @@ export default function DefectiveUnits() {
       <BackToDashboard visible={arrivedFromDashboard} />
       <div className="defects-toolbar">
         <div className="defects-toolbar-actions">
+          {!selectMode && (
+            <label className="defects-model-filter">
+              <span>Model</span>
+              <SearchableSelect
+                value={rowFilters.productModel || ""}
+                onChange={(model) => setRowFilters((prev) => {
+                  const { productModel: _currentModel, ...otherFilters } = prev;
+                  return model ? { ...otherFilters, productModel: model } : otherFilters;
+                })}
+                options={[
+                  { value: "", label: "All models" },
+                  ...Array.from(new Set([...modelNames, rowFilters.productModel || ""].filter(Boolean)))
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((name) => ({ value: name, label: name })),
+                ]}
+                placeholder="All models"
+              />
+            </label>
+          )}
           {selectMode ? (
             <>
               <button type="button" className="defect-add-btn" onClick={toggleSelectAll}>
@@ -1055,6 +1095,26 @@ export default function DefectiveUnits() {
                     value={formValues.model}
                     onChange={handleFormChange}
                     placeholder="e.g. GSB-13RE"
+                  />
+                </label>
+
+                <label className="defect-field">
+                  <span>End User Name</span>
+                  <input
+                    name="endUserClient"
+                    value={formValues.endUserClient}
+                    onChange={handleFormChange}
+                    placeholder="Enter end user name"
+                  />
+                </label>
+
+                <label className="defect-field">
+                  <span>End User Location</span>
+                  <input
+                    name="endUserLocation"
+                    value={formValues.endUserLocation}
+                    onChange={handleFormChange}
+                    placeholder="Enter end user location"
                   />
                 </label>
 

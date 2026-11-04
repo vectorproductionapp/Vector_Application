@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   FileText,
   GitBranch,
+  Layers,
 } from "lucide-react";
 import { SearchableSelect } from "../components/SearchBar";
 import { useHeaderSearch } from "../context/HeaderSearch";
@@ -24,7 +25,7 @@ import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
 import CardPagination, { useCardPagination } from "../components/CardPagination";
-import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
+import AttachmentsEditor, { attachmentsOf, mergeAttachments } from "../components/AttachmentsEditor";
 import ImageStrip from "../components/ImageStrip";
 import CardDownloadButton from "../components/CardDownloadButton";
 import GlobalSearchResults from "../components/GlobalSearchResults";
@@ -300,14 +301,25 @@ export default function Invoices() {
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState("");
  
-  // ---------- Card drill-down: phase -> invoice -> line items ----------
+  // ---------- Card drill-down: model -> phase -> invoice -> line items ----------
   const [phaseCards, setPhaseCards] = useState([]);
+  const [models, setModels] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(false);
   const [cardsError, setCardsError] = useState("");
-  // A refresh must land on the same drill-down: phase cards -> invoice cards
-  // -> table. sessionStorage is per tab, so a second tab keeps its own place.
-  const [selectedPhase, setSelectedPhase] = useState(() => readDrill(DRILL_KEY)?.phase ?? null);
-  const [selectedInvoice, setSelectedInvoice] = useState(() => readDrill(DRILL_KEY)?.invoice ?? null);
+  const [selectedModelKey, setSelectedModelKey] = useState(() => readDrill(DRILL_KEY)?.modelKey ?? null);
+  const [selectedModelName, setSelectedModelName] = useState(() => readDrill(DRILL_KEY)?.modelName ?? null);
+  const [selectedPhase, setSelectedPhase] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.phase ?? null : null;
+  });
+  const [selectedPhaseId, setSelectedPhaseId] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.phaseId ?? null : null;
+  });
+  const [selectedInvoice, setSelectedInvoice] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.invoice ?? null : null;
+  });
 
   // One search box in the header serves every level of the drill-down: the
   // phase grid, the invoice grid inside a phase, and the line-item table inside
@@ -317,23 +329,28 @@ export default function Invoices() {
     ? "Search Invoices..."
     : selectedPhase
       ? "Search invoices in this phase..."
-      : "Search phases, invoices or PO numbers...";
+      : selectedModelKey
+        ? "Search phases, invoices or PO numbers..."
+        : "Search models, phases, invoices or PO numbers...";
   const [query, setQuery] = useHeaderSearch("invoices", searchPlaceholder, true);
 
   useEffect(() => {
     writeDrill(
       DRILL_KEY,
-      selectedPhase || selectedInvoice
-        ? { phase: selectedPhase, invoice: selectedInvoice }
+      selectedModelKey
+        ? { modelKey: selectedModelKey, modelName: selectedModelName, phase: selectedPhase, phaseId: selectedPhaseId, invoice: selectedInvoice }
         : null
     );
-  }, [selectedPhase, selectedInvoice]);
+  }, [selectedModelKey, selectedModelName, selectedPhase, selectedPhaseId, selectedInvoice]);
 
   // Clicking "Invoices" in the sidebar re-opens the phase card grid.
   useEffect(() => {
     const resetDrill = () => {
       setSelectedPhase(null);
+      setSelectedPhaseId(null);
       setSelectedInvoice(null);
+      setSelectedModelKey(null);
+      setSelectedModelName(null);
     };
     window.addEventListener("vector:invoices-reset", resetDrill);
     return () => window.removeEventListener("vector:invoices-reset", resetDrill);
@@ -396,11 +413,21 @@ const initialAttachmentsRef = useRef([]);
     setCardsLoading(true);
     setCardsError("");
     try {
-      const res = await api.get(`${API_BASE_URL}/invoices/groups`);
-      if (!res.data.success) {
-        throw new Error(res.data.message || "Failed to load phase cards");
+      const [groupResponse, modelResponse] = await Promise.all([
+        api.get(`${API_BASE_URL}/invoices/groups`),
+        api.get(`${API_BASE_URL}/models`, { __vectorNoCache: true }),
+      ]);
+      if (!groupResponse.data.success) {
+        throw new Error(groupResponse.data.message || "Failed to load phase cards");
       }
-      setPhaseCards(res.data.phases || []);
+      if (!modelResponse.data.success) {
+        throw new Error(modelResponse.data.message || "Failed to load models");
+      }
+      setModels(modelResponse.data.models || []);
+      setPhaseCards((groupResponse.data.phases || []).map((card) => ({
+        ...card,
+        modelKey: card.modelId || "__unassigned__",
+      })));
     } catch (err) {
       setCardsError(extractErrorMessage(err, "Failed to load phase cards."));
     } finally {
@@ -442,11 +469,14 @@ const initialAttachmentsRef = useRef([]);
         ["phase", selectedPhase],
         ["invoice", selectedInvoice],
       ];
+      if (selectedModelKey && selectedModelKey !== "__unassigned__") pairs.push(["modelId", selectedModelKey]);
+      if (selectedPhaseId) pairs.push(["phaseId", selectedPhaseId]);
       INVOICE_FILTER_FIELDS.forEach((field) => {
         const selected = rowFilters[field.key];
         if (String(selected ?? "") !== "") pairs.push([field.key, String(selected)]);
       });
       pairs.forEach(([field, value]) => {
+        if (value === null || value === undefined || value === "") return;
         params.append("filterField", field);
         params.append("filterValue", value);
       });
@@ -484,9 +514,9 @@ const initialAttachmentsRef = useRef([]);
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page, pageSize, query, rowFilters, selectedPhase, selectedInvoice, isDateRangeActive, appliedFromDate, appliedToDate]);
+  }, [page, pageSize, query, rowFilters, selectedModelKey, selectedPhase, selectedPhaseId, selectedInvoice, isDateRangeActive, appliedFromDate, appliedToDate]);
 
-  const scopeKey = `${selectedPhase || ""}::${selectedInvoice || ""}`;
+  const scopeKey = `${selectedModelKey || ""}::${selectedPhase || ""}:${selectedPhaseId || ""}::${selectedInvoice || ""}`;
   const filterKey = `${query.trim()}::${JSON.stringify(rowFilters)}::${appliedFromDate}:${appliedToDate}`;
 
   // Scope / filter / page-size changes all refetch; a changed scope or filter
@@ -517,9 +547,20 @@ const initialAttachmentsRef = useRef([]);
     setMenuOpen(false);
   };
 
-  // Drill-down order: phase -> invoice -> line items.
-  const openPhase = (phase) => {
-    setSelectedPhase(phase);
+  const openModel = (card) => {
+    setSelectedModelKey(card.id || card.modelKey);
+    setSelectedModelName(card.name || card.modelName);
+    setSelectedPhase(null);
+    setSelectedPhaseId(null);
+    setSelectedInvoice(null);
+    resetFilters();
+  };
+
+  const openPhase = (phaseCard) => {
+    setSelectedModelKey(phaseCard.modelKey || selectedModelKey);
+    setSelectedModelName(phaseCard.modelName || selectedModelName);
+    setSelectedPhase(phaseCard.phase);
+    setSelectedPhaseId(phaseCard.phaseId || null);
     setSelectedInvoice(null);
     resetFilters();
   };
@@ -537,6 +578,16 @@ const initialAttachmentsRef = useRef([]);
   const backFromPhase = () => {
     setSelectedInvoice(null);
     setSelectedPhase(null);
+    setSelectedPhaseId(null);
+    resetFilters();
+  };
+
+  const backFromModel = () => {
+    setSelectedInvoice(null);
+    setSelectedPhase(null);
+    setSelectedPhaseId(null);
+    setSelectedModelKey(null);
+    setSelectedModelName(null);
     resetFilters();
   };
 
@@ -560,7 +611,7 @@ const initialAttachmentsRef = useRef([]);
     [fetchPhaseCards, fetchInvoices, selectedPhase, selectedInvoice, viewOpen, viewRow]
   );
 
-  // A save anywhere on this scope arrives as a WebSocket notice: refresh the
+  // A save anywhere on this scope arrives as a live-update notice: refresh the
   // phase cards and, when a drill-down is open, the table beneath it.  The
   // view modal refreshes its own copy (handled above), but nothing runs while
   // a form or a bulk delete is in progress.
@@ -640,7 +691,7 @@ const initialAttachmentsRef = useRef([]);
     setMenuOpen(false);
   };
  
-  const openEditModal = (row) => {
+  const openEditModal = (row, invoiceRows = [row], attachments = attachmentsOf(row)) => {
     setIsEditMode(true);
     submissionIdRef.current = newSubmissionId();
     const initialValues = {
@@ -656,23 +707,23 @@ const initialAttachmentsRef = useRef([]);
       qtyInv: row.qtyInv || "",
       qtyRecv: row.qtyRecv || "",
       verifiedBy: row.verifiedBy || "",
-      attachments: attachmentsOf(row),
+      attachments,
     };
     initialFormValuesRef.current = initialValues;
     setFormValues(initialValues);
     // Edit uses the same item blocks as Add, so the saved line becomes Item 1
     // and "Add item" can extend the invoice with further lines.
-    const savedLine = {
-      id: row.id,
-      po: initialValues.po,
-      code: initialValues.code,
-      desc: initialValues.desc,
-      qtyInv: initialValues.qtyInv,
-      qtyRecv: initialValues.qtyRecv,
-      verifiedBy: initialValues.verifiedBy,
-    };
-    setItemDrafts([savedLine]);
-    initialItemDraftsRef.current = [savedLine];
+    const savedLines = invoiceRows.map((line) => ({
+      id: line.id,
+      po: line.po || "",
+      code: line.code || "",
+      desc: line.desc || "",
+      qtyInv: line.qtyInv ?? "",
+      qtyRecv: line.qtyRecv ?? "",
+      verifiedBy: line.verifiedBy || "",
+    }));
+    setItemDrafts(savedLines);
+    initialItemDraftsRef.current = savedLines;
     setInvoiceAttachments(initialValues.attachments);
     initialAttachmentsRef.current = initialValues.attachments;
     setFormError("");
@@ -681,7 +732,7 @@ const initialAttachmentsRef = useRef([]);
 
     // List rows only advertise that files exist.  Fetch them so the editor shows
     // the current attachments - otherwise saving would wipe what never loaded.
-    if (row?.hasImage && row?.id) {
+    if (!attachments.length && row?.hasImage && row?.id) {
       api
         .get(`${API_BASE_URL}/invoices/${row.id}`)
         .then((res) => {
@@ -698,6 +749,45 @@ const initialAttachmentsRef = useRef([]);
         .catch(() => {
           /* attachments are optional; the rest of the form still works */
         });
+    }
+  };
+
+  const editInvoiceCard = async (invoice) => {
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "100" });
+      if (selectedModelKey && selectedModelKey !== "__unassigned__") {
+        params.append("filterField", "modelId");
+        params.append("filterValue", selectedModelKey);
+      }
+      if (selectedPhaseId) {
+        params.append("filterField", "phaseId");
+        params.append("filterValue", selectedPhaseId);
+      } else {
+        params.append("filterField", "phase");
+        params.append("filterValue", selectedPhase === "Unassigned" ? "" : selectedPhase);
+      }
+      params.append("filterField", "invoice");
+      params.append("filterValue", invoice.invoice);
+      const response = await api.get(`${API_BASE_URL}/invoices?${params.toString()}`, { __vectorNoCache: true });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Failed to load invoice lines for editing.");
+      }
+      const invoiceRows = response.data.allRows || response.data.invoices || [];
+      if (!invoiceRows.length) throw new Error("No invoice lines were found for editing.");
+      const attachmentIds = invoiceRows.map((line) => line.id).filter(Boolean);
+      const attachmentResponse = await api.get(
+        `${API_BASE_URL}/invoices/images?ids=${encodeURIComponent(attachmentIds.join(","))}`,
+        { __vectorNoCache: true }
+      );
+      if (!attachmentResponse.data?.success) {
+        throw new Error(attachmentResponse.data?.message || "Failed to load invoice attachments.");
+      }
+      const attachments = mergeAttachments(
+        ...Object.values(attachmentResponse.data.attachments || {})
+      );
+      openEditModal(invoiceRows[0], invoiceRows, attachments);
+    } catch (error) {
+      await swalError("Edit failed", extractErrorMessage(error, "Unable to open this invoice for editing."));
     }
   };
  
@@ -1082,6 +1172,7 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       if (!sameScope) {
         setSelectedInvoice(null);
         setSelectedPhase(null);
+        setSelectedPhaseId(null);
         resetFilters();
         await fetchPhaseCards();
         return;
@@ -1212,20 +1303,42 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
   const selectedPhaseCard = useMemo(
     () =>
       phaseCards.find(
-        (card) => String(card.phase).toLowerCase() === String(selectedPhase || "").toLowerCase()
+        (card) =>
+          card.modelKey === selectedModelKey &&
+          (selectedPhaseId
+            ? String(card.phaseId || "") === String(selectedPhaseId)
+            : String(card.phase).toLowerCase() === String(selectedPhase || "").toLowerCase())
       ) || null,
-    [phaseCards, selectedPhase]
+    [phaseCards, selectedModelKey, selectedPhaseId, selectedPhase]
   );
 
-  // The card grids come from /invoices/groups, which returns every phase and
-  // invoice unpaginated, so filtering client-side is complete - no search can
-  // miss a card that lives off-screen. Both card levels read the same `query`
-  // the table uses, because the header box is claimed once for the whole
-  // drill-down.
+  const visibleModelCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((model) =>
+      String(model.name || "").toLowerCase().includes(q) ||
+      phaseCards.some((phase) =>
+        phase.modelId === model.id && (
+        String(phase.phase || "").toLowerCase().includes(q) ||
+        (phase.invoices || []).some((invoice) =>
+          String(invoice.invoice || "").toLowerCase().includes(q) ||
+          String(invoice.po || "").toLowerCase().includes(q)
+        )
+        )
+      )
+    );
+  }, [models, phaseCards, query]);
+  const { pageItems: pagedModelCards, pagerProps: modelCardPager } = useCardPagination(visibleModelCards, query.trim());
+
+  const modelPhaseCards = useMemo(
+    () => phaseCards.filter((card) => card.modelKey === selectedModelKey),
+    [phaseCards, selectedModelKey]
+  );
+
   const visiblePhaseCards = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return phaseCards;
-    return phaseCards.filter((card) => {
+    if (!q) return modelPhaseCards;
+    return modelPhaseCards.filter((card) => {
       if (String(card.phase || "").toLowerCase().includes(q)) return true;
       return (card.invoices || []).some(
         (inv) =>
@@ -1233,8 +1346,8 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           String(inv.po || "").toLowerCase().includes(q)
       );
     });
-  }, [phaseCards, query]);
-  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, query.trim());
+  }, [modelPhaseCards, query]);
+  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, `${selectedModelKey}|${query.trim()}`);
 
   const visibleInvoiceCards = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1260,21 +1373,23 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
       : "";
   }, [isEditMode, formValues.invoice, phaseCards]);
  
-  const viewTitle = !selectedPhase
+  const viewTitle = !selectedModelKey
     ? "Invoices"
-    : !selectedInvoice
-      ? selectedPhase
-      : `${selectedPhase} · ${selectedInvoice}`;
+    : !selectedPhase
+      ? selectedModelName
+      : !selectedInvoice
+        ? selectedPhase
+        : `${selectedPhase} · ${selectedInvoice}`;
  
   return (
     <div className="invoices-page">
       <div className="invoices-toolbar">
         <div className="invoices-toolbar-left">
-          {selectedPhase && (
+          {selectedModelKey && (
             <button
               type="button"
               className="invoices-back-btn"
-              onClick={selectedInvoice ? backFromInvoice : backFromPhase}
+              onClick={selectedInvoice ? backFromInvoice : selectedPhase ? backFromPhase : backFromModel}
             >
               <ArrowLeft size={16} /> Back
             </button>
@@ -1363,7 +1478,55 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
         </div>
       </div>
  
-      {!selectedPhase ? (
+      {!selectedModelKey ? (
+        cardsLoading ? (
+          <div className="invoices-loading">
+            <Loader2 size={28} className="spin" />
+            <span>Loading model cards...</span>
+          </div>
+        ) : cardsError ? (
+          <div className="invoices-load-error">
+            <div className="invoices-load-error-actions">
+              <span>{cardsError}</span>
+              <button type="button" className="invoices-btn-secondary" onClick={fetchPhaseCards}>
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
+          </div>
+        ) : models.length === 0 ? (
+          <div className="invoices-empty-state">
+            <span>No Invoices yet. Click "Add Invoice" to create the first record.</span>
+          </div>
+        ) : visibleModelCards.length === 0 ? (
+          <div className="invoices-empty-state">
+            <span>No models, phases or invoices match "{query.trim()}".</span>
+          </div>
+        ) : (
+          <>
+            <div className="model-grid">
+              {pagedModelCards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="model-card invoices-card"
+                  onClick={() => openModel(card)}
+                >
+                  <div className="model-card-heading-row">
+                    <div className="model-card-icon"><Layers size={18} /></div>
+                    <span className="model-card-name">{card.name}</span>
+                  </div>
+                  {card.date && (
+                    <span className="model-card-time">
+                      {new Date(card.date).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <CardPagination {...modelCardPager} />
+          </>
+        )
+      ) : !selectedPhase ? (
         cardsLoading ? (
           <div className="invoices-loading">
             <Loader2 size={28} className="spin" />
@@ -1392,14 +1555,14 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           <div className="model-grid">
             {pagedPhaseCards.map((card) => (
               <button
-                key={card.phase}
+                key={`${card.modelKey}:${card.phaseId || card.phase}`}
                 type="button"
                 className="model-card invoices-card"
-                onClick={() => openPhase(card.phase)}
+                onClick={() => openPhase(card)}
               >
                 <CardDownloadButton
                   category="Invoice"
-                  match={(item) => inPhaseNamed(item, card.phase)}
+                  match={(item) => inPhaseNamed(item, card.phase, card.modelId, card.phaseId)}
                   label={`Download ${card.phase} invoice files`}
                   emptyText={`No invoice files have been uploaded in ${card.phase}.`}
                   folderName={`${card.phase} invoices`}
@@ -1437,9 +1600,29 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
                 className="model-card invoices-card"
                 onClick={() => openInvoice(invoice.invoice)}
               >
+                <span
+                  className="model-card-edit"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Edit invoice ${invoice.invoice}`}
+                  title={`Edit invoice ${invoice.invoice}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    editInvoiceCard(invoice);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      editInvoiceCard(invoice);
+                    }
+                  }}
+                >
+                  <Pencil size={14} />
+                </span>
                 <CardDownloadButton
                   category="Invoice"
-                  match={(item) => isReference(item, invoice.invoice, selectedPhase)}
+                  match={(item) => isReference(item, invoice.invoice, selectedPhase, selectedPhaseCard?.modelId, selectedPhaseCard?.phaseId)}
                   label={`Download invoice ${invoice.invoice} files`}
                   emptyText={`No files have been uploaded for invoice ${invoice.invoice}.`}
                   folderName={`Invoice ${invoice.invoice}`}
@@ -1574,22 +1757,40 @@ const itemCodeOptionsForPo = useCallback((po) => invoicePoLines
           the open phase on its invoice cards. View opens the invoice. */}
       {!selectedInvoice && (
         <GlobalSearchResults
-          key={selectedPhase || "all-phases"}
+          key={`${selectedModelKey || "all-models"}|${selectedPhaseId || selectedPhase || "all-phases"}`}
           query={query}
           noun="invoice lines"
           columns={columns}
           load={async (q) => {
             const params = new URLSearchParams({ q, page: "1", limit: "100" });
+            if (selectedModelKey && selectedModelKey !== "__unassigned__") {
+              params.append("filterField", "modelId");
+              params.append("filterValue", selectedModelKey);
+            }
             if (selectedPhase) {
               params.append("filterField", "phase");
               params.append("filterValue", selectedPhase);
+            }
+            if (selectedPhaseId) {
+              params.append("filterField", "phaseId");
+              params.append("filterValue", selectedPhaseId);
             }
             const res = await api.get(`${API_BASE_URL}/invoices?${params.toString()}`, { __vectorNoCache: true });
             if (!res.data.success) throw new Error(res.data.message || "Search failed");
             return { rows: res.data.invoices || [], total: res.data.pagination?.totalCount };
           }}
           onOpen={(row) => {
-            if (!selectedPhase) openPhase(row.phase);
+            const phaseCard = phaseCards.find((card) =>
+              row.phaseId
+                ? card.phaseId === row.phaseId && card.modelId === row.modelId
+                : card.phase.toLowerCase() === String(row.phase || "").toLowerCase() &&
+                  (!row.modelId || card.modelId === row.modelId)
+            );
+            if (phaseCard) {
+              const modelCard = models.find((card) => card.id === phaseCard.modelId);
+              if (modelCard) openModel(modelCard);
+              openPhase(phaseCard);
+            }
             openInvoice(row.invoice);
           }}
         />

@@ -20,6 +20,7 @@ import { fmtINR } from "../data/mockData";
 import { formatDate } from "../utils/date";
 import { sortRows } from "../utils/tableSort";
 import DatePicker from "../components/DatePicker";
+import "./Model.css";
 import "./SaleRegister.css";
 import "../components/StatusDropdown.css";
 
@@ -184,17 +185,6 @@ const END_USER_DETAIL_FIELDS = [
   { key: "endUserPoNo", label: "End Customer PO No", editable: true },
   { key: "endUserPoDate", label: "End Customer PO Date", isDate: true, editable: true, type: "date" },
   
-];
-
-// Fields shared by every line of one Client PO. Editing them from the PO card
-// writes the new value to each of that PO's sale lines, so the card and the
-// table inside it stay in agreement.
-const PO_CARD_EDIT_FIELDS = [
-  { key: "clientPoDate", label: "Client PO Date", type: "date" },
-  { key: "poNo", label: "Client PO No" },
-  { key: "client", label: "Client Name" },
-  { key: "location", label: "Location" },
-  ...END_USER_DETAIL_FIELDS.map(({ key, label, type }) => ({ key, label, type })),
 ];
 
 const emptySaleForm = {
@@ -573,8 +563,9 @@ const [totalCount, setTotalCount] = useState(0);
   const [salesTotals, setSalesTotals] = useState(null);
   // ---------- Selected PO No filter (card click to show PO details) ----------
   const [selectedPoNo, setSelectedPoNo] = useState("");
-  // PO card edit: { poNo, original, values } while the dialog is open.
+  // PO card edit holds every sale line belonging to the selected Client PO.
   const [poEdit, setPoEdit] = useState(null);
+  const [poEditLoading, setPoEditLoading] = useState(false);
   const [poEditSaving, setPoEditSaving] = useState(false);
   const [poEditError, setPoEditError] = useState("");
   // ---------- Client PO Date range filter ----------
@@ -964,7 +955,7 @@ const [totalCount, setTotalCount] = useState(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, filterKey]);
 
-  // Sale writes arrive as a WebSocket notice and refresh the table quietly.
+  // Sale writes arrive as a live-update notice and refresh the table quietly.
   // Skipped while the add/edit form or the details editor is open.
   useRealtime(["sales"], () => fetchRows({ silent: true }), {
     guard: () => !(modalOpen || saving || isEditingDetails || detailsSaving || poEdit || poEditSaving),
@@ -999,7 +990,7 @@ const [totalCount, setTotalCount] = useState(0);
       const poNo = raw || "—";
       let card = byPoNo.get(poNo);
       if (!card) {
-        card = { poNo, clientPoDate: "", client: "", endUserClient: "", endUserPoNo: "", qty: 0, base: 0, gst: 0, total: 0, rowCount: 0 };
+        card = { poNo, clientPoDate: "", client: "", endUserClient: "", endUserPoNo: "", models: [], qty: 0, base: 0, gst: 0, total: 0, rowCount: 0 };
         byPoNo.set(poNo, card);
         cards.push(card);
       }
@@ -1013,6 +1004,8 @@ const [totalCount, setTotalCount] = useState(0);
       card.rowCount += 1;
       if (!card.clientPoDate && row.clientPoDate) card.clientPoDate = row.clientPoDate;
       if (!card.client && row.client) card.client = row.client;
+      const modelName = String(row.model || "").trim();
+      if (modelName && !card.models.includes(modelName)) card.models.push(modelName);
       if (!card.endUserClient && row.endUserClient) card.endUserClient = row.endUserClient;
       if (!card.endUserPoNo && row.endUserPoNo) card.endUserPoNo = row.endUserPoNo;
     });
@@ -1023,68 +1016,134 @@ const [totalCount, setTotalCount] = useState(0);
 
   const samePoNo = (row, poNo) => String(row?.poNo ?? "").trim() === String(poNo ?? "").trim();
 
-  const openPoEdit = (card) => {
-    const source = allMatchingRows.find((row) => samePoNo(row, card.poNo === "—" ? "" : card.poNo)) || {};
-    const values = Object.fromEntries(
-      PO_CARD_EDIT_FIELDS.map(({ key }) => [key, source[key] ?? ""])
-    );
+  const openPoEdit = async (card) => {
+    const poNo = card.poNo === "—" ? "" : card.poNo;
     setPoEditError("");
-    setPoEdit({ poNo: card.poNo === "—" ? "" : card.poNo, original: values, values });
+    setPoEdit({ poNo, lines: [] });
+    setPoEditLoading(true);
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "100", _fresh: String(Date.now()) });
+      if (poNo) params.set("q", poNo);
+      const response = await api.get(`${SALES_API_URL}?${params.toString()}`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Failed to load sales for editing.");
+      }
+      const matchingRows = (response.data.allRows || response.data.sales || []).filter((row) => samePoNo(row, poNo));
+      if (!matchingRows.length) {
+        throw new Error(`No sale lines found for Client PO ${poNo || "—"}.`);
+      }
+      setPoEdit((current) =>
+        current ? {
+          ...current,
+          lines: matchingRows.map((row) => ({
+            id: getRowId(row),
+            original: buildEditValues(row),
+            values: buildEditValues(row),
+          })),
+        } : current
+      );
+    } catch (error) {
+      setPoEdit(null);
+      await swalError("Edit failed", error?.response?.data?.message || error?.message || "Unable to load this Client PO.");
+    } finally {
+      setPoEditLoading(false);
+    }
   };
 
   const closePoEdit = () => {
-    if (poEditSaving) return;
+    if (poEditSaving || poEditLoading) return;
     setPoEdit(null);
     setPoEditError("");
   };
 
-  // Writes the changed PO fields to every sale line of that PO. The card only
-  // totals the current page, so all of the PO's lines are fetched first; a PO
-  // whose lines span pages is still updated in full.
+  const handlePoEditFieldChange = (lineIndex, event) => {
+    const { name, value } = event.target;
+    setPoEdit((current) => {
+      if (!current) return current;
+      const lines = [...current.lines];
+      const line = lines[lineIndex];
+      const previous = line.values;
+      const next = { ...previous };
+
+      if (name === "serialNumbers") {
+        next.serialNumbers = value.split(/[,\n]/).map((serial) => serial.trim()).filter(Boolean);
+        next.serial = next.serialNumbers.join(", ");
+      } else {
+        next[name] = name === "clientContact" ? value.replace(/\D/g, "").slice(0, 10) : value;
+      }
+      if (name === "model") {
+        const selectedModel = models.find((model) => model.name === value);
+        next.modelId = selectedModel?.id || "";
+        next.serialNumbers = Array.from({ length: Math.max(0, Number(previous.qty) || 0) }, () => "");
+        next.serial = "";
+      }
+      if (name === "qty") {
+        const qty = Math.max(0, Number(value) || 0);
+        next.serialNumbers = [...(previous.serialNumbers || [])].slice(0, qty);
+        while (next.serialNumbers.length < qty) next.serialNumbers.push("");
+        next.serial = next.serialNumbers.join(", ");
+      }
+      if (["unitCost", "qty", "gstRate"].includes(name)) {
+        next.value = calculatePoValue(next.unitCost, next.qty, next.gstRate);
+      }
+      if (["invoiceDate", "warrantyPeriod"].includes(name)) {
+        Object.assign(next, calculateWarrantyDates(next.invoiceDate, next.warrantyPeriod));
+      }
+      lines[lineIndex] = { ...line, values: next };
+      return { ...current, lines };
+    });
+  };
+
+  // Every existing line gets its own item block; shared-looking fields are
+  // kept per line so edits preserve differences already present in the data.
   const savePoEdit = async () => {
     if (!poEdit || poEditSaving) return;
-    const changes = Object.fromEntries(
-      PO_CARD_EDIT_FIELDS
-        .map(({ key }) => key)
-        .filter((key) => String(poEdit.values[key] ?? "").trim() !== String(poEdit.original[key] ?? "").trim())
-        .map((key) => [key, String(poEdit.values[key] ?? "").trim()])
-    );
-    if (!Object.keys(changes).length) {
-      setPoEditError("No changes to update.");
-      return;
+    const changedLines = [];
+    for (let index = 0; index < poEdit.lines.length; index += 1) {
+      const line = poEdit.lines[index];
+      const error = validateSaleForm(line.values, {
+        validateSerials: serialFieldsChanged(line.values, line.original),
+      });
+      if (error) {
+        setPoEditError(`Item ${index + 1}: ${error}`);
+        return;
+      }
+      const changes = Object.fromEntries(
+        Object.keys(line.values)
+          .filter((key) =>
+            key !== "value" &&
+            JSON.stringify(line.values[key]) !== JSON.stringify(line.original[key])
+          )
+          .map((key) => [key, line.values[key]])
+      );
+      if (Object.keys(changes).length) {
+        changes.date = line.values.date || line.values.clientPoDate;
+        changes.warrantyPeriod = line.values.warrantyPeriod ? Number(line.values.warrantyPeriod) : "";
+        changedLines.push({ id: line.id, changes });
+      }
     }
-    if ("poNo" in changes && !changes.poNo) {
-      setPoEditError("Client PO No cannot be empty.");
+    if (!changedLines.length) {
+      setPoEditError("No changes to update.");
       return;
     }
 
     setPoEditSaving(true);
     setPoEditError("");
     try {
-      const lookup = await api.get(SALES_API_URL, {
-        params: { q: poEdit.poNo, page: 1, limit: 100, _fresh: Date.now() },
-      });
-      const found = [...(lookup.data?.allRows || []), ...(lookup.data?.sales || [])];
-      const byId = new Map();
-      found.filter((row) => samePoNo(row, poEdit.poNo)).forEach((row) => {
-        const id = getRowId(row);
-        if (id) byId.set(id, row);
-      });
-      if (!byId.size) throw new Error(`No sale lines found for Client PO ${poEdit.poNo}.`);
-
-      for (const id of byId.keys()) {
-        const res = await api.put(`${SALES_API_URL}/${id}`, changes);
-        if (!res.data?.success) throw new Error(res.data?.message || "Failed to update the sale line.");
+      for (const line of changedLines) {
+        if (!line.id) throw new Error("A sale line is missing its record identifier.");
+        const res = await api.put(`${SALES_API_URL}/${line.id}`, line.changes);
+        if (!res.data?.success) throw new Error(res.data?.message || "Failed to update a sale line.");
       }
 
-      // Keep an opened PO open under its new number.
-      if ("poNo" in changes && selectedPoNo === poEdit.poNo) setSelectedPoNo(changes.poNo);
+      const renamedPo = poEdit.lines.find((line) => line.original.poNo !== line.values.poNo)?.values.poNo;
+      if (renamedPo && selectedPoNo === poEdit.poNo) setSelectedPoNo(renamedPo);
       setPoEditSaving(false);
       setPoEdit(null);
       await fetchRows({ silent: true });
       await swalSuccess(
-        "PO Updated",
-        `${byId.size} sale line${byId.size === 1 ? "" : "s"} of this PO ${byId.size === 1 ? "was" : "were"} updated.`
+        "Sales Updated",
+        `${changedLines.length} sale line${changedLines.length === 1 ? "" : "s"} updated.`
       );
     } catch (err) {
       setPoEditSaving(false);
@@ -1399,6 +1458,29 @@ const [totalCount, setTotalCount] = useState(0);
       <BackToDashboard visible={arrivedFromDashboard} />
       <div className="sales-toolbar">
         <div className="sales-toolbar-actions">
+          {!selectMode && (
+            <label className="sales-model-filter">
+              <span>Model</span>
+              <SearchableSelect
+                value={rowFilters.model || ""}
+                onChange={(model) => {
+                  setSelectedPoNo("");
+                  setRowFilters((prev) => {
+                    const { model: _currentModel, ...otherFilters } = prev;
+                    return model ? { ...otherFilters, model } : otherFilters;
+                  });
+                }}
+                options={[
+                  { value: "", label: "All models" },
+                  ...Array.from(new Set([
+                    ...(filterOptions.model || []),
+                    ...models.map((model) => String(model.name || "").trim()),
+                  ].filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((model) => ({ value: model, label: model })),
+                ]}
+                placeholder="All models"
+              />
+            </label>
+          )}
           {selectMode ? (
             <>
               <button type="button" className="sale-add-btn" onClick={toggleSelectAll}>
@@ -1545,6 +1627,10 @@ const [totalCount, setTotalCount] = useState(0);
                 <span className="po-card-detail-row">
                   <span className="po-card-detail-label">Client Name</span>
                   <span className="po-card-detail-value">{card.client || "—"}</span>
+                </span>
+                <span className="po-card-detail-row">
+                  <span className="po-card-detail-label">Model</span>
+                  <span className="po-card-detail-value">{card.models.join(", ") || "—"}</span>
                 </span>
                 {/* End Customer Name / PO No hidden on the cards (still in the
                     table and details). Uncomment to show them again.
@@ -1711,10 +1797,10 @@ const [totalCount, setTotalCount] = useState(0);
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={`Edit PO ${poEdit.poNo}`}
+            aria-label={`Edit sales for Client PO ${poEdit.poNo || "—"}`}
           >
             <div className="modal-header">
-              <h2>Edit PO {poEdit.poNo}</h2>
+              <h2>Edit Sale Register · Client PO {poEdit.poNo || "—"}</h2>
               <button type="button" className="modal-close" onClick={closePoEdit} aria-label="Close" disabled={poEditSaving}>
                 <X size={22} />
               </button>
@@ -1727,36 +1813,74 @@ const [totalCount, setTotalCount] = useState(0);
               }}
             >
               {poEditError && <div className="sale-form-error">{poEditError}</div>}
-              <div className="sale-form-section-title">PO Details (applied to every line of this PO)</div>
-              <div className="sale-form-grid">
-                {PO_CARD_EDIT_FIELDS.map((field) => (
-                  <label className="sale-field" key={field.key}>
-                    <span>{field.label}</span>
-                    {field.type === "date" ? (
-                      <DatePicker
-                        value={poEdit.values[field.key] || ""}
-                        onChange={(value) => setPoEdit((prev) => ({ ...prev, values: { ...prev.values, [field.key]: value } }))}
-                        ariaLabel={`Select ${field.label.toLowerCase()}`}
-                        popoverZIndex={130000}
-                      />
-                    ) : (
-                      <input
-                        value={poEdit.values[field.key] || ""}
-                        onChange={(e) => {
-                          const { value } = e.target;
-                          setPoEdit((prev) => ({ ...prev, values: { ...prev.values, [field.key]: value } }));
-                        }}
-                      />
-                    )}
-                  </label>
-                ))}
-              </div>
+              {poEditLoading ? (
+                <div className="sales-loading">
+                  <Loader2 size={26} className="spin" /> Loading all sale fields...
+                </div>
+              ) : (
+                <>
+                  <div className="sale-form-section-title">
+                    Items <span className="sale-register-edit-count">{poEdit.lines.length}</span>
+                  </div>
+                  {poEdit.lines.map((line, lineIndex) => {
+                    const sections = [
+                      { title: "Sale Details", fields: EXISTING_DETAIL_FIELDS },
+                      { title: "Dispatch Details", fields: DISPATCH_DETAIL_FIELDS },
+                      { title: "End Customer Details", fields: END_USER_DETAIL_FIELDS },
+                      { title: "Warranty Details", fields: WARRANTY_DETAIL_FIELDS },
+                      { title: "Financial Details", fields: FINANCIAL_DETAIL_FIELDS },
+                    ];
+                    return (
+                      <section className="sale-register-edit-item" key={line.id || lineIndex}>
+                        <div className="sale-form-section-title">
+                          Item {lineIndex + 1}
+                          {line.values.serialNumbers?.[0] ? ` · ${line.values.serialNumbers[0]}` : ""}
+                        </div>
+                        {sections.map((section) => (
+                          <React.Fragment key={section.title}>
+                            <div className="sale-register-edit-section">{section.title}</div>
+                            <div className="sale-form-grid">
+                              {section.fields.map((field) => (
+                                <label className={`sale-field${field.key === "serialNumbers" ? " sale-serial-field" : ""}`} key={field.key}>
+                                  <span>{field.label}</span>
+                                  {field.key === "serialNumbers" ? (
+                                    <textarea
+                                      className="sale-register-edit-serials"
+                                      value={(line.values.serialNumbers || []).join("\n")}
+                                      onChange={(event) =>
+                                        handlePoEditFieldChange(lineIndex, {
+                                          target: { name: field.key, value: event.target.value },
+                                        })
+                                      }
+                                      placeholder="Enter one serial number per line"
+                                    />
+                                  ) : (
+                                    renderDetailField(
+                                      field,
+                                      line.original,
+                                      line.values,
+                                      (event) => handlePoEditFieldChange(lineIndex, event),
+                                      true,
+                                      modelOptions,
+                                      modelsLoading
+                                    )
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </React.Fragment>
+                        ))}
+                      </section>
+                    );
+                  })}
+                </>
+              )}
             </form>
             <div className="modal-footer">
-              <button type="button" className="sale-btn-secondary" onClick={closePoEdit} disabled={poEditSaving}>
+              <button type="button" className="sale-btn-secondary" onClick={closePoEdit} disabled={poEditSaving || poEditLoading}>
                 Cancel
               </button>
-              <button type="button" className="sale-btn-primary" onClick={savePoEdit} disabled={poEditSaving}>
+              <button type="button" className="sale-btn-primary" onClick={savePoEdit} disabled={poEditSaving || poEditLoading}>
                 {poEditSaving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
                 {poEditSaving ? "Updating..." : "Update"}
               </button>

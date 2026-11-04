@@ -365,7 +365,7 @@ def create_invoice():
 _SEARCH_KEYS = ("phase", "invoice", "date", "po", "code", "desc", "qtyInv", "qtyRecv", "verifiedBy")
 
 # Fields the PageFilter dropdown offers (mirrors INVOICE_FILTER_FIELDS).
-_FILTER_FIELDS = frozenset({"phase", "invoice", "po", "code", "verifiedBy"})
+_FILTER_FIELDS = frozenset({"modelId", "phaseId", "phase", "invoice", "po", "code", "verifiedBy"})
 
 # Date columns the toolbar range may target. Keeps a hand-written `dateField`
 # from probing fields the endpoint does not expose.
@@ -472,14 +472,14 @@ def list_invoices():
 @invoice_bp.route("/invoices/groups", methods=["GET"])
 @cached_read("invoices-groups", ttl_seconds=120)
 def list_invoice_groups():
-    """Card view for the Invoices page: one card per phase, then per invoice.
-
-    Mirrors the PO Details drill-down (phase -> invoice -> line items) and
-    groups case-insensitively so `po-12` / `PO-12` land on the same card.
-    """
+    """Card data for the Models -> Phases -> invoices -> line items drill-down."""
     try:
         from firebase_config import db
         podetails_collection = db.collection("po_details")
+        model_names = {
+            doc.id: _text((doc.to_dict() or {}).get("name"))
+            for doc in db.collection("models").stream()
+        }
 
         # First pass: collect all invoices and their PO numbers
         invoice_pos = {}
@@ -487,11 +487,18 @@ def list_invoice_groups():
         for doc in invoices_collection.order_by("createdAt", direction="DESCENDING").stream():
             row = _serialize(doc)
             phase_name = _text(row.get("phase")) or "Unassigned"
+            model_id = _text(row.get("modelId"))
+            phase_id = _text(row.get("phaseId"))
+            model_name = model_names.get(model_id, "") or "Unassigned Model"
             invoice_name = _text(row.get("invoice")) or "Untitled Invoice"
             date = _text(row.get("date"))
             po = _text(row.get("po"))
 
-            group = groups.setdefault(phase_name.lower(), {
+            group_key = (model_id, phase_id or phase_name.lower())
+            group = groups.setdefault(group_key, {
+                "modelId": model_id,
+                "modelName": model_name,
+                "phaseId": phase_id,
                 "phase": phase_name,
                 "date": date,
                 "rowCount": 0,
@@ -501,6 +508,7 @@ def list_invoice_groups():
 
             invoice = group["invoices"].setdefault(invoice_name.lower(), {
                 "invoice": invoice_name,
+                "editRowId": row.get("id"),
                 "date": date,
                 "po": po,
                 "rowCount": 0,
@@ -537,7 +545,7 @@ def list_invoice_groups():
             )
             payload.append(group)
 
-        payload.sort(key=lambda item: item["phase"].lower())
+        payload.sort(key=lambda item: (item["modelName"].lower(), item["phase"].lower()))
 
         return jsonify({"success": True, "phases": payload}), 200
     except Exception as exc:

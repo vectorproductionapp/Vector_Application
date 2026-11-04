@@ -140,7 +140,7 @@ export default function Model() {
     loadModels();
   }, [loadModels]);
 
-  // A model created, renamed, or deleted anywhere arrives as a WebSocket
+  // A model created, renamed, or deleted anywhere arrives as a live-update
   // notice: reload the card grid without a page refresh.
   useRealtime(["models"], loadModels, {
     guard: () => !(showModal || deleting),
@@ -188,6 +188,7 @@ export default function Model() {
   const handleRenameModel = async (m) => {
     const { value: newName } = await Swal.fire({
       title: "Rename Model",
+      width: 380,
       input: "text",
       inputLabel: "New name",
       inputValue: m.name,

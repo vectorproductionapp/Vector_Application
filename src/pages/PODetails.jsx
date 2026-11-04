@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import api from "../components/Api";
 import { useRealtime } from "../components/RealtimeProvider";
 import Swal from "sweetalert2";
-import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch, AlertTriangle } from "lucide-react";
+import { Plus, X, Save, Loader2, RefreshCw, Trash2, Check, MoreVertical, Pencil, Upload, Download, ArrowLeft, FileText, GitBranch, Layers, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import CardDownloadButton from "../components/CardDownloadButton";
 import GlobalSearchResults from "../components/GlobalSearchResults";
@@ -15,7 +15,7 @@ import ExportPdfButton from "../components/ExportPdfButton";
 import DataTable from "../components/DataTable";
 import ListPagination from "../components/ListPagination";
 import CardPagination, { useCardPagination } from "../components/CardPagination";
-import AttachmentsEditor, { attachmentsOf } from "../components/AttachmentsEditor";
+import AttachmentsEditor, { attachmentsOf, mergeAttachments } from "../components/AttachmentsEditor";
 import { applyColumnFormulas, applyDateColumnFormats, toDateCellDate } from "../components/BulkUploadModal";
 import ImageStrip from "../components/ImageStrip";
 import "../components/ImageAttachment.css";
@@ -765,15 +765,25 @@ export default function PODetails() {
   // on screen. Used only by the export so a filtered export is complete.
   const [exportRows, setExportRows] = useState([]);
 
-  // Card drill-down, mirroring Models -> Phases -> table:
-  // PO cards first, then the phases inside one PO, then the line-item table.
+  // Card drill-down: Models -> Phases -> POs -> line items.
   const [phaseCards, setPhaseCards] = useState([]);
+  const [models, setModels] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(true);
   const [cardsError, setCardsError] = useState("");
-  // A refresh must land on the same drill-down: phase cards -> PO cards ->
-  // table, so the selection lives in this tab's sessionStorage.
-  const [selectedPo, setSelectedPo] = useState(() => readDrill(DRILL_KEY)?.po ?? null);
-  const [selectedPhase, setSelectedPhase] = useState(() => readDrill(DRILL_KEY)?.phase ?? null);
+  const [selectedModelKey, setSelectedModelKey] = useState(() => readDrill(DRILL_KEY)?.modelKey ?? null);
+  const [selectedModelName, setSelectedModelName] = useState(() => readDrill(DRILL_KEY)?.modelName ?? null);
+  const [selectedPo, setSelectedPo] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.po ?? null : null;
+  });
+  const [selectedPhase, setSelectedPhase] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.phase ?? null : null;
+  });
+  const [selectedPhaseId, setSelectedPhaseId] = useState(() => {
+    const drill = readDrill(DRILL_KEY);
+    return drill?.modelKey ? drill.phaseId ?? null : null;
+  });
 
   // One search box in the header serves every level of the drill-down: the
   // phase grid, the PO grid inside a phase, and the line-item table inside a PO.
@@ -783,21 +793,28 @@ export default function PODetails() {
     ? "Search PO Details..."
     : selectedPhase
       ? "Search POs in this phase..."
-      : "Search phases or PO numbers...";
+      : selectedModelKey
+        ? "Search phases or PO numbers..."
+        : "Search models, phases or PO numbers...";
   const [query, setQuery] = useHeaderSearch("po-details", searchPlaceholder, true);
 
   useEffect(() => {
     writeDrill(
       DRILL_KEY,
-      selectedPo || selectedPhase ? { po: selectedPo, phase: selectedPhase } : null
+      selectedModelKey
+        ? { modelKey: selectedModelKey, modelName: selectedModelName, po: selectedPo, phase: selectedPhase, phaseId: selectedPhaseId }
+        : null
     );
-  }, [selectedPo, selectedPhase]);
+  }, [selectedModelKey, selectedModelName, selectedPo, selectedPhase, selectedPhaseId]);
 
   // Clicking "PO Details" in the sidebar re-opens the phase card grid.
   useEffect(() => {
     const resetDrill = () => {
       setSelectedPo(null);
       setSelectedPhase(null);
+      setSelectedPhaseId(null);
+      setSelectedModelKey(null);
+      setSelectedModelName(null);
     };
     window.addEventListener("vector:po-reset", resetDrill);
     return () => window.removeEventListener("vector:po-reset", resetDrill);
@@ -864,6 +881,7 @@ export default function PODetails() {
   // line below it.
   const [detailsItemDrafts, setDetailsItemDrafts] = useState([]);
   const detailsInitialDraftsRef = useRef([]);
+  const detailsOriginalRowsRef = useRef(new Map());
   const detailsLastItemRef = useRef(null);
 
   const previewDetailsRow = useMemo(() => {
@@ -908,7 +926,7 @@ export default function PODetails() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const openDetails = (row) => {
+  const openDetails = async (row) => {
     setDetailsRow(row);
     setEditForm(buildEditForm(row));
     setDetailsEditMode(false);
@@ -916,23 +934,77 @@ export default function PODetails() {
     setDetailsClosing(false);
     setDetailsOpen(true);
 
-    // List rows only advertise that files exist; pull them for the modal so the
-    // preview is there and saving the form cannot drop what it did not load.
+    // Files may live on the PO header rather than this line, so load through
+    // the bulk endpoint that resolves the shared header attachments.
     if (row?.hasImage && row?.id) {
-      api
-        .get(`${API_BASE_URL}/po-details/${row.id}`)
-        .then((res) => {
-          if (!res.data?.success) return;
-          const files = attachmentsOf(res.data.po);
-          if (!files.length) return;
-          setDetailsRow((current) =>
-            current && current.id === row.id ? { ...current, attachments: files } : current
-          );
-          setEditForm((current) => ({ ...current, attachments: files }));
-        })
-        .catch(() => {
-          /* attachments are optional; the rest of the modal still works */
-        });
+      try {
+        const response = await api.get(
+          `${API_BASE_URL}/po-details/images?ids=${encodeURIComponent(row.id)}`,
+          { __vectorNoCache: true }
+        );
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || "Failed to load PO attachments.");
+        }
+        const files = attachmentsOf({ attachments: response.data.attachments?.[row.id] || [] });
+        setDetailsRow((current) =>
+          current && current.id === row.id ? { ...current, attachments: files } : current
+        );
+        setEditForm((current) => ({ ...current, attachments: files }));
+      } catch (error) {
+        setDetailsError(extractErrorMessage(error, "Unable to load PO attachments."));
+      }
+    }
+  };
+
+  const editPoCard = async (po) => {
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "100" });
+      if (selectedPhaseCard?.modelId) {
+        params.append("filterField", "modelId");
+        params.append("filterValue", selectedPhaseCard.modelId);
+      }
+      if (selectedPhaseCard?.phaseId) {
+        params.append("filterField", "phaseId");
+        params.append("filterValue", selectedPhaseCard.phaseId);
+      } else {
+        params.append("filterField", "phase");
+        params.append("filterValue", selectedPhase === "Unassigned" ? "" : selectedPhase);
+      }
+      params.append("filterField", "po");
+      params.append("filterValue", po.po);
+      const response = await api.get(`${API_BASE_URL}/po-details?${params.toString()}`, { __vectorNoCache: true });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Failed to load PO lines for editing.");
+      }
+      const rows = response.data.allRows || response.data.poDetails || [];
+      if (!rows.length) throw new Error("No PO lines were found for editing.");
+      let row = rows[0];
+      const attachmentIds = rows.map((item) => getRowId(item)).filter(Boolean);
+      const attachmentResponse = await api.get(
+        `${API_BASE_URL}/po-details/images?ids=${encodeURIComponent(attachmentIds.join(","))}`,
+        { __vectorNoCache: true }
+      );
+      if (!attachmentResponse.data?.success) {
+        throw new Error(attachmentResponse.data?.message || "Failed to load PO attachments.");
+      }
+      const attachments = mergeAttachments(
+        ...Object.values(attachmentResponse.data.attachments || {})
+      );
+      row = { ...row, attachments };
+      const drafts = rows.map(buildEditLineDraft);
+      detailsOriginalRowsRef.current = new Map(rows.map((item) => [getRowId(item), item]));
+      setDetailsRow(row);
+      setEditForm(buildEditForm(row));
+      setDetailsItemDrafts(drafts);
+      detailsInitialDraftsRef.current = drafts;
+      setDetailsEditMode(true);
+      setDetailsError("");
+      setDetailsClosing(false);
+      setDetailsOpen(true);
+      setMenuOpen(false);
+      if (row.modelId && row.phaseId) fetchBoqItems(row.modelId, row.phaseId);
+    } catch (error) {
+      await swalError("Edit failed", extractErrorMessage(error, "Unable to open this PO for editing."));
     }
   };
 
@@ -946,6 +1018,7 @@ export default function PODetails() {
       setEditForm({});
       setDetailsItemDrafts([]);
       detailsInitialDraftsRef.current = [];
+      detailsOriginalRowsRef.current = new Map();
       setDetailsEditMode(false);
       setDetailsError("");
     }, 200);
@@ -990,11 +1063,21 @@ export default function PODetails() {
     try {
       // Add timestamp to bypass server-side cache
       const timestamp = Date.now();
-      const res = await api.get(`${API_BASE_URL}/po-details/groups?_=${timestamp}`);
-      if (!res.data.success) {
-        throw new Error(res.data.message || "Failed to load phase cards");
+      const [groupResponse, modelResponse] = await Promise.all([
+        api.get(`${API_BASE_URL}/po-details/groups?_=${timestamp}`),
+        api.get(`${API_BASE_URL}/models`, { __vectorNoCache: true }),
+      ]);
+      if (!groupResponse.data.success) {
+        throw new Error(groupResponse.data.message || "Failed to load phase cards");
       }
-      setPhaseCards(res.data.phases || []);
+      if (!modelResponse.data.success) {
+        throw new Error(modelResponse.data.message || "Failed to load models");
+      }
+      setModels(modelResponse.data.models || []);
+      setPhaseCards((groupResponse.data.phases || []).map((card) => ({
+        ...card,
+        modelKey: card.modelId || "__unassigned__",
+      })));
     } catch (err) {
       setCardsError(extractErrorMessage(err, "Failed to load phase cards."));
     } finally {
@@ -1058,11 +1141,14 @@ export default function PODetails() {
         ["po", selectedPo],
         ["phase", selectedPhase],
       ];
+      if (selectedModelKey && selectedModelKey !== "__unassigned__") pairs.push(["modelId", selectedModelKey]);
+      if (selectedPhaseId) pairs.push(["phaseId", selectedPhaseId]);
       PO_FILTER_FIELDS.forEach((field) => {
         const selected = rowFilters[field.key];
         if (String(selected ?? "") !== "") pairs.push([field.key, String(selected)]);
       });
       pairs.forEach(([field, value]) => {
+        if (value === null || value === undefined || value === "") return;
         params.append("filterField", field);
         params.append("filterValue", value);
       });
@@ -1099,12 +1185,12 @@ export default function PODetails() {
     } finally {
       if (!silent) setRowsLoading(false);
     }
-  }, [page, pageSize, query, rowFilters, selectedPo, selectedPhase, appliedFromDate, appliedToDate]);
+  }, [page, pageSize, query, rowFilters, selectedPo, selectedPhase, selectedModelKey, selectedPhaseId, appliedFromDate, appliedToDate]);
 
   // Scope (PO card / phase card) and toolbar filters both come from the API,
   // so changing either restarts at page 1 instead of showing an empty page.
   const filterKey = `${query.trim()}|${JSON.stringify(rowFilters)}|${appliedFromDate}|${appliedToDate}`;
-  const scopeKey = `${selectedPo || ""}::${selectedPhase || ""}`;
+  const scopeKey = `${selectedModelKey || ""}::${selectedPhaseId || ""}:${selectedPhase || ""}::${selectedPo || ""}`;
   const prevFilterKeyRef = useRef(filterKey);
   const prevScopeKeyRef = useRef(scopeKey);
 
@@ -1145,7 +1231,7 @@ export default function PODetails() {
     }
   }, [fetchPhaseCards, fetchPoDetails, selectedPo, selectedPhase, detailsOpen, detailsRow, detailsEditMode]);
 
-  // A save anywhere on this scope arrives as a WebSocket notice: refresh the
+  // A save anywhere on this scope arrives as a live-update notice: refresh the
   // phase cards and, when a drill-down is open, the table beneath it.  Nothing
   // runs while a form is open, so a background change never yanks rows away.
   useRealtime(["po_details"], () => refreshData({ silent: true }), {
@@ -1161,10 +1247,20 @@ export default function PODetails() {
     setMenuOpen(false);
   };
 
-  // Drill-down order: phase -> PO -> line items, so opening a PO keeps the
-  // phase it belongs to as the scope.
-  const openPhase = (phase) => {
-    setSelectedPhase(phase);
+  const openModel = (card) => {
+    setSelectedModelKey(card.id || card.modelKey);
+    setSelectedModelName(card.name || card.modelName);
+    setSelectedPhase(null);
+    setSelectedPhaseId(null);
+    setSelectedPo(null);
+    resetFilters();
+  };
+
+  const openPhase = (phaseCard) => {
+    setSelectedPhase(phaseCard.phase);
+    setSelectedPhaseId(phaseCard.phaseId || null);
+    setSelectedModelKey(phaseCard.modelKey || selectedModelKey);
+    setSelectedModelName(phaseCard.modelName || selectedModelName);
     setSelectedPo(null);
     resetFilters();
   };
@@ -1184,9 +1280,18 @@ export default function PODetails() {
   const backFromPhase = () => {
     setSelectedPo(null);
     setSelectedPhase(null);
+    setSelectedPhaseId(null);
     resetFilters();
   };
 
+  const backFromModel = () => {
+    setSelectedPo(null);
+    setSelectedPhase(null);
+    setSelectedPhaseId(null);
+    setSelectedModelKey(null);
+    setSelectedModelName(null);
+    resetFilters();
+  };
   useEffect(() => {
     if (!successMessage) return;
     const timer = setTimeout(() => setSuccessMessage(""), 4000);
@@ -1849,6 +1954,7 @@ export default function PODetails() {
   const startEditingDetails = () => {
     if (!detailsRow) return;
     const savedLine = buildEditLineDraft(detailsRow);
+    detailsOriginalRowsRef.current = new Map([[getRowId(detailsRow), detailsRow]]);
     setEditForm(buildEditForm(detailsRow));
     setDetailsItemDrafts([savedLine]);
     detailsInitialDraftsRef.current = [savedLine];
@@ -1865,6 +1971,7 @@ export default function PODetails() {
     if (detailsRow) {
       setEditForm(buildEditForm(detailsRow));
       const savedLine = buildEditLineDraft(detailsRow);
+      detailsOriginalRowsRef.current = new Map([[getRowId(detailsRow), detailsRow]]);
       setDetailsItemDrafts([savedLine]);
       detailsInitialDraftsRef.current = [savedLine];
     }
@@ -1990,22 +2097,20 @@ export default function PODetails() {
       for (const draft of detailsItemDrafts) {
         const line = { ...draft, ...header };
         if (draft.id) {
-          // Only the saved record is updated, and only with what changed.
+          const original = detailsOriginalRowsRef.current.get(draft.id) || detailsRow;
           const payload = {};
-          if (line.po !== detailsRow.po) payload.po = line.po;
-          if (line.supplier !== (detailsRow.supplier || "")) payload.supplier = line.supplier;
-          if (line.date !== toDateInputValue(detailsRow.date)) payload.date = line.date;
-          if (String(line.code) !== String(detailsRow.code || "")) {
-            payload.code = line.code;
-            payload.make = line.make;
-            payload.model = line.model;
-            payload.desc = line.desc;
-          }
-          if (String(line.qty) !== String(detailsRow.qty ?? "")) payload.qty = line.qty;
-          if (String(line.rate) !== String(detailsRow.rate ?? "")) payload.rate = line.rate;
-          if (String(line.gstRate) !== String(detailsRow.gstRate ?? "")) payload.gstRate = line.gstRate;
-          if (line.status !== (detailsRow.status || "")) payload.status = line.status || null;
-          if (line.expectedDeliveryDate !== toDateInputValue(detailsRow.expectedDeliveryDate)) {
+          if (line.po !== original.po) payload.po = line.po;
+          if (line.supplier !== (original.supplier || "")) payload.supplier = line.supplier;
+          if (line.date !== toDateInputValue(original.date)) payload.date = line.date;
+          if (String(line.code) !== String(original.code || "")) payload.code = line.code;
+          if (String(line.make) !== String(original.make || "")) payload.make = line.make;
+          if (String(line.model) !== String(original.model || "")) payload.model = line.model;
+          if (String(line.desc) !== String(original.desc || "")) payload.desc = line.desc;
+          if (String(line.qty) !== String(original.qty ?? "")) payload.qty = line.qty;
+          if (String(line.rate) !== String(original.rate ?? "")) payload.rate = line.rate;
+          if (String(line.gstRate) !== String(original.gstRate ?? "")) payload.gstRate = line.gstRate;
+          if (line.status !== (original.status || "")) payload.status = line.status || null;
+          if (line.expectedDeliveryDate !== toDateInputValue(original.expectedDeliveryDate)) {
             payload.expectedDeliveryDate = line.expectedDeliveryDate || null;
           }
           if (Object.keys(payload).length) {
@@ -2040,6 +2145,7 @@ export default function PODetails() {
 
       setDetailsItemDrafts([]);
       detailsInitialDraftsRef.current = [];
+      detailsOriginalRowsRef.current = new Map();
       setDetailsEditMode(false);
       await swalSuccess(
         "PO Detail Updated",
@@ -2323,20 +2429,42 @@ export default function PODetails() {
   const selectedPhaseCard = useMemo(
     () =>
       phaseCards.find(
-        (card) => String(card.phase).toLowerCase() === String(selectedPhase || "").toLowerCase()
+        (card) =>
+          card.modelKey === selectedModelKey &&
+          (selectedPhaseId
+            ? String(card.phaseId || "") === String(selectedPhaseId)
+            : String(card.phase).toLowerCase() === String(selectedPhase || "").toLowerCase())
       ) || null,
-    [phaseCards, selectedPhase]
+    [phaseCards, selectedModelKey, selectedPhaseId, selectedPhase]
   );
 
-  // The card grids come from /po-details/groups, which returns every phase and
-  // PO unpaginated, so filtering client-side is complete - no search can miss a
-  // card that lives off-screen. The text itself lives in the top header, next to
-  // the profile menu, and both card levels read the same `query` the table
-  // uses, because the header box is claimed once for the whole drill-down.
+  const visibleModelCards = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((model) =>
+      String(model.name || "").toLowerCase().includes(q) ||
+      phaseCards.some((phase) =>
+        phase.modelId === model.id && (
+        String(phase.phase || "").toLowerCase().includes(q) ||
+        (phase.pos || []).some((po) =>
+          String(po.po || "").toLowerCase().includes(q) ||
+          String(po.supplier || "").toLowerCase().includes(q)
+        )
+        )
+      )
+    );
+  }, [models, phaseCards, query]);
+  const { pageItems: pagedModelCards, pagerProps: modelCardPager } = useCardPagination(visibleModelCards, query.trim());
+
+  const modelPhaseCards = useMemo(
+    () => phaseCards.filter((card) => card.modelKey === selectedModelKey),
+    [phaseCards, selectedModelKey]
+  );
+
   const visiblePhaseCards = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return phaseCards;
-    return phaseCards.filter((card) => {
+    if (!q) return modelPhaseCards;
+    return modelPhaseCards.filter((card) => {
       // A phase also matches when one of its PO numbers matches, so typing a PO
       // no finds the phase that has to be opened first.
       if (String(card.phase || "").toLowerCase().includes(q)) return true;
@@ -2345,8 +2473,8 @@ export default function PODetails() {
         String(po.supplier || "").toLowerCase().includes(q)
       );
     });
-  }, [phaseCards, query]);
-  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, query.trim());
+  }, [modelPhaseCards, query]);
+  const { pageItems: pagedPhaseCards, pagerProps: phaseCardPager } = useCardPagination(visiblePhaseCards, `${selectedModelKey}|${query.trim()}`);
 
   const visiblePoCards = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -2358,8 +2486,10 @@ export default function PODetails() {
   }, [selectedPhaseCard, query]);
   const { pageItems: pagedPoCards, pagerProps: poCardPager } = useCardPagination(visiblePoCards, `${selectedPhase}|${query.trim()}`);
 
-  const viewTitle = !selectedPhase
+  const viewTitle = !selectedModelKey
     ? "PO Details"
+    : !selectedPhase
+      ? selectedModelName
     : !selectedPo
       ? selectedPhase
       : `${selectedPhase} · PO ${selectedPo}`;
@@ -2368,11 +2498,11 @@ export default function PODetails() {
     <div className="po-page">
       <div className="po-toolbar">
         <div className="po-toolbar-left">
-          {selectedPhase && (
+          {selectedModelKey && (
             <button
               type="button"
               className="po-back-btn"
-              onClick={selectedPo ? backFromPo : backFromPhase}
+              onClick={selectedPo ? backFromPo : selectedPhase ? backFromPhase : backFromModel}
             >
               <ArrowLeft size={16} /> Back
             </button>
@@ -2472,7 +2602,55 @@ export default function PODetails() {
         </div>
       )}
 
-      {!selectedPhase ? (
+      {!selectedModelKey ? (
+        cardsLoading ? (
+          <div className="po-loading">
+            <Loader2 size={28} className="spin" />
+            <span>Loading model cards...</span>
+          </div>
+        ) : cardsError ? (
+          <div className="po-load-error">
+            <div className="po-load-error-actions">
+              <span>{cardsError}</span>
+              <button type="button" className="po-btn-secondary" onClick={fetchPhaseCards}>
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
+          </div>
+        ) : models.length === 0 ? (
+          <div className="po-empty-state">
+            <span>No PO Details yet. Click "Create PO" to add the first record.</span>
+          </div>
+        ) : visibleModelCards.length === 0 ? (
+          <div className="po-empty-state">
+            <span>No models, phases or PO numbers match "{query.trim()}".</span>
+          </div>
+        ) : (
+          <>
+            <div className="model-grid">
+              {pagedModelCards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="model-card po-card"
+                  onClick={() => openModel(card)}
+                >
+                  <div className="model-card-heading-row">
+                    <div className="model-card-icon"><Layers size={18} /></div>
+                    <span className="model-card-name">{card.name}</span>
+                  </div>
+                  {card.date && (
+                    <span className="model-card-time">
+                      {new Date(card.date).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <CardPagination {...modelCardPager} />
+          </>
+        )
+      ) : selectedModelKey && !selectedPhase ? (
         cardsLoading ? (
           <div className="po-loading">
             <Loader2 size={28} className="spin" />
@@ -2501,14 +2679,14 @@ export default function PODetails() {
           <div className="model-grid">
             {pagedPhaseCards.map((card) => (
               <button
-                key={card.phase}
+                key={`${card.modelKey}:${card.phaseId || card.phase}`}
                 type="button"
                 className="model-card po-card"
-                onClick={() => openPhase(card.phase)}
+                onClick={() => openPhase(card)}
               >
                 <CardDownloadButton
                   category="PO"
-                  match={(item) => inPhaseNamed(item, card.phase)}
+                  match={(item) => inPhaseNamed(item, card.phase, card.modelId, card.phaseId)}
                   label={`Download ${card.phase} PO files`}
                   emptyText={`No PO files have been uploaded in ${card.phase}.`}
                   folderName={`${card.phase} PO files`}
@@ -2560,9 +2738,29 @@ export default function PODetails() {
                 className="model-card po-card"
                 onClick={() => openPo(po.po)}
               >
+                <span
+                  className="model-card-edit"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Edit PO ${po.po}`}
+                  title={`Edit PO ${po.po}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    editPoCard(po);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      editPoCard(po);
+                    }
+                  }}
+                >
+                  <Pencil size={14} />
+                </span>
                 <CardDownloadButton
                   category="PO"
-                  match={(item) => isReference(item, po.po, selectedPhase)}
+                  match={(item) => isReference(item, po.po, selectedPhase, selectedPhaseCard?.modelId, selectedPhaseCard?.phaseId)}
                   label={`Download PO ${po.po} files`}
                   emptyText={`No files have been uploaded for PO ${po.po}.`}
                   folderName={`PO ${po.po}`}
@@ -2735,22 +2933,40 @@ export default function PODetails() {
           screen, the open phase on its PO cards. View opens the PO. */}
       {!selectedPo && (
         <GlobalSearchResults
-          key={selectedPhase || "all-phases"}
+          key={`${selectedModelKey || "all-models"}|${selectedPhaseId || selectedPhase || "all-phases"}`}
           query={query}
           noun="PO lines"
           columns={columns}
           load={async (q) => {
             const params = new URLSearchParams({ q, page: "1", limit: "100" });
+            if (selectedModelKey && selectedModelKey !== "__unassigned__") {
+              params.append("filterField", "modelId");
+              params.append("filterValue", selectedModelKey);
+            }
             if (selectedPhase) {
               params.append("filterField", "phase");
               params.append("filterValue", selectedPhase);
+            }
+            if (selectedPhaseId) {
+              params.append("filterField", "phaseId");
+              params.append("filterValue", selectedPhaseId);
             }
             const res = await api.get(`${API_BASE_URL}/po-details?${params.toString()}`, { __vectorNoCache: true });
             if (!res.data.success) throw new Error(res.data.message || "Search failed");
             return { rows: res.data.poDetails || [], total: res.data.pagination?.totalCount };
           }}
           onOpen={(row) => {
-            if (!selectedPhase) openPhase(row.phase);
+            const phaseCard = phaseCards.find((card) =>
+              row.phaseId
+                ? card.phaseId === row.phaseId && card.modelId === row.modelId
+                : card.phase.toLowerCase() === String(row.phase || "").toLowerCase() &&
+                  (!row.modelId || card.modelId === row.modelId)
+            );
+            if (phaseCard) {
+              const modelCard = models.find((card) => card.id === phaseCard.modelId);
+              if (modelCard) openModel(modelCard);
+              openPhase(phaseCard);
+            }
             openPo(row.po);
           }}
         />

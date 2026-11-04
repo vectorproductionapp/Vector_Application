@@ -1,6 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useDashboardDeepLink from "../components/useDashboardDeepLink";
+import { useModelSelection } from "../context/ModelSelectionContext";
 
 import { createPortal } from "react-dom";
 import api from "../components/Api";
@@ -45,7 +46,7 @@ import DateRangeFilter from "../components/DateRangeFilter";
 import FilterModal, { countActiveFilters, toFilterParams } from "../components/FilterModal";
 
 import ExportPdfButton from "../components/ExportPdfButton";
-import { exportQcReportToPdf, prepareQcReportPdf } from "../utils/exportPdf";
+import { exportQcReportToPdf, exportTableToExcel, prepareQcReportPdf } from "../utils/exportPdf";
 import { QC_INSPECTION_ITEMS, VECTOR_PDF_LOGO_URL, isQcInspectionComplete } from "../utils/qcInspection";
 
 import DataTable from "../components/DataTable";
@@ -557,6 +558,7 @@ function getRowId(row) {
 
 export default function DailyProduction() {
   const { role, name: currentUserName, userId: currentUserId } = useAuth();
+  const { selectedModel, setSelectedModel } = useModelSelection();
   const chartTheme = useThemeColors();
   const isRegularUser = role === "user";
   const isProductionIncharge = role === "production_incharge";
@@ -567,7 +569,31 @@ export default function DailyProduction() {
   const [query] = useHeaderSearch("daily-production", "Search Assembly Units...");
 
   // One entry per filterable field; a missing key means "All" for that field.
-  const [rowFilters, setRowFilters] = useState({});
+  const [rowFilters, setRowFilters] = useState(() => (selectedModel ? { model: selectedModel } : {}));
+
+  useEffect(() => {
+    setRowFilters((current) => {
+      if (current.model === selectedModel) return current;
+      const next = { ...current };
+      if (selectedModel) next.model = selectedModel;
+      else delete next.model;
+      return next;
+    });
+  }, [selectedModel]);
+
+  const handleRowFiltersChange = (nextFilters) => {
+    setRowFilters(nextFilters);
+    setSelectedModel(nextFilters.model || "");
+  };
+  const handleModelFilterChange = (value) => {
+    setSelectedModel(value || "");
+    setRowFilters((current) => {
+      const next = { ...current };
+      if (value) next.model = value;
+      else delete next.model;
+      return next;
+    });
+  };
 
   // A dashboard KPI card can deep-link here with `?field=<key>&value=<v>` to
   // open the table already narrowed (e.g. QC Failed -> qc=Failed). The field is
@@ -581,13 +607,16 @@ export default function DailyProduction() {
     (patch) => {
       const [field, value] = Object.entries(patch)[0] || [];
       if (field) setDashboardFocus({ field, value });
+      if (Object.prototype.hasOwnProperty.call(patch, "model")) {
+        setSelectedModel(patch.model || "");
+      }
       setRowFilters((prev) => ({ ...prev, ...patch }));
     }
   );
   const dashboardHeading = arrivedFromDashboard && dashboardFocus
     && rowFilters[dashboardFocus.field] === dashboardFocus.value
     ? (STATUS_CARDS.find((card) => card.field === dashboardFocus.field && card.value === dashboardFocus.value)?.label
-      || dashboardFocus.value)
+      || (dashboardFocus.value === "Passed / Failed" ? "QC Passed & Failed (first-pass yield)" : dashboardFocus.value))
     : "";
 
   // A status card filters on `stage` or `qc`. Only one value of each can be
@@ -627,7 +656,9 @@ export default function DailyProduction() {
   const [rows, setRows] = useState([]);
   // Every unit matching the active search/filters/date range, not just the page
   // on screen. Used only by the export so a filtered export is complete.
-  const [exportRows, setExportRows] = useState([]);
+  // Search/filter params of the table's last load (without paging), reused
+  // by Export Excel to fetch every matching unit only when it is needed.
+  const assemblyQueryRef = useRef("");
   const [productionStats, setProductionStats] = useState(null);
   const [expandedGraph, setExpandedGraph] = useState(null);
   const [graphYear, setGraphYear] = useState("all");
@@ -767,6 +798,14 @@ export default function DailyProduction() {
         }
       }
 
+      // The table needs only this page; every matching unit (`allRows`) is
+      // fetched when the user exports, not on every load.
+      const exportQuery = new URLSearchParams(params);
+      exportQuery.delete("page");
+      exportQuery.delete("limit");
+      assemblyQueryRef.current = exportQuery.toString();
+      params.set("includeAllRows", "0");
+
       const res = await api.get(`${API_BASE_URL}/assembly?${params.toString()}`);
 
       if (!res.data.success) {
@@ -776,8 +815,6 @@ export default function DailyProduction() {
       }
 
       setRows(res.data.assemblyUnits || []);
-      // Falls back to the page when an older backend omits the full set.
-      setExportRows(res.data.allRows || res.data.assemblyUnits || []);
       setFilterOptions(res.data.filterOptions || {});
       // Older backends omit the card counts; fall back to zeros rather than
       // undefined so the cards render instead of showing "undefined units".
@@ -1045,10 +1082,17 @@ export default function DailyProduction() {
   // reports it back, so the export can be written in the order on screen.
   const [tableSort, setTableSort] = useState(null);
 
-  const exportTableRows = useMemo(
-    () => sortRows(exportRows, columns, tableSort),
-    [exportRows, tableSort]
-  );
+  // Export Excel: every unit matching the current search/filters, in the
+  // order on screen.
+  const exportAllAssemblyRows = async () => {
+    const params = new URLSearchParams(assemblyQueryRef.current);
+    params.set("page", "1");
+    params.set("limit", "1");
+    params.set("includeAllRows", "1");
+    const res = await api.get(`${API_BASE_URL}/assembly?${params.toString()}`, { __vectorBackground: true });
+    const allRows = res.data.allRows || res.data.assemblyUnits || [];
+    exportTableToExcel({ title: "Daily Production", columns, rows: sortRows(allRows, columns, tableSort) });
+  };
 
   const openAddModal = () => {
 
@@ -2100,6 +2144,18 @@ export default function DailyProduction() {
 </section>
 <div className="production-toolbar">
         <div className="production-toolbar-actions">
+          <label className="production-model-filter">
+            <span>Model</span>
+            <SearchableSelect
+              value={rowFilters.model || ""}
+              onChange={handleModelFilterChange}
+              options={[
+                { value: "", label: "All models" },
+                ...(filterOptions.model || []).map((model) => ({ value: model, label: model })),
+              ]}
+              placeholder="All models"
+            />
+          </label>
 
           {selectMode ? (
 <>
@@ -2231,7 +2287,7 @@ export default function DailyProduction() {
 <div className="panel">
         <div className="table-controls-row">
           <div className="table-controls-primary">
-            <FilterModal rows={rows} options={filterOptions} fields={PRODUCTION_FILTER_FIELDS} value={rowFilters} onChange={setRowFilters} />
+            <FilterModal rows={rows} options={filterOptions} fields={PRODUCTION_FILTER_FIELDS} value={rowFilters} onChange={handleRowFiltersChange} />
             <DateRangeFilter
               fromDate={fromDate}
               toDate={toDate}
@@ -2260,7 +2316,9 @@ export default function DailyProduction() {
 
             columns={columns}
 
-            rows={exportTableRows}
+            rows={rows}
+
+            onExport={exportAllAssemblyRows}
 
           />
 </div>
@@ -3127,5 +3185,3 @@ export default function DailyProduction() {
   );
 
 }
-
-

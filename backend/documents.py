@@ -29,6 +29,7 @@ from dailyproduction import _qc_inspection_is_complete
 from firebase_config import bucket, db
 from invoice import _header_doc_id as invoice_header_id
 from podetails import _header_doc_id as po_header_id
+from list_params import parse_optional_page, requested_fields, select_fields, wants_all_rows
 
 documents_bp = Blueprint("documents", __name__)
 
@@ -406,6 +407,30 @@ def _collect_qc_reports():
     return reports
 
 
+def _attach_product_models(items):
+    """`productModels`: the Models-page model(s) each document belongs to, for
+    the page's Model dropdown.  Invoices / POs go by their model id, QC
+    reports by the unit's model, defect photos by the unit's serial number."""
+    from product_models import canonical_names, model_names_by_id, models_for_serials, product_model_for
+
+    names_by_id = model_names_by_id()
+    canonical = canonical_names(names_by_id)
+    by_serial = models_for_serials(
+        [(item.get("fields") or {}).get("serial") for item in items if item.get("category") == "Defect Photo"],
+        names_by_id,
+    )
+    for item in items:
+        fields = item.get("fields") or {}
+        serial = fields.get("serial") if item.get("category") == "Defect Photo" else ""
+        model_text = item.get("model") or (
+            fields.get("model") if item.get("category") in ("QC Report", "Defect Photo") else "")
+        item["productModels"] = product_model_for(
+            serial, (item.get("scope") or {}).get("modelIds") or (), model_text,
+            names_by_id=names_by_id, canonical=canonical, by_serial=by_serial,
+        )
+    return items
+
+
 def _matches(item, category, search):
     if category and item["category"] != category:
         return False
@@ -511,13 +536,27 @@ def list_documents():
     try:
         category, search = _read_args()
         items = _collect_files() + _collect_qc_reports()
+        _attach_product_models(items)
         counts = {}
         for item in items:
             counts[item["category"]] = counts.get(item["category"], 0) + 1
         filtered = [item for item in items if _matches(item, category, search)]
         # Newest first; undated rows go last.
         filtered.sort(key=lambda item: item.get("date") or "", reverse=True)
-        response = jsonify({"success": True, "documents": filtered, "counts": counts, "total": len(items)})
+        body = {"success": True, "counts": counts, "total": len(items)}
+        # Optional paging: `?page=&limit=`.  Without them every match is
+        # returned, as before.
+        paging = parse_optional_page(request.args)
+        if paging:
+            page, limit = paging
+            total_pages = max(1, -(-len(filtered) // limit))
+            page = min(page, total_pages)
+            body["pagination"] = {"page": page, "limit": limit, "totalCount": len(filtered),
+                                  "totalPages": total_pages, "hasNextPage": page < total_pages,
+                                  "hasPrevPage": page > 1}
+            filtered = filtered[(page - 1) * limit:page * limit]
+        body["documents"] = select_fields(filtered, requested_fields(request.args))
+        response = jsonify(body)
         response.headers["Cache-Control"] = "no-store"
         return response, 200
     except Exception as exc:

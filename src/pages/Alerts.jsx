@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import Swal from "sweetalert2";
 import {
-  BellRing, CalendarDays, Clock3, FileSpreadsheet, FileUp, Loader2, Mail, Plus, RefreshCw, Save, Trash2, Users, X,
+  BellRing, CalendarDays, Clock3, Eye, FileSpreadsheet, FileUp, Loader2, Mail, Plus, RefreshCw, Save, Send, Trash2, Users, X,
 } from "lucide-react";
 import api from "../components/Api";
 import DatePicker from "../components/DatePicker";
 import confirmRemove from "../utils/confirmRemove";
 import "./Alerts.css";
- 
+
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
- 
+
 const WORKING_DAYS = [
   { value: 0, short: "Mon", label: "Monday" },
   { value: 1, short: "Tue", label: "Tuesday" },
@@ -20,22 +21,25 @@ const WORKING_DAYS = [
   { value: 5, short: "Sat", label: "Saturday" },
   { value: 6, short: "Sun", label: "Sunday" },
 ];
- 
+
 const EMPTY_SETTINGS = { enabled: false, weekly_enabled: false, weekly_send_day: 0, recipients: [], send_time: "09:00", weekly_send_time: "09:00", working_days: [0, 1, 2, 3, 4, 5], holidays: [] };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The daily / weekly "preview & test" cards. Hidden for now: set to true to
+// show them again. The backend endpoints stay in place.
+const SHOW_PREVIEW_AND_TEST = false;
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
- 
+
 function errorText(error, fallback) {
   return error?.response?.data?.message || error?.message || fallback;
 }
- 
+
 // "2026-10-23" -> "23 Oct 2026"
 function formatDay(iso) {
   const [year, month, day] = String(iso || "").slice(0, 10).split("-");
   if (!year || !month || !day) return iso || "";
   return `${day} ${SHORT_MONTHS[Number(month) - 1] || ""} ${year}`;
 }
- 
+
 function formatDateTime(iso) {
   if (!iso) return "";
   const parsed = new Date(iso);
@@ -44,7 +48,7 @@ function formatDateTime(iso) {
     day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata",
   });
 }
- 
+
 // "09:30" -> "09:30 AM"
 function formatTime(value) {
   const [hours, minutes] = String(value || "").split(":").map(Number);
@@ -52,7 +56,7 @@ function formatTime(value) {
   const suffix = hours >= 12 ? "PM" : "AM";
   return `${String(hours % 12 || 12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${suffix}`;
 }
- 
+
 // Holiday files: Excel/CSV with a date column and a description column. The
 // date may be a real Excel date, ISO text, or DD-MM-YYYY / DD/MM/YYYY.
 function normalizeImportedDate(value) {
@@ -72,11 +76,11 @@ function normalizeImportedDate(value) {
   if (text && !Number.isNaN(parsed.getTime())) return normalizeImportedDate(parsed);
   return "";
 }
- 
+
 function sameSettings(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
- 
+
 export default function Alerts() {
   const [settings, setSettings] = useState(EMPTY_SETTINGS);
   const [saved, setSaved] = useState(EMPTY_SETTINGS);
@@ -91,16 +95,23 @@ export default function Alerts() {
   const [importing, setImporting] = useState(false);
   const [weeklySchedule, setWeeklySchedule] = useState(null);
   const [weeklyScheduleError, setWeeklyScheduleError] = useState("");
- 
+  // Preview & test: `previewing` / `sendingTest` hold "daily" or "weekly" while busy.
+  const [dailyTestEmail, setDailyTestEmail] = useState("");
+  const [weeklyTestEmail, setWeeklyTestEmail] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState("");
+  const [sendingTest, setSendingTest] = useState("");
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
+
   const dirty = !sameSettings(settings, saved);
- 
+
   const applyResponse = useCallback((data) => {
     const next = { ...EMPTY_SETTINGS, ...(data.settings || {}) };
     setSettings(next);
     setSaved(next);
     setStatus(data.status || {});
   }, []);
- 
+
   const loadWeeklySchedule = useCallback(async () => {
     try {
       const response = await api.get(`${API_BASE_URL}/alerts/weekly-stock-report/status`, { __vectorNoCache: true });
@@ -111,7 +122,7 @@ export default function Alerts() {
       setWeeklyScheduleError(errorText(error, "Failed to load the weekly email schedule."));
     }
   }, []);
- 
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
@@ -125,15 +136,15 @@ export default function Alerts() {
       setLoading(false);
     }
   }, [applyResponse]);
- 
+
   useEffect(() => {
     load();
   }, [load]);
- 
+
   useEffect(() => {
     loadWeeklySchedule();
   }, [loadWeeklySchedule]);
- 
+
   // Leaving with unsaved changes would silently drop them, so a click on the
   // sidebar (or Logout) is held back and the app's own dialog asks first.
   // A browser reload/close is not intercepted: browsers only allow their own
@@ -171,10 +182,10 @@ export default function Alerts() {
     document.addEventListener("click", intercept, true);
     return () => document.removeEventListener("click", intercept, true);
   }, [dirty]);
- 
+
   const update = (field, value) => setSettings((previous) => ({ ...previous, [field]: value }));
   const flash = (type, text) => setNotice({ type, text });
- 
+
   const save = async (override) => {
     const payload = override || settings;
     setSaving(true);
@@ -193,9 +204,9 @@ export default function Alerts() {
       setSaving(false);
     }
   };
- 
+
   saveRef.current = () => save();
- 
+
   // Recipients, holidays and the on/off switch save the moment they change,
   // so a refresh never loses them. Only that part is sent, merged onto the
   // last *saved* settings, so an unsaved edit to the send time or working days
@@ -208,7 +219,7 @@ export default function Alerts() {
   savedRef.current = saved;
   const queueRef = useRef(Promise.resolve());
   const [pending, setPending] = useState(() => new Set());
- 
+
   const savePatch = (buildPatch, successText, pendingKey = "") => {
     if (pendingKey) setPending((current) => new Set(current).add(pendingKey));
     const run = async () => {
@@ -252,7 +263,7 @@ export default function Alerts() {
     queueRef.current = result;
     return result;
   };
- 
+
   const toggleEnabled = async () => {
     const enabled = !saved.enabled;
     if (enabled && !saved.recipients.length) {
@@ -261,7 +272,7 @@ export default function Alerts() {
     }
     await savePatch(() => ({ enabled }), enabled ? "Daily email turned on." : "Daily email turned off.");
   };
- 
+
   const toggleWeeklyEnabled = async () => {
     const weekly_enabled = !saved.weekly_enabled;
     if (weekly_enabled && !saved.recipients.length) {
@@ -273,7 +284,7 @@ export default function Alerts() {
       weekly_enabled ? "Weekly email turned on." : "Weekly email turned off."
     );
   };
- 
+
   const addRecipient = async () => {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
@@ -293,7 +304,7 @@ export default function Alerts() {
     );
     if (!ok) setEmailInput((current) => current || email);
   };
- 
+
   const removeRecipient = async (email) => {
     if (pending.has(`recipient:${email}`)) return;
     const remaining = saved.recipients.filter((item) => item !== email);
@@ -321,14 +332,14 @@ export default function Alerts() {
       };
     }, `${email} removed.`, `recipient:${email}`);
   };
- 
+
   const toggleDay = (value) => {
     const current = settings.working_days || [];
     update("working_days", current.includes(value)
       ? current.filter((day) => day !== value)
       : [...current, value].sort((a, b) => a - b));
   };
- 
+
   const addHoliday = async () => {
     if (!holidayDate) {
       flash("error", "Pick the holiday date first.");
@@ -357,7 +368,7 @@ export default function Alerts() {
       setHolidayDescription((current) => current || entry.description);
     }
   };
- 
+
   const removeHoliday = async (holiday) => {
     if (pending.has(`holiday:${holiday.date}`)) return;
     const confirmed = await confirmRemove({
@@ -372,7 +383,7 @@ export default function Alerts() {
       `holiday:${holiday.date}`
     );
   };
- 
+
   const importHolidays = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -403,7 +414,79 @@ export default function Alerts() {
       setImporting(false);
     }
   };
- 
+
+  const REPORT_PATHS = { daily: "daily-report", weekly: "weekly-stock-report" };
+
+  const openPreview = async (kind) => {
+    setPreviewing(kind);
+    setNotice(null);
+    try {
+      const response = await api.get(`${API_BASE_URL}/alerts/${REPORT_PATHS[kind]}/preview`, { __vectorNoCache: true });
+      if (!response.data.success) throw new Error(response.data.message);
+      setPreview(response.data);
+    } catch (error) {
+      flash("error", errorText(error, "The preview could not be built."));
+    } finally {
+      setPreviewing("");
+    }
+  };
+
+  const sendTest = async (kind) => {
+    const email = (kind === "daily" ? dailyTestEmail : weeklyTestEmail).trim().toLowerCase();
+    if (email && !EMAIL_PATTERN.test(email)) {
+      flash("error", `"${email}" is not a valid email address.`);
+      return;
+    }
+    if (!email && !saved.recipients.length) {
+      flash("error", "Enter an email address, or add and save recipients first.");
+      return;
+    }
+    setSendingTest(kind);
+    setNotice(null);
+    try {
+      const response = await api.post(
+        `${API_BASE_URL}/alerts/${REPORT_PATHS[kind]}/send-test`,
+        email ? { email } : {},
+        { __vectorSuppressBusy: true }
+      );
+      if (!response.data.success) throw new Error(response.data.message);
+      flash("success", response.data.message);
+    } catch (error) {
+      flash("error", errorText(error, "The test email could not be sent."));
+    } finally {
+      setSendingTest("");
+    }
+  };
+
+  const downloadWeeklyExcel = async () => {
+    setDownloadingExcel(true);
+    setNotice(null);
+    try {
+      const response = await api.get(`${API_BASE_URL}/alerts/weekly-stock-report/excel`, { responseType: "blob" });
+      const disposition = response.headers?.["content-disposition"] || "";
+      const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1]
+        || `Stock-Register-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      let message = "The Excel file could not be downloaded.";
+      // Errors come back as a JSON blob because of responseType "blob".
+      try {
+        const parsed = JSON.parse(await error?.response?.data?.text());
+        message = parsed.message || message;
+      } catch { /* keep the default message */ }
+      flash("error", message);
+    } finally {
+      setDownloadingExcel(false);
+    }
+  };
+
   const holidaysByYear = useMemo(() => {
     const groups = {};
     settings.holidays.forEach((holiday) => {
@@ -412,7 +495,7 @@ export default function Alerts() {
     });
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [settings.holidays]);
- 
+
   if (loading) {
     return (
       <div className="alerts-state">
@@ -421,7 +504,7 @@ export default function Alerts() {
       </div>
     );
   }
- 
+
   if (loadError) {
     return (
       <div className="alerts-state alerts-state-error">
@@ -432,7 +515,7 @@ export default function Alerts() {
       </div>
     );
   }
- 
+
   const workingDayNames = WORKING_DAYS.filter((day) => settings.working_days.includes(day.value)).map((day) => day.short);
   const weeklyScheduleActive = Boolean(
     weeklySchedule?.enabled && saved.weekly_enabled && saved.recipients.length
@@ -453,7 +536,7 @@ export default function Alerts() {
     : status.lastStatus === "failed"
       ? `Last send failed: ${status.lastError || "unknown error"}`
       : "Not sent yet";
- 
+
   return (
     <div className="alerts-page">
       <header className="alerts-hero">
@@ -496,7 +579,7 @@ export default function Alerts() {
           </button>
         </div>
       </header>
- 
+
       {dirty && (
         <div className="alerts-notice alerts-notice-warn">
           <span>You have unsaved changes. Click <b>Save Settings</b> to apply them.</span>
@@ -508,7 +591,7 @@ export default function Alerts() {
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={14} /></button>
         </div>
       )}
- 
+
       <section className="alerts-overview">
         <article className={`alerts-stat${saved.enabled ? " is-on" : " is-off"}`}>
           <span className="alerts-stat-icon"><BellRing size={18} /></span>
@@ -561,7 +644,7 @@ export default function Alerts() {
           </div>
         </article>
       </section>
- 
+
       <div className="alerts-grid">
         <section className="alerts-card">
           <div className="alerts-card-head">
@@ -600,7 +683,7 @@ export default function Alerts() {
             <p className="alerts-empty">No recipients yet. Add an email address above.</p>
           )}
         </section>
- 
+
         <section className="alerts-card">
           <div className="alerts-card-head">
             <span className="alerts-card-icon"><Clock3 size={18} /></span>
@@ -618,6 +701,7 @@ export default function Alerts() {
                 value={settings.send_time}
                 onChange={(event) => update("send_time", event.target.value)}
               />
+              <small>Any time · India time · sent within a minute of it</small>
             </label>
             <label className="alerts-field">
               <span>Weekly stock report send time</span>
@@ -627,7 +711,7 @@ export default function Alerts() {
                 value={settings.weekly_send_time}
                 onChange={(event) => update("weekly_send_time", event.target.value)}
               />
-              <small>Separate time · India time</small>
+              <small>Separate time · any time · India time · sent within a minute of it</small>
             </label>
           </div>
           <label className="alerts-field">
@@ -667,7 +751,7 @@ export default function Alerts() {
           </div>
         </section>
       </div>
- 
+
       <section className="alerts-card">
         <div className="alerts-card-head">
           <span className="alerts-card-icon"><CalendarDays size={18} /></span>
@@ -676,7 +760,7 @@ export default function Alerts() {
             <p>No email is sent on these dates, and they are skipped when choosing the day a report covers. Changes save immediately.</p>
           </div>
         </div>
- 
+
         <div className="alerts-holiday-entry">
           <div className="alerts-holiday-manual">
             <span className="alerts-sub">Add manually</span>
@@ -709,7 +793,7 @@ export default function Alerts() {
             </div>
           </div>
         </div>
- 
+
         {holidaysByYear.length ? holidaysByYear.map(([year, holidays]) => (
           <div key={year} className="alerts-year">
             <span className="alerts-sub">{year} · {holidays.length} holiday{holidays.length === 1 ? "" : "s"}</span>
@@ -729,9 +813,86 @@ export default function Alerts() {
           </div>
         )) : <p className="alerts-empty">No holidays yet.</p>}
       </section>
- 
+
+      {SHOW_PREVIEW_AND_TEST && (
+        <>
+      <section className="alerts-card">
+        <div className="alerts-card-head">
+          <span className="alerts-card-icon"><Send size={18} /></span>
+          <div>
+            <h3>Daily report · preview &amp; test</h3>
+            <p>See the daily email with today&apos;s figures, or send it now. A test does not replace the scheduled email.</p>
+          </div>
+        </div>
+        <div className="alerts-test-row">
+          <button type="button" className="alerts-btn alerts-btn-outline" onClick={() => openPreview("daily")} disabled={Boolean(previewing)}>
+            {previewing === "daily" ? <Loader2 size={16} className="spin" /> : <Eye size={16} />} Preview email
+          </button>
+          <input
+            type="email"
+            className="alerts-input"
+            placeholder={saved.recipients.length ? "Leave empty to send to all saved recipients" : "your@email.com"}
+            value={dailyTestEmail}
+            onChange={(event) => setDailyTestEmail(event.target.value)}
+            aria-label="Daily test email address"
+          />
+          <button type="button" className="alerts-btn alerts-btn-primary" onClick={() => sendTest("daily")} disabled={Boolean(sendingTest)}>
+            {sendingTest === "daily" ? <Loader2 size={16} className="spin" /> : <Send size={16} />} Send daily test
+          </button>
+        </div>
+      </section>
+
+      <section className="alerts-card">
+        <div className="alerts-card-head">
+          <span className="alerts-card-icon"><FileSpreadsheet size={18} /></span>
+          <div>
+            <h3>Weekly stock register · preview &amp; test</h3>
+            <p>
+              Sent once a week on {WORKING_DAYS[saved.weekly_send_day]?.label || "Monday"} (or the next working day)
+              at {formatTime(saved.weekly_send_time)} IST to the recipients above, with the complete current Stock
+              Register table attached as Excel, including the report weekday and date. This schedule has its own
+              switch and is independent of the daily report switch. A test does not replace the scheduled email.
+            </p>
+          </div>
+        </div>
+        <div className="alerts-test-row alerts-weekly-row">
+          <button type="button" className="alerts-btn alerts-btn-outline" onClick={() => openPreview("weekly")} disabled={Boolean(previewing)}>
+            {previewing === "weekly" ? <Loader2 size={16} className="spin" /> : <Eye size={16} />} Preview email
+          </button>
+          <button type="button" className="alerts-btn alerts-btn-outline" onClick={downloadWeeklyExcel} disabled={downloadingExcel}>
+            {downloadingExcel ? <Loader2 size={16} className="spin" /> : <FileSpreadsheet size={16} />} Download Excel
+          </button>
+          <input
+            type="email"
+            className="alerts-input"
+            placeholder={saved.recipients.length ? "Leave empty to send to all saved recipients" : "your@email.com"}
+            value={weeklyTestEmail}
+            onChange={(event) => setWeeklyTestEmail(event.target.value)}
+            aria-label="Weekly test email address"
+          />
+          <button type="button" className="alerts-btn alerts-btn-primary" onClick={() => sendTest("weekly")} disabled={Boolean(sendingTest)}>
+            {sendingTest === "weekly" ? <Loader2 size={16} className="spin" /> : <Send size={16} />} Send weekly test + Excel
+          </button>
+        </div>
+      </section>
+        </>
+      )}
+
+      {preview && createPortal(
+        <div className="alerts-modal-overlay" onClick={() => setPreview(null)}>
+          <div className="alerts-modal" role="dialog" aria-modal="true" aria-label="Email preview" onClick={(event) => event.stopPropagation()}>
+            <div className="alerts-modal-head">
+              <div>
+                <small>Subject</small>
+                <strong>{preview.subject}</strong>
+              </div>
+              <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"><X size={20} /></button>
+            </div>
+            <iframe title="Email preview" className="alerts-modal-frame" srcDoc={preview.html} sandbox="" />
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
- 
- 

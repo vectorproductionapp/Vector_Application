@@ -8,6 +8,7 @@ from firebase_config import db
 from auth_utils import roles_required
 from read_cache import cached_read
 from date_range import in_date_range, read_date_range
+from list_params import parse_optional_page, requested_fields, select_fields, wants_all_rows
  
 saleregister_bp = Blueprint("saleregister", __name__)
 sales_collection = db.collection("sale_register")
@@ -142,10 +143,19 @@ def _serialize_customer_sale(doc):
 
 
 def _attach_customer_sales(sales):
-    """Attach the separately stored customer sale to its corresponding sale row."""
+    """Attach the separately stored customer sale to its corresponding sale row.
+
+    One batched read per 300 rows instead of one round trip per row.
+    """
+    refs = [customer_sales_collection.document(sale["id"]) for sale in sales]
+    found = {}
+    for start in range(0, len(refs), 300):
+        for customer_doc in db.get_all(refs[start:start + 300]):
+            if customer_doc.exists:
+                found[customer_doc.id] = customer_doc
     for sale in sales:
-        customer_doc = customer_sales_collection.document(sale["id"]).get()
-        sale["customerSale"] = _serialize_customer_sale(customer_doc) if customer_doc.exists else None
+        customer_doc = found.get(sale["id"])
+        sale["customerSale"] = _serialize_customer_sale(customer_doc) if customer_doc else None
     return sales
  
  
@@ -505,12 +515,17 @@ def list_sales():
         # One lookup for the whole matching set, then sliced: `allRows` lets the
         # table's export cover every filtered sale instead of only the 10 rows
         # that happen to be on screen.
-        export_rows = _attach_customer_sales(matching_rows)
+        fields = requested_fields(request.args)
+        if wants_all_rows(request.args):
+            export_rows = _attach_customer_sales(matching_rows)
+            body = {"sales": select_fields(export_rows[offset:offset + limit], fields),
+                    "allRows": select_fields(export_rows, fields)}
+        else:
+            body = {"sales": select_fields(_attach_customer_sales(matching_rows[offset:offset + limit]), fields)}
 
         return jsonify({
             "success": True,
-            "sales": export_rows[offset:offset + limit],
-            "allRows": export_rows,
+            **body,
             "filterOptions": filter_options,
             "totals": {"qty": _display_number(total_qty), "base": total_base,
                        "gst": total_gst, "total": total_incl_gst},

@@ -9,7 +9,6 @@ env_filename = ".env.production" if environment == "production" else ".env"
 load_dotenv(Path(__file__).resolve().parent / env_filename)
 
 from __init__ import create_app
-from realtime import run as run_with_realtime
 
 
 app = create_app()
@@ -17,7 +16,8 @@ app = create_app()
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "5000"))
-    # `run_with_realtime` serves Flask's routes and the /ws WebSocket from the
-    # same port: Werkzeug's own server cannot upgrade connections, and polling
-    # has been replaced by these live updates.
-    run_with_realtime(app, host=host, port=port)
+    # Cloud Scheduler cannot reach a local server, so `python app.py` checks
+    # the report emails itself every minute (LOCAL_REPORT_SCHEDULER=off to stop).
+    from report_runs import start_local_ticker
+    start_local_ticker()
+    app.run(host=host, port=port, threaded=True)

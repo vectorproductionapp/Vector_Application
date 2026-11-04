@@ -23,7 +23,7 @@ from auth_utils import (  # noqa: E402
     roles_required,
     token_required,
 )
-from realtime import scope_for_path  # noqa: E402
+from realtime_notices import scope_for_path  # noqa: E402
 
 
 def _token(role):

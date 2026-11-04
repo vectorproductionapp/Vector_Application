@@ -1,6 +1,9 @@
 ﻿.stock-page { display: flex; flex-direction: column; }
 
 .stock-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.stock-model-filter { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.stock-model-filter .searchable-select { width: min(220px, 30vw); }
+.stock-model-filter .searchable-select-trigger { min-height: 38px; }
 
 .stock-view-switch { display: inline-flex; align-items: center; gap: 5px; padding: 5px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-surface); flex-shrink: 0; }
 
@@ -64,6 +67,8 @@
 @media (max-width: 640px) {
   .stock-toolbar { flex-wrap: wrap; justify-content: flex-end; }
   .stock-toolbar > * { flex: 1 1 100%; }
+  .stock-model-filter { margin-left: 0; }
+  .stock-model-filter .searchable-select { flex: 1; width: auto; }
   /* The three tabs share the width equally instead of keeping their desktop
      width; centring an over-wide row pushed "Table View" off the left edge. */
   .stock-view-switch { display: flex; justify-content: stretch; min-width: 0; }

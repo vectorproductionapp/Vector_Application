@@ -2,6 +2,7 @@ import bcrypt
 from flask import Blueprint, request, jsonify
 from firebase_config import users_collection
 from auth_utils import generate_token
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 admin_login_bp = Blueprint("admin_login", __name__)
 
@@ -10,7 +11,7 @@ ALLOWED_ADMIN_ROLES = ("admin",)
 
 
 def _admin_exists():
-    existing_admins = users_collection.where("role", "==", "admin").limit(1).get()
+    existing_admins = users_collection.where(filter=FieldFilter("role", "==", "admin")).limit(1).get()
     return len(existing_admins) > 0
 
 
@@ -27,7 +28,7 @@ def admin_login():
     if not email or not password:
         return jsonify({"success": False, "message": "Email and password required"}), 400
 
-    results = users_collection.where("email", "==", email).limit(1).get()
+    results = users_collection.where(filter=FieldFilter("email", "==", email)).limit(1).get()
 
     if not results:
         return jsonify({"success": False, "message": "Invalid Email or Password"}), 401
@@ -97,7 +98,7 @@ def bootstrap_admin():
     if len(password) < 8:
         return jsonify({"success": False, "message": "Password must be at least 8 characters"}), 400
 
-    existing = users_collection.where("email", "==", email).limit(1).get()
+    existing = users_collection.where(filter=FieldFilter("email", "==", email)).limit(1).get()
     if existing:
         return jsonify({"success": False, "message": "An account with this email already exists"}), 409
 
@@ -139,7 +140,7 @@ def register_admin():
     if len(password) < 8:
         return jsonify({"success": False, "message": "Password must be at least 8 characters"}), 400
 
-    existing = users_collection.where("email", "==", email).limit(1).get()
+    existing = users_collection.where(filter=FieldFilter("email", "==", email)).limit(1).get()
     if existing:
         return jsonify({"success": False, "message": "An account with this email already exists"}), 409
 
