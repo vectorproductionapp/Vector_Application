@@ -1,6 +1,11 @@
 ﻿/* PAGE LAYOUT */
 .sales-page { display: flex; flex-direction: column; }
-.sales-page .model-card-edit { opacity: 1; }
+/* PO card pencil: shown on hover or keyboard focus only (Model.css hides it
+   otherwise). Touch screens have no hover, so it stays visible there. */
+.sales-page .model-card:focus-within .model-card-edit { opacity: 1; }
+@media (hover: none) {
+  .sales-page .model-card-edit { opacity: 1; }
+}
 .sales-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .sales-model-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .sales-model-filter .searchable-select { width: min(220px, 30vw); }
