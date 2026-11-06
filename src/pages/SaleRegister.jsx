@@ -1050,8 +1050,19 @@ const [totalCount, setTotalCount] = useState(0);
     }
   };
 
-  const closePoEdit = () => {
+  const closePoEdit = async () => {
     if (poEditSaving || poEditLoading) return;
+    const hasChanges = (poEdit?.lines || []).some(
+      (line) => JSON.stringify(line.values) !== JSON.stringify(line.original)
+    );
+    if (hasChanges) {
+      const result = await swalConfirm({
+        title: "Discard unsaved changes?",
+        text: "Your sale changes will be lost unless you save them.",
+        confirmText: "Discard changes",
+      });
+      if (!result.isConfirmed) return;
+    }
     setPoEdit(null);
     setPoEditError("");
   };
