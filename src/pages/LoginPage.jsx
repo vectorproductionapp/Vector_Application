@@ -161,12 +161,6 @@ function LoginPage() {
           </button>
         </form>
 
-        <p className="common-login-footer-text">
-          Don't have an account?{" "}
-          <Link to="/register" className="common-login-link">
-            Sign Up
-          </Link>
-        </p>
       </section>
     </main>
   );

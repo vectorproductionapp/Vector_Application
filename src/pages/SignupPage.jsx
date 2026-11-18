@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, useMemo } from "react";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import axios from "axios";
 import Swal from "sweetalert2";
 
@@ -55,6 +55,25 @@ const PASSWORD_RULES = [
 
 function SignupPage() {
   const navigate = useNavigate();
+
+  // Signup exists only to create the FIRST admin account.  The moment any
+  // admin exists there is nothing left to self-serve here, so the route closes
+  // and sends the visitor back to the login form.  It fails closed: if the
+  // status cannot be read, signup stays shut instead of open.
+  const [gate, setGate] = useState("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get(`${API_BASE_URL}/admin/bootstrap-status`)
+      .then((res) => {
+        if (!cancelled) setGate(res.data?.setup_required ? "open" : "closed");
+      })
+      .catch(() => {
+        if (!cancelled) setGate("closed");
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -122,6 +141,20 @@ function SignupPage() {
       setSubmitting(false);
     }
   };
+
+  // The form is never rendered (or submitted) while the door's state is
+  // unknown, and a closed door routes straight back to sign-in.
+  if (gate === "closed") return <Navigate to="/login" replace />;
+  if (gate === "checking") {
+    return (
+      <main className="signup-page">
+        <div className="signup-bg-grid" />
+        <section className="signup-card">
+          <p>Checking whether signup is still open…</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="signup-page">

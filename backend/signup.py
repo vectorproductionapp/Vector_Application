@@ -47,8 +47,22 @@
 import bcrypt
 from flask import Blueprint, request, jsonify
 from firebase_config import users_collection, user_document_for_email, create_user_email_index
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 signup_bp = Blueprint("signup", __name__)
+
+
+def _admin_exists():
+    """Self-signup exists only to create the very first admin account.
+
+    The moment a single admin holds the keys this endpoint closes for good, so
+    nobody can register themselves (least of all as "admin") without an
+    existing admin creating the account for them.
+    """
+    existing_admins = users_collection.where(
+        filter=FieldFilter("role", "==", "admin")
+    ).limit(1).get()
+    return len(existing_admins) > 0
 
 
 @signup_bp.route("/signup", methods=["POST"])
@@ -57,6 +71,14 @@ def signup():
 
     if not data:
         return jsonify({"success": False, "message": "Request body must be JSON"}), 400
+
+    # Checked first, so a closed signup rejects the request before it validates
+    # or writes anything at all.
+    if _admin_exists():
+        return jsonify({
+            "success": False,
+            "message": "Signups are closed. Ask an existing Admin to create your account.",
+        }), 403
 
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
